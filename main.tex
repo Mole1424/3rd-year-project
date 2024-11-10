@@ -1,0 +1,114 @@
+\documentclass{article}
+\usepackage{graphicx} % Required for inserting images
+\usepackage[margin=1in]{geometry}
+\usepackage{url}
+\usepackage{hyperref}
+
+\usepackage[calc]{datetime2}
+\usepackage{pgfgantt}
+\usepackage{datenumber}
+
+\usepackage{pdflscape}
+
+
+\title{CS310 Project Specification: Detection Of DeepFakes}
+\author{Joel Coulon, 2204489}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\section{Problem Statement}
+DeepFakes are when someone's face, body, or environment is digitally altered to make it look like they are saying and doing something they have not done. Whilst around 57\% of people can correctly identify DeepFakes as a DeepFake\cite{human-detection}, this is when they know that they are attempting to identify a DeepFake: in 2019, 72\% of people in a UK survey were unaware of DeepFakes and their impact\cite{human-aware}. Therefore, their potential to be used in disinformation campaigns is enormous. It is essential, as a result, to have a reliable and consistent method to detect DeepFakes, hence, prove if a supplied video is real or not.
+
+
+\section{Objectives}
+The primary objective of this project is to verify if a proposed method for detecting DeepFakes is viable.\\
+
+To do this, an existing proof of concept method for identifying DeepFakes or enhancement to an existing method will be identified, determine whether such a method is feasible, and evaluate its potential (and if it is feasible, how good it is). This project will not develop a completely novel way of identifying DeepFakes, however this project is still of appropriate difficulty and originality for a dissertation, as the method will not have an existing implementation, and it is a new neural network will need to be created and trained. \\
+
+\noindent
+Thus the project's aims can be decomposed as the following:
+
+\subsection{Essentials}
+The following requirements have to be met for the project to be considered successful:
+\begin{enumerate}
+    \item Identify a methodology for detecting DeepFakes
+    \item Identify how to implement such a methodology
+    \item Implement such a methodology
+    \item Evaluate the feasibility of the produced method through standardised benchmarks
+\end{enumerate}
+\subsection{Optional (Extensions)}
+Should all the essential objectives be completed the following could be implemented given sufficient time:
+\begin{enumerate}
+    \item Enhance the chosen methodology through speed improvements, accuracy, etc.
+    \item Test the benefit of any potential improvement using standardised benchmarks
+\end{enumerate}
+
+\section{Method \& Methodology}
+
+For the initial research of this project, Google Scholar\footnote{\url{https://scholar.google.com/}} is an obvious choice as it is the largest repository for academic papers. Other specialised papers for machine learning exist that hold a higher academic reputation, such as: Neural Information Processing Systems\footnote{\url{https://neurips.cc/}},  International Conference on Machine Learning\footnote{\url{https://icml.cc/}}, and the Computer Vision Foundation\footnote{\url{https://www.thecvf.com/}}. These will offer better quality papers that are both more in-depth and technical but will be harder to access as the primary goal of the foundations is conferences where academics and professionals discuss papers rather than produce them. Furthermore, the accessibility of such papers is reduced when compared to Google Scholar's repository as the search function of these websites will be a lot worse than the one Google Scholar would employ.\\
+
+CS342 is an optional model that teaches machine learning. It will be used as the primary source of information for how to create, train, and then test a neural network.\\
+
+Python is the most common language to develop a AI model, due to the PyTorch library, which vastly simplifies the code needed to implement a neural network. Hence, it is the language taught by CS342 and what will be used to develop the AI model for this project.\\
+
+Papers with Code\footnote{\url{https://paperswithcode.com/task/deepfake-detection}} has a vast set of datasets of both a mix of deepfakes and real videos. These datasets offer a standardised way to both train and then test neural networks, and will be used in both phases for this project.\\
+
+\section{Literature Review}
+
+Existing methods of detecting DeepFakes exist. One such example involves embedding watermarks into audio tracks. If a DeepFake model was trained on a track ``poisoned" with this watermark, it may produce an identical watermark in a DeepFaked video which will comprehensively prove that the video is faked\cite{watermark}. There are some major flaws with the implementation however. It currently only exists as a proof-of-concept and hence has not been tested on a large scale. It also relies on the model generating a video with such a watermarked track. To increase this chance, large scale adoption needs to happen which could lead to some issues. Similar methods exist but for watermarking videos but fall foul of the same issues\cite{watermarkvideo}.\\
+
+% this is really cool
+Another method of detecting DeeoFakes involves using the electrical network frequency (ENF) to ``fingerprint" a video\cite{powerdraw}, similar to the watermarks in the previous example. The ENF of a video is a recording of the fluctuations in the power draw of the recording equipment that can then uniquely identify the video. Sadly, this also falls foul of the same flaws as the watermark concept where it relies on a mass adoption to be successful.\\
+
+A paper from the CVF proposes to detect DeepFakes by using the consistency of face geometry throughout the duration of a video\cite{geometry}. For example, the distance between an individual's eyes may vary ever so slightly for the length of a DeepFaked video but not in a real one.\\
+
+One proposed optimisation to DeepFake detection is to leverage the ``real world" aspects of a video. That being that recording suffers imperfections. DeepFakes are known to struggle in various challenging aspects such as: low light, compression, blurring, e.t.c\cite{horizon}. Whilst existing methods to exist to detect these flaws, there is a gap in existing methodologies where they rely on most other things in the video being perfect, leaving them vulnerable to adverserial noise attacks.
+
+\newpage
+\thispagestyle{empty}
+\def\fillandplacepagenumber{
+ \par\pagestyle{empty}
+ \vbox to 0pt{\vss}\vfill
+ \vbox to 0pt{\baselineskip0pt
+   \hbox to\linewidth{\hss}
+   \baselineskip\footskip
+   \hbox to\linewidth{
+     \hfil\thepage\hfil}\vss}}
+\begin{landscape}
+\section{Timetable}
+\begin{center}
+    \resizebox{1.5\textwidth}{!}{\input{gant}}
+\end{center}
+
+\noindent
+Whilst other modules have their coursework at the same time as this project is happening, with effective time management, there will be no major clash with timings; at least not enough to delay the course of the project significantly.\\
+
+1 week has been allocated to identify the methodology, which should be sufficient to identify a set of interesting methodologies. Then a further 10 days to work out the feasibility of implementing the individual methods and finally narrowing it down to 1 method to investigate.\\
+
+Once a method for identifying DeepFakes has been chosen, CS342 will have progressed sufficiently to allow development of a simple test models for experimentation. As these models get more complex, so will the techniques taught in CS342 which will allow for more complicated models.\\
+
+\fillandplacepagenumber
+\end{landscape}
+
+\section{Resources \& Risks}
+There are a variety of competitions to analyse the performance of DeepFake detection models. Often these will use a standard dataset that is either public or accessible through an application form. The vast majority list academic research as a valid use for their dataset. Such datasets include: FakeAVCeleb\cite{deepfake-detection-challenge}, FaceForensics++\cite{roessler2019faceforensicspp}, and DeepFakes Detection Challenge\cite{DDD_GoogleJigSaw2019}. A comprehensive list of popular data sets is available at \url{https://paperswithcode.com/task/DeepFake-detection}.\\
+
+As there are a large amount of available datasets it will not be an issue if one does not allow access, then there are plenty of other alternatives to turn to.\\
+
+Access to the DCS' GPU compute clusters (Gecko, Falcon, or Eagle) will be required to potentially train an AI model should that be the route my project takes. These resources are specifically allocated by DCS for projects such as this one, so can be relied upon to always be available. In the unlikely event this were to be completely unusable (be it too busy with other projects or be down) the university also runs a central scientific computing cluster SCRTP which I could gain access to as a Warwick student.
+
+
+\section{Legal, Social, Ethical and Professional Issues \& Considerations}
+98\% of all DeepFakes generated are of pornography\cite{pornography}, hence it is possible that exposure to such videos may happen during the course of research, training \& development, or testing. It is highly unlikely that any such videos would appear in any testing or training datasets and therefore is not an issue to be concerned with. The only thing anyone else would be exposed to if viewing this project would be the weights of the AI model or whatever they choose to process with it. Therefore there is no possibility of exposure to pornography unless they themselves accessed it and supplied it to the model. \\
+
+Some DeepFake datasets require authorisation to use. The ones selected will list academic use as fair use and hence using them to train a model for academic purposes is within the terms of use.\\
+
+As this project entails detecting rather than creating DeepFakes, there are no further concerns of this nature.
+
+\bibliographystyle{IEEEtran}
+\bibliography{refs}
+
+\end{document}

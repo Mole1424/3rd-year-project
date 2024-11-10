@@ -1,0 +1,97 @@
+\DTMsavedate{StartOfTerm}{2024-09-30}
+
+% ------ date operations -----
+%set the date for gantt bars to start at
+\newcounter{datecounter}
+\newcommand{\setTheDate}[1]{
+  \setmydatenumber{datecounter}{\DTMfetchyear{StartOfTerm}}{\DTMfetchmonth{StartOfTerm}}{\DTMfetchday{StartOfTerm}}%
+  \DTMsavedate{periodEnd}{#1}
+  \setmydatenumber{x}{\DTMfetchyear{periodEnd}}{\DTMfetchmonth{periodEnd}}{\DTMfetchday{periodEnd}}%
+  \addtocounter{x}{-\thedatecounter}% 
+}
+
+% a command to add some days to a date and save it
+\newcount\daycount
+\newcommand{\saveStartDatePlusDays}[2]{
+    \DTMsaveddateoffsettojulianday{StartOfTerm}{#1}\daycount
+    \DTMsavejulianday{#2}{\number\daycount}
+}
+
+% command to make a bar that follows the previous one
+\newcounter{x}
+\newcommand{\addDays}[1]{
+    \addtocounter{x}{#1}
+ }
+\newcommand{\nextganttbar}[2]{
+    \saveStartDatePlusDays{\arabic{x}}{dfrom}
+    \addDays{#2}
+    \addtocounter{x}{-1}
+    \saveStartDatePlusDays{\arabic{x}}{dto}
+    \addtocounter{x}{1}
+    \ganttbar{#1}{\DTMusedate{dfrom}}{\DTMusedate{dto}}
+}
+
+% ------ setup date range for chart -----
+\saveStartDatePlusDays{-1}{prevDate}
+\saveStartDatePlusDays{76}{endOfTerm}
+\newcommand{\startDate}{\DTMusedate{StartOfTerm}}
+\newcommand{\prevDate}{\DTMusedate{prevDate}}
+
+
+% ------ setup and styling for the chart -----
+\begin{ganttchart}[hgrid, vgrid, inline,
+    bar/.append style={fill=blue!25},
+    time slot format=isodate %YYYY-MM-DD
+]{\startDate}{\DTMusedate{endOfTerm}}
+
+% command to create a label on the left. 
+\newcommand\ganttlabel[1]{
+    \ganttbar[inline=false]{#1}{\startDate}{\prevDate}
+}
+
+% command to make an orange bar
+\newganttchartelement{barorange}{
+    barorange/.append style={fill=orange!80 },
+}
+
+% titles showing month date and term week (starting at week 1)
+\gantttitlecalendar{month=name, day, week=1} 
+
+\ganttnewline
+
+\ganttnewline
+
+% ------ plan your timeline below! -----
+
+\ganttlabel{CS325}
+\ganttbarorange{Coursework}{2024-09-30}{2024-11-18}
+\\
+
+\ganttlabel{CS349}
+\ganttbarorange{Essay}{2024-10-11}{2024-12-09}
+\\
+
+\ganttlabel{CS342}
+\ganttbarorange{Coursework}{2024-11-01}{2024-12-03}
+\\
+
+\ganttlabel{CS357}
+\ganttbarorange{Essay Plan}{2024-09-30}{2024-11-07}
+\ganttbarorange{Essay}{2024-11-14}{2024-12-15}
+\\
+
+\ganttlabel{CS310}
+\ganttbarorange{Project Spec}{2024-09-30}{2024-10-10}
+\ganttbarorange{Progress Report}{2024-11-10}{2024-11-24}
+\\
+
+\ganttlabel{Research}
+\ganttbar{Initial}{2024-10-01}{2024-10-10}
+\ganttbar{Identify Method}{2024-10-13}{2024-10-20}
+\ganttbar{Investigating Chosen Method}{2024-10-20}{2024-10-30}
+\\
+
+\ganttlabel{Dev Work}
+\ganttbar{Begin Dev Work (Exact spec to be decided once methodology is fined)}{2024-11-01}{2024-12-15}
+
+\end{ganttchart}
