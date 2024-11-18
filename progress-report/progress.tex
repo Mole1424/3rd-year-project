@@ -6,7 +6,7 @@
 
 \usepackage{float}
 \usepackage{amsmath}
-
+\usepackage{amssymb}
 
 \title{CS310 Progress Report: Evaluating the Performance of Blink Detection on DeepFakes Injected With Adversarial Noise}
 \author{Joel Coulon, 2204489}
@@ -111,23 +111,131 @@ Ictu Oculi has a much more complex blink-detection system, requiring two separat
 
 The drawback is that the state of the eye is binary open or close, any information relating to the speed of the blink is lost resulting in a very rudimentary system to determine whether a sequence of blinks is a DeepFake or not. This seems to have little to no effect on accuracy of detection.\\
 
-The planned implementation can be found in Section \ref{sec:future_blink}.
+The planned implementation can be found in Section \ref{sec:future-blink}.
 
 \subsection{Adversarial Noise}
 
+It has been demonstrated by various works that the majority of current DeepFake detectors, even state of the art ones, can be fooled by a variety of adversarial attacks\cite{juefei2022countering}. These work by manipulating the image produced by a DeepFake to try and throw off any detectors.
 
+\subsubsection{Adversarial Perturbations}
+
+The first way to try and fool DeepFakes is Fast Gradient Sign Method (FGSM)\cite{pertubations}.
+
+\begin{equation}
+    {{\mathbf{x}}_{adv}} = {\mathbf{x}} + \varepsilon \operatorname{sign}({{\nabla _x}J({\mathbf{x}},{\mathbf{y}},\theta )})
+\end{equation}
+
+$\mathbf{x}_{adv}$ is the image produced once the adversarial attack has been completed. $\mathbf{x}$ denotes a vector of pixel value to denote the image produced by a GAN. $J$ is the training loss function (one possible example is categorical cross-entropy loss) which takes $\theta$ as the parameters of the model. Finally $\varepsilon$, is a hyperparamter for the magnitude of perturbation per pixel. A high $\varepsilon$ leads to higher chance to disrupt the model but a higher chance the perturbations become visible to humans, it is recommended to keep $\varepsilon$ in the range [0,01, 0.1]. 0.02 was used in the paper\cite{pertubations}. Through the loss function, this will alter a pixel to the maximum allowed by $\varepsilon$ which will subtly alter each pixel enough to throw off a DeepFake detector.\\
+
+The other method proposed by \cite{pertubations} is Carlini and Wagner $L_2$ Norm Attack ($CW-L_2$). The following method is based on the original paper\cite{carlini2017towards} and a PyTorch implementation\cite{cwl2python}. The first aim is to minimise the $L_2$ norm for the adversarial image $\mathbf{x}'$:
+
+\begin{equation}
+\label{eq:l2_norm}
+\mathop {\min }\limits_{x'} \left\{ {\left\| {{\mathbf{x}}' - {\mathbf{x}}} \right\|_2^2} \right\}
+\end{equation}
+
+The other objective is:
+
+\begin{equation}
+\label{eq:min_f(x')}
+\begin{array}{c} 
+    {\mathop {\min }\limits_{x'} \left\{ {f\left( {{\mathbf{x}}'} \right)} \right\}} \\ {{\text{ where }}f\left( {{\mathbf{x}}'} \right) = \max \left( {{{\max }_{i \ne y}}\left\{ {{\mathbf{Z}}{{\left( {{\mathbf{x}}'} \right)}_y} - {\mathbf{Z}}{{\left( {{\mathbf{x}}'} \right)}_i}} \right\}, - \kappa } \right)}
+\end{array}
+\end{equation}
+
+Where $\mathbf{Z}(\mathbf{x}')$ is the product of DeepFake detector. $i$ is the index of the current target class and $y$ is the index of the true target class (if no perturbations were made). Thus by minimising $f(\mathbf{x}')$, the difference between the incorrect class ($\mathbf{Z}{{\left( {{\mathbf{x}}'} \right)}_i}$) and the correct class (${\mathbf{Z}}{{\left( {{\mathbf{x}}'} \right)}_y}$) is maximised meaning a miss-classification is most likely. $\kappa$ defines a threshold for the maximum difference between the incorrect and correct classes.\\
+
+To ensure a pixel is only floating between 0 and 1:
+
+\begin{equation}
+\label{eq:tanh}
+    {\mathbf{x}}' = \frac{1}{2}(\tanh (\omega ) + 1)
+\end{equation}
+
+Thus combining \ref{eq:l2_norm}, \ref{eq:min_f(x')}, and \ref{eq:tanh}:
+
+\begin{equation}
+\begin{array}{c}
+{{\omega ^{\ast}} = \arg {{\min }_\omega }\left\{ {\left\| {{\mathbf{x}}' - {\mathbf{x}}} \right\|_2^2 + cf\left( {{\mathbf{x}}'} \right)} \right\}} \\ {{{\mathbf{x}}_{adv}} = \frac{1}{2}\left( {\tanh \left( {{\omega ^{\ast}}} \right) + 1} \right)}
+\end{array}
+\end{equation}
+
+$c$ is a positive parameter designed to weight the two objectives of the $CS-L_2$ attack. It is typically found via binary search during run time. To determine the parameters takes a long time, however sometimes leads to better results, especially on whitebox testing:
+
+\begin{figure}[H]
+    \centering
+    \fbox{\includegraphics[width=0.5\linewidth]{images/fgsm.png}}
+    \caption{Evaluation of FGSM and $CW-L_2$}
+    \label{fig:fgsm}
+\end{figure}
+
+\subsubsection{FakeRetouch}
+
+FakeRetouch is another method of adding noise to an image, using a combination of additive noise and deep image filtering to reduce artifact patterns in both the spacial and frequency domains\cite{huang2020fakeretouch}. The method uses the following equation to produce the doctored image $\hat{\mathbf{I}}$:
+
+\begin{equation}
+\begin{array}{c}
+    \hat{\mathbf{I}}=\text{DNN}(\mathbf{I})\circledast (\mathbf{I} +\mathbf{A}\odot \mathbf{N}_{\sigma}) \\
+    \text{where }\mathbf{A}=\arg \max _{\mathbf{A}}J(D(\mathbf{I}+\mathbf{A}), y) +||\mathbf{A}||_1
+\end{array}
+\end{equation}
+
+$DNN(\mathbf{I})$ is a UNet-like neural network using kernels of $\mathbf{I}$. When combined with $\circledast$ (pixel-wise filtering), the following method can be done: for the $p$-th pixel in an image $\mathbf{I}$, is altered by the corresponding $p$-th kernel in $\mathbf{K}$ denoted as $\textbf{K}_p \in \mathbb{R}^{K \times K}$ with $k$ being the kernel size \cite{huang2020fakeretouch}. $J(\cdot)$ is a cross-entropy loss function with $y$ as the ground-truth value. $D(\cdot)$ is the DeepFake detection model being targeted. Adding the $L_1$-norm ($||A||_1$) encourages the noise to be sparse to avoid human perception of the noise. Finally, $\odot \mathbf{N}_\sigma$ adds Gaussian Noise filter with standard deviation $\sigma$. \\
+
+The result of this method caused a drop in accuracy of detecting fake images from 88.99\% to 21.64\%. As $DNN(\mathbf{I})$ can be computed offline and then applied to every frame in a dataset, it is overall relatively quick to run.
+
+\subsubsection{Adversarial Patch}
+
+Adversarial Patch is a method for confusing DeepFake detectors that adds a specially crafted ``patch" to an image to confuse classifiers\cite{brown2017adversarial}.
+
+\begin{figure}[H]
+    \centering
+    \fbox{\includegraphics[width=0.25\linewidth]{images/adverserial_patch.png}}
+    \caption{An image of a dog with the adversarial patch added in the bottom left\cite{brown2017adversarial}}
+\end{figure}
+
+This methodology will not be used as it is clear to a human that there is something malicious going on with the patch, even if it is not immediately obvious it would be for.
+
+\subsubsection{Analysis}
+
+Out of the three methods, FakeRetouch seems to be the quickest and easiest to implement. It also is the quickest to apply as there are no hyperparamters to be fine-tuned\cite{huang2020fakeretouch}. This is major factor as the model will need to be run on all the videos in the dataset to try, which could millions, possibly billions of frames, thus efficiency is key. It has slightly worse reported effectiveness than $CW-L_2$ and FGSM but this is made up for by its speed.\\
+
+To improve testing results, a second model will also be used. This will be $CW-L_2$ as it is more effective at fooling current DeepFake detectors than FGSM (Figure \ref{fig:fgsm}). It also benefits from a pre-built PyTorch implementation \cite{cwl2python} meaning it can be used for an initial proof-of concept.\\
+
+The planned implementation can be found in Section \ref{sec:future-noise}
 
 \subsection{Datasets}
-\subsection{Noise Reduction}
+
+There is an extensive range of DeepFake datasets due to their potential to produce misinformation and other damaging content. One such example is FaceForensics++\cite{roessler2019faceforensicspp}, a vast (\~2TB) dataset of short clips generated through a variety of generation methods. Once you get access, you also get access to Google's \& JigSaw's DeepFake Detection Dataset\cite{DDD_GoogleJigSaw2019} which contains a (slightly smaller) set of videos.\\
+
+Meta have also created a detection dataset\cite{DFDC2020}, made available through Kaggle\cite{kagglemeta}. This dataset contains 124,000 videos created by 8 different DeepFake generators to create a comprehensive dataset.\\
+
+An analysis on how these datasets will be stored can be found in Section \ref{sec:databases}
 
 \section{Current Progress}
 
+\subsection{Databases} \label{sec:databases}
+
+Obviously, DeepFake detection datasets are incredibly large and so there is a difficulty in how they can be stored. The typical maximal allowance of an account on the department of computer science's systems is 500GB (an increase from 25GB)\cite{dcsquota}. The department has been contacted about the viability of storing such a large amount of data (approximatly 10TB once images have been updated with a noise masks). Possible solutions are: to use old hard drives and attach them to the existing computer science compute cluster, use the  Scientific Computing Research Technology Platform (SCRTP) clusters which has the appropriate specifications to handle large volumes of data; or to only test partial amounts of each dataset at a time.\\
+
+To gain access to most of the datasets, a Google form has to be filled in to prove and confirm that you will only use the dataset for academic purposes. Such forms for all relevant datasets have been filled out. As of writing (18th November), permission has been granted to access FaceForensics++ and Google's DeepFake Detection Dataset.
+
 \section{Future Progress}
-\subsection{Blink Detection} \label{sec:future_blink}
+\subsection{Proof of Concept}
+
+Over the Christmas holiday, to test, if all the research presented previously is valid, a proof of concept of both the blink detection mechanism and adversarial noise injector will be made. These are intended to be quick and so will use pre-trained models and existing codebases, such as Google's MediaPipe. 
+
+\subsection{Blink Detection} \label{sec:future-blink}
 
 The primary disadvantage of the $EAR$ is that it cannot calculate the state of an eye if any of $p_{1-6}$ is obscured\cite{ictuoculi}. However, various AI models such as Google's MediaPipe \cite{mediapipe} and OpenFace\cite{openface} maintain detection of these features even when obscured. Hence it is possible to maintain an accurate $EAR$ even when the face is partially obscured in a frame. Therefore, for the blink detection in my project, I will initially use MediaPipe as a proof of concept and then move on to training my own model from various eye datasets such as Kaggle's eye blinking prediction\cite{eyeblinkprediction}.\\
 
 Having the $EAR$ data allows for more sophisticated methods of blink detection than what was utilised than Ictu Oculi. However a method such as the database employed by DeepVision\cite{blinking-pattern} would be too time consuming to label and store all the data given the amount of time given to this project. Given the large amount of data available: such as the time taken to blink, the period between blinking, and the overall progression of the $EAR$ it may be possible to train a classifier neural network to determine whether or not a sequence of $EAR$ readings overtime is a that of a genuine video or a DeepFake. As this has never been done before, further research and experimentation would need to be done. For a proof of concept, Ictu Oculi has proved even a simple approach of frequency of blinks is sufficient\cite{ictuoculi}.
+
+\subsection{Adversarial Noise} \label{sec:future-noise}
+
+Because there is a pre-existing implementation\cite{cwl2python}, when developing a proof-of-concept, $CW-L_2$ will be used as the method to add noise to a subset of images. All methods of adversarial noise injection require the model being targeted to be fully developed, therefore this has to be trained after the blink detection model is trained.\\
+
+Once a proof of concept has been verified and the full blink detector is trained, a full version of FakeRetouch and $CW-L_2$ shall be trained to act as a testing dataset when evaluating how resillient a blink-based DeepFake detector is.
 
 \section{Appraisals \& Reflections}
 
