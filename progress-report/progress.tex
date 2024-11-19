@@ -86,7 +86,16 @@ Once pre-processing is complete, the cropped video is sent to a Long-term Recurr
 
 The first part is a typical Convolution Neural Network (CNN) used to extract the discriminative features from the eye region. The next stage is to use a Recursive Neural Network with Long Short Term cells (LSTM-RNN) to guess the probability of eye being in range $[0,1]$ with $0$ equating to eye being open, and $1$ being eye is closed. To do this it uses the following function:
 
-\begin{equation}\begin{array} { l } { f _ { t } = \sigma \left(W _ { f h } h _ { t - 1 } + W _ { f x } x _ { t } + b _ { f } \right) } \\ { i _ { t } = \sigma \left(W _ { i h } h _ { t - 1 } + W _ { i x } x _ { t } + b _ { i } \right) } \\ { g _ { t } = \tanh \left(W _ { c h } h _ { t - 1 } + W _ { c x } x _ { t } + b _ { c } \right) } \\ { C _ { t } = f _ { t } \odot C _ { t - 1 } + i _ { t } \odot g _ { t } } \\ { o _ { t } = \sigma \left(W _ { o h } h _ { t - 1 } + W _ { o x } x _ { t } + b _ { o } \right) } \\ { h _ { t } = o _ { t } \odot \tanh \left(C _ { t } \right) } \end{array}\end{equation}
+\begin{equation}
+\begin{array}{l}
+    f_t = \sigma \left( W_{fh} h_{t-1} + W_{fx} x_t + b _f \right) \\
+    i_t = \sigma \left( W_{ih} h_{t-1} + W_{ix} x_t + b_i \right) \\
+    g_t = \tanh \left( W_{ch} h_{t-1} + W_{cx} x_t + b_c \right) \\
+    C_t = f_t \odot C_{t-1} + i_t \odot g_t \\
+    o_t = \sigma \left( W_{oh} h_{t-1} + W_{ox} x_t + b_o \right) \\
+    h_t = o_t \odot \tanh \left( C_t \right)
+\end{array}
+\end{equation}
 
 $\sigma$ is the sigmoid function, $f_t$ is forget gate to control what previous memories will be discard, it is input gate to selectively pass the current input, which is manipulated by $g_t$. $o_t$ is output gate to control how much memory will be transferred into hidden state $h_t$. Memory cell $C_t$ is combined by previous memory cell $C_{t-1}$ controlled by $f_t$ and manipulated input $g_t$ controlled by $i_t$. 256 hidden units are used in the LSTM cell, which is the dimension of LSTM output $z_t$\cite{ictuoculi}. A diagram of such a cell is shown in Figure \ref{fig:LSTM}.
 
@@ -122,7 +131,7 @@ It has been demonstrated by various works that the majority of current DeepFake 
 The first way to try and fool DeepFakes is Fast Gradient Sign Method (FGSM)\cite{pertubations}.
 
 \begin{equation}
-    {{\mathbf{x}}_{adv}} = {\mathbf{x}} + \varepsilon \operatorname{sign}({{\nabla _x}J({\mathbf{x}},{\mathbf{y}},\theta )})
+    \mathbf{x}_{adv} = \mathbf{x} + \varepsilon \operatorname{sign} (\nabla _x J( \mathbf{x},\mathbf{y}, \theta ))
 \end{equation}
 
 $\mathbf{x}_{adv}$ is the image produced once the adversarial attack has been completed. $\mathbf{x}$ denotes a vector of pixel value to denote the image produced by a GAN. $J$ is the training loss function (one possible example is categorical cross-entropy loss) which takes $\theta$ as the parameters of the model. Finally $\varepsilon$, is a hyperparamter for the magnitude of perturbation per pixel. A high $\varepsilon$ leads to higher chance to disrupt the model but a higher chance the perturbations become visible to humans, it is recommended to keep $\varepsilon$ in the range [0,01, 0.1]. 0.02 was used in the paper\cite{pertubations}. Through the loss function, this will alter a pixel to the maximum allowed by $\varepsilon$ which will subtly alter each pixel enough to throw off a DeepFake detector.\\
@@ -131,7 +140,7 @@ The other method proposed by \cite{pertubations} is Carlini and Wagner $L_2$ Nor
 
 \begin{equation}
 \label{eq:l2_norm}
-\mathop {\min }\limits_{x'} \left\{ {\left\| {{\mathbf{x}}' - {\mathbf{x}}} \right\|_2^2} \right\}
+    \mathop {\min} \limits_{x'} \left\{ \left\| \mathbf{x}' - \mathbf{x} \right\|_2^2 \right\}
 \end{equation}
 
 The other objective is:
@@ -139,7 +148,8 @@ The other objective is:
 \begin{equation}
 \label{eq:min_f(x')}
 \begin{array}{c} 
-    {\mathop {\min }\limits_{x'} \left\{ {f\left( {{\mathbf{x}}'} \right)} \right\}} \\ {{\text{ where }}f\left( {{\mathbf{x}}'} \right) = \max \left( {{{\max }_{i \ne y}}\left\{ {{\mathbf{Z}}{{\left( {{\mathbf{x}}'} \right)}_y} - {\mathbf{Z}}{{\left( {{\mathbf{x}}'} \right)}_i}} \right\}, - \kappa } \right)}
+    \mathop {\min} \limits_{x'} \left\{ f\left( \mathbf{x}' \right) \right\} \\
+    \text{where } f\left( \mathbf{x}' \right) = \max \left( \max_{i \ne y} \left\{ \mathbf{Z} \left( \mathbf{x}' \right)_y - \mathbf{Z} \left( \mathbf{x}' \right)_i \right\}, - \kappa \right)
 \end{array}
 \end{equation}
 
@@ -149,14 +159,15 @@ To ensure a pixel is only floating between 0 and 1:
 
 \begin{equation}
 \label{eq:tanh}
-    {\mathbf{x}}' = \frac{1}{2}(\tanh (\omega ) + 1)
+    \mathbf{x}' = \frac{1}{2}(\tanh (\omega ) + 1)
 \end{equation}
 
 Thus combining \ref{eq:l2_norm}, \ref{eq:min_f(x')}, and \ref{eq:tanh}:
 
 \begin{equation}
 \begin{array}{c}
-{{\omega ^{\ast}} = \arg {{\min }_\omega }\left\{ {\left\| {{\mathbf{x}}' - {\mathbf{x}}} \right\|_2^2 + cf\left( {{\mathbf{x}}'} \right)} \right\}} \\ {{{\mathbf{x}}_{adv}} = \frac{1}{2}\left( {\tanh \left( {{\omega ^{\ast}}} \right) + 1} \right)}
+    \omega^\ast = \arg \min_\omega \left\{ \left\| \mathbf{x}' - \mathbf{x} \right\|_2^2 + cf\left( \mathbf{x}' \right) \right\} \\
+    \mathbf{x}_{adv} = \frac{1}{2}\left( \tanh \left( \omega^\ast \right) + 1 \right)
 \end{array}
 \end{equation}
 
@@ -214,6 +225,8 @@ An analysis on how these datasets will be stored can be found in Section \ref{se
 
 \section{Current Progress}
 
+\subsection{Literature Review}
+
 \subsection{Databases} \label{sec:databases}
 
 Obviously, DeepFake detection datasets are incredibly large and so there is a difficulty in how they can be stored. The typical maximal allowance of an account on the department of computer science's systems is 500GB (an increase from 25GB)\cite{dcsquota}. The department has been contacted about the viability of storing such a large amount of data (approximatly 10TB once images have been updated with a noise masks). Possible solutions are: to use old hard drives and attach them to the existing computer science compute cluster, use the  Scientific Computing Research Technology Platform (SCRTP) clusters which has the appropriate specifications to handle large volumes of data; or to only test partial amounts of each dataset at a time.\\
@@ -235,7 +248,7 @@ Having the $EAR$ data allows for more sophisticated methods of blink detection t
 
 Because there is a pre-existing implementation\cite{cwl2python}, when developing a proof-of-concept, $CW-L_2$ will be used as the method to add noise to a subset of images. All methods of adversarial noise injection require the model being targeted to be fully developed, therefore this has to be trained after the blink detection model is trained.\\
 
-Once a proof of concept has been verified and the full blink detector is trained, a full version of FakeRetouch and $CW-L_2$ shall be trained to act as a testing dataset when evaluating how resillient a blink-based DeepFake detector is.
+Once a proof of concept has been verified and the full blink detector is trained, a full version of FakeRetouch and $CW-L_2$ shall be trained to act as a testing dataset when evaluating how resilient a blink-based DeepFake detector is.
 
 \section{Appraisals \& Reflections}
 
