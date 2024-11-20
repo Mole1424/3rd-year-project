@@ -1,0 +1,96 @@
+\DTMsavedate{StartOfTerm}{2025-01-06}
+
+% ------ date operations -----
+%set the date for gantt bars to start at
+\newcounter{datecounter}
+\newcommand{\setTheDate}[1]{
+  \setmydatenumber{datecounter}{\DTMfetchyear{StartOfTerm}}{\DTMfetchmonth{StartOfTerm}}{\DTMfetchday{StartOfTerm}}%
+  \DTMsavedate{periodEnd}{#1}
+  \setmydatenumber{x}{\DTMfetchyear{periodEnd}}{\DTMfetchmonth{periodEnd}}{\DTMfetchday{periodEnd}}%
+  \addtocounter{x}{-\thedatecounter}% 
+}
+
+% a command to add some days to a date and save it
+\newcount\daycount
+\newcommand{\saveStartDatePlusDays}[2]{
+    \DTMsaveddateoffsettojulianday{StartOfTerm}{#1}\daycount
+    \DTMsavejulianday{#2}{\number\daycount}
+}
+
+% command to make a bar that follows the previous one
+\newcounter{x}
+\newcommand{\addDays}[1]{
+    \addtocounter{x}{#1}
+ }
+\newcommand{\nextganttbar}[2]{
+    \saveStartDatePlusDays{\arabic{x}}{dfrom}
+    \addDays{#2}
+    \addtocounter{x}{-1}
+    \saveStartDatePlusDays{\arabic{x}}{dto}
+    \addtocounter{x}{1}
+    \ganttbar{#1}{\DTMusedate{dfrom}}{\DTMusedate{dto}}
+}
+
+% ------ setup date range for chart -----
+\saveStartDatePlusDays{-1}{prevDate}
+\saveStartDatePlusDays{69}{endOfTerm}
+\newcommand{\startDate}{\DTMusedate{StartOfTerm}}
+\newcommand{\prevDate}{\DTMusedate{prevDate}}
+
+
+% ------ setup and styling for the chart -----
+\begin{ganttchart}[hgrid, vgrid, inline,
+    bar/.append style={fill=blue!25},
+    time slot format=isodate %YYYY-MM-DD
+]{\startDate}{\DTMusedate{endOfTerm}}
+
+% command to create a label on the left. 
+\newcommand\ganttlabel[1]{
+    \ganttbar[inline=false]{#1}{\startDate}{\prevDate}
+}
+
+% command to make an orange bar
+\newganttchartelement{barorange}{
+    barorange/.append style={fill=orange!80 },
+}
+
+% titles showing month date and term week (starting at week 1)
+\gantttitlecalendar{month=name, day, week=1} 
+
+\ganttnewline
+
+% ------ plan your timeline below! -----
+
+\ganttlabel{CS355}
+\ganttbarorange{Assignment 1}{2025-01-16}{2025-02-13}
+\ganttbarorange{Assignment 2}{2025-02-14}{2025-03-10}
+\\
+
+\ganttlabel{CS331}
+\ganttbarorange{Assignment}{2025-01-27}{2025-03-13}
+\\
+
+\ganttlabel{Blink Detection}
+\ganttbar{Pre-processing}{2025-01-06}{2025-01-10}
+\ganttbar{Development of Main Model}{2025-01-11}{2025-01-19}
+\ganttbar{Training \& Bug Fixing}{2025-01-20}{2025-02-02}
+\\
+
+\ganttlabel{Analysis of $EAR$}
+\ganttbar{Analysis}{2025-02-03}{2025-02-16}
+\\
+
+\ganttlabel{Adversarial noise}
+\ganttbar{FakeRetouch}{2025-02-17}{2025-02-23}
+\ganttbar{$CW-L_2$}{2025-02-24}{2025-03-02}
+\\
+
+\ganttlabel{Testing}
+\ganttbar{Testing}{2025-03-03}{2025-03-16}
+\\
+
+\ganttlabel{Presentation}
+\ganttbar{Preparation}{2025-02-24}{2025-03-02}
+\ganttbar{Present}{2025-03-03}{2025-03-16}
+
+\end{ganttchart}

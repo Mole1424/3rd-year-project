@@ -276,9 +276,34 @@ Because there is a pre-existing implementation\cite{cwl2python}, when developing
 
 Once a proof of concept has been verified and the full blink detector is trained, a full version of FakeRetouch and $CW-L_2$ shall be trained to act as a testing dataset when evaluating how resilient a blink-based DeepFake detector is.
 
-\subsection{Timeline} \label{sec:timeline}
+\subsection{Noise Reduction}
 
-{\huge INSERT GANTT CHART HERE}
+Diffusion models are a machine learning concept that are primarily used for computer vision applications (for example noise reduction and image generation)\cite{croitoru2023diffusion}. They are perhaps most famous for their use in image generation models such as Dall-E by OpenAI and Midjourney.\\
+
+It has been shown that there is potential to use diffusion models to at least partially remove adversarial noise from images\cite{nie2022diffusion}\cite{croitoru2023diffusion}. Thus there is potential to further enhance an adversarial-noise-resilient-blink-detection pipeline by placing a diffusion model at the start to aid in the future detection of images.\\
+
+This will be viewed as an extension because: it may not be necessary as the existing models may already be naturally resilient to adversarial attack; this will recquire the creation of another model which might not be possible given the time period of this project.
+
+\newpage
+\thispagestyle{empty}
+\def\fillandplacepagenumber{
+ \par\pagestyle{empty}
+ \vbox to 0pt{\vss}\vfill
+ \vbox to 0pt{\baselineskip0pt
+   \hbox to\linewidth{\hss}
+   \baselineskip\footskip
+   \hbox to\linewidth{
+     \hfil\thepage\hfil}\vss}}
+\begin{landscape}
+\subsection{Timeline} \label{sec:timeline}
+\subsubsection{Christmas Holiday}
+\input{holiday}\\
+\noindent As it is the holiday, work in this period will be extended to compensate for the reduced time available. In all cases, as any creation of adversarial noise requires a working model to be developed, creation of this has to happen after the detection model has been made.
+\subsubsection{Spring Term}
+\resizebox{1.5\textwidth}{!}{\input{term}}\\
+Constant work will be done on the final report, however this will be in the form of note taking rather than academic writing. Testing will be throughout the Easter holiday as there are large amounts of data to test on.
+\fillandplacepagenumber
+\end{landscape}
 
 \section{Appraisals \& Reflections}
 
