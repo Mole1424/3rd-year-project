@@ -26,9 +26,9 @@
 
 \section{Project Introduction}
 
-A DeepFake refers a video of an individual is digitally altered or created by an Artificial Intelligence (AI). These are often generated using Generative Adversarial Network (GANs) models and are trained via the adversarial of two models: one attempting to generate a realistic image, the other attempting to detect the inaccuracies. These two then train each other until the original model can generate videos that are deemed realistic by the detector.\\
+A DeepFake refers to when a video of an individual is digitally altered or created by an Artificial Intelligence (AI). These are often generated using Generative Adversarial Network models (GANs) and are trained via two models: one attempting to generate a realistic image, the other trying to detect the inaccuracies. These two then train each other until the generator model can create videos that are deemed realistic by the detector.\\
 
-Initially, these models were fairly obvious to detect, even for humans, for example see Figure \ref{fig:earlyexample}. Various features, such as temporal inconsistencies, feature irregularities, and inconsistencies in lighting produced by GANs were all tell-tale signs of DeepFaked imagery. However, over time, GANs have developed resulting in DeepFakes now being almost impossible to tell apart from genuine videos by humans.
+Initially, these models were fairly easy to detect, even for humans (see Figure \ref{fig:earlyexample}). Various features, such as temporal inconsistencies, feature irregularities, and inconsistencies in lighting produced by GANs were all tell-tale signs of DeepFaked imagery. However, over time, GANs have developed, resulting in DeepFakes now being almost impossible to tell apart from genuine videos by humans.
 
 \begin{figure}[H]
     \centering
@@ -37,30 +37,30 @@ Initially, these models were fairly obvious to detect, even for humans, for exam
     \label{fig:earlyexample}
 \end{figure}
 
-Due to their difficulty to be accurately identified by humans, DeepFakes soon became a popular way to spread misinformation by faking an individual's likeness. For example, DeepFakes were used by a variety of sources to promote political parties in the 2021 Lebanese elections\cite{misinformation}. The other primary use of DeepFakes is pornography with an estimated 98\% of DeepFakes being porn\cite{pornography}, including the first main-stream DeepFake in 2017 of actress Gal Gadot\cite{misinformation}.\\
+Due to their difficulty in being accurately identified by humans, DeepFakes soon became a popular way to spread misinformation by faking an individual's likeness. For example, DeepFakes were used by a variety of sources to promote political parties in the 2021 Lebanese elections\cite{misinformation}. The other primary use of DeepFakes is pornography with an estimated 98\% of DeepFakes being porn\cite{pornography}, including the first main-stream DeepFake in 2017 of actress Gal Gadot\cite{misinformation}.\\
 
-Ever since the creation of DeepFakes there has been efforts to detect them. Original DeepFake detection methods relied on pixel analysis and visual artifacts present in early DeepFakes\cite{yu2021survey}. However through a combination of improvement in generation techniques and adversarial noise attacks\cite{huang2020fakeretouch}\cite{pertubations}, these original methods are proving increasingly ineffective.\\
+Ever since the creation of DeepFakes, there have been efforts to detect them. Original DeepFake detection methods relied on pixel analysis and visual artifacts present in early DeepFakes\cite{yu2021survey}. However through a combination of improvement in generation techniques and adversarial noise attacks\cite{huang2020fakeretouch}\cite{pertubations}, these original methods are proving increasingly ineffective.\\
 
-One method proposed to tackle modern DeepFakes is blink detection. Blinking is a subconscious act for humans and falls into a predictable patterns. DeepFakes are notoriously bad at simulating blinking, either by not blinking at all or blinking in unnatural intervals. Thus methods have been used to leverage these temporal inconsistencies to detect DeepFakes with a high degree of accuracy\cite{blinking-pattern}.\\
+One method proposed to tackle modern DeepFakes is blink detection. Blinking is a subconscious act for humans and falls into predictable patterns. DeepFakes are notoriously bad at simulating blinking, either by not blinking at all or in unnatural intervals. Thus methods have been used to leverage these temporal inconsistencies to detect DeepFakes with a high degree of accuracy\cite{blinking-pattern}.\\
 
-So far, the resilience of blink-detection to adversarial noise has not been studied. It seems likely that due to this method relying on identification of features rather than individual pixels, it seems likely that adversarial noise would not affect the detection of a DeepFake in any meaningful way. This project aims to verify whether this assumption is true or not.
+So far, the resilience of blink detection to adversarial noise has not been studied. It seems likely that due to this method relying on the identification of features rather than individual pixels, adversarial noise would not affect the detection of a DeepFake as much as the original detection methods. This project aims to verify whether this assumption is true or not.
 
 \section{Literature Review} \label{sec:literature-review}
 
-This project combines two thoroughly-research topics (Blink-based DeepFake detection and Adversarial noise injection) which have had extensive research on both of them.
+This project combines two thoroughly-research topics (Blink-based DeepFake detection and Adversarial noise injection) which have had extensive research on both of them. The following is a summary on the key ideas and methodology.
 
 \subsection{Blink Detection}
 \subsubsection{DeepVision}
 
-DeepVision\cite{blinking-pattern} is a model that takes into account the time, activity, gender and age of the individual in a video to determine whether a video is DeepFaked or not by comparing their blink patterns to a database of known ``good" blink frequencies\\
+DeepVision\cite{blinking-pattern} is a model that takes into account the time, activity, gender and age of the individual in a video to determine whether a video is DeepFaked or not by comparing their blink patterns to a database of known ``good" blink frequencies.\\
 
-The pre-process stage of the model involves categorising the video based on 4 landmarks. The landmarks are: gender, age (in 6 sub-categories varying from \textless 20 to 65+), activity (dynamic or static), and time (am/pm). The frequency of a human varies based on all these features\cite{varying-blink}, and therefore they believe all of these factors need to be taken into account for an accurate detection.\\
+The pre-processing stage of the model involves categorising the video based on 4 landmarks. The landmarks are: gender, age (in 6 sub-categories varying from \textless 20 to 65+), activity (dynamic or static), and time (am/pm). The frequency of a human varies based on all these features\cite{varying-blink}, and therefore they believe all of these factors need to be considered for accurate detection.\\
 
-To actually detect a blink, two algorithms are used. The first is an algorithm called Fast-HyperFace\cite{ranjan2017hyperface} which is used to detect the landmarks of the face, pose, and gender of the individual in a video. The key landmarks from this are then extracted to then aid in the performance of the second model: Eye-Aspect Ration (EAR). EAR uses 6 points to calculate the absolute area of the horizontal versus the vertical axis to determine if a blink has occurred\cite{EAR}.
+Two algorithms are used to detect a blink. The first is an algorithm called Fast-HyperFace\cite{ranjan2017hyperface} which is used to detect the landmarks of the face, pose, and gender of the individual in a video. The eye locations are then extracted to run the second model: Eye-Aspect Ratio (EAR). EAR uses 6 points to calculate the absolute area of the horizontal versus the vertical axis to determine if a blink has occurred\cite{EAR}.
 \begin{equation}
     EAR=\frac{||p_2-p_6||+||p_3-p_5||}{2||p_1-p_4||}
 \end{equation}
-The average of the left eye ($EAR_l$) and the right ($EAR_r$) can then be taken to get the mean eye ration ($EAR_i$)
+The average of the left eye (EAR\textsubscript{l}) and the right (EAR\textsubscript{r}) can then be taken to get the mean eye ratio (EAR\textsubscript{i})
 \begin{equation}
     EAR_i = \frac{EAR_l + EAR_r}{2}
 \end{equation}
@@ -71,19 +71,19 @@ The average of the left eye ($EAR_l$) and the right ($EAR_r$) can then be taken 
     \label{fig:EAR}
 \end{figure}
 
-A blink is defined as when $EAR_i$ drops below a certain threshold for multiple consecutive frames. Data such as when the blink occurred in time, the period of blink, and frequency are all extracted and fed into the next stage.\\
+A blink is when EAR\textsubscript{i} drops below a certain threshold for multiple consecutive frames. Data such as when the blink occurred in time, the period of blink, and frequency are all features determined by the EAR with respect to time and can be used by future detection methods.\\
 
-This data is then compared with data from a pre-existing database of valid blinks derived from the Eye Blinking Prediction dataset from Kaggle\cite{eyeblinkprediction}. The factors mentioned above are all compared to see how similar they are to valid blinks in authentic videos and if it is within a certain threshold the video is deemed real. The paper does not mention this threshold. \\
+This data is then compared with data from a pre-existing database of valid blinks derived from the Eye Blinking Prediction dataset from Kaggle\cite{eyeblinkprediction}. The factors mentioned above are all compared to see how similar they are to valid blinks in authentic videos. If they within a certain threshold, the video is deemed real. The paper does not mention this threshold.\\
 
 DeepVision achieves an overall accuracy of 87.5\%\cite{blinking-pattern}.
 
 \subsubsection{Ictu Oculi}
 
-Ictu Oculi is a secondary method for blink detection, but rather than relying on an existing database for comparison, uses a trained neural network\cite{ictuoculi}.\\
+Ictu Oculi is a secondary method for blink detection. Rather than relying on an existing database for comparison, it uses a trained neural network\cite{ictuoculi}.\\
 
-An initial pre-processing step is done to identify the facial landmarks of the image and distort and crop it so that the face is: in the centre of the image; rotated such tat eyes form a horizontal line; and scaled to a similar size across the length of the video.\\
+An initial pre-processing step is done to identify the facial landmarks of the image and distort and crop it so that the face is: in the centre of the image; rotated such that the eyes form a horizontal line; and scaled to a similar size across the duration of the video.\\
 
-Once pre-processing is complete, the cropped video is sent to a Long-term Recurrent Convolution Neural Network (LRCN). This is three-stage neural network as shown in Figure \ref{fig:LRCN}. 
+Once pre-processing is complete, the cropped video is sent to a Long-term Recurrent Convolution Neural Network (LRCN). This is a three-stage neural network as shown in Figure \ref{fig:LRCN}. 
 
 \begin{figure}[H]
     \centering
@@ -92,7 +92,7 @@ Once pre-processing is complete, the cropped video is sent to a Long-term Recurr
     \label{fig:LRCN}
 \end{figure}
 
-The first part is a typical Convolution Neural Network (CNN) used to extract the discriminative features from the eye region. The next stage is to use a Recursive Neural Network with Long Short Term cells (LSTM-RNN) to guess the probability of eye being in range $[0,1]$ with $0$ equating to eye being open, and $1$ being eye is closed. To do this it uses the following function:
+The first part is a typical Convolution Neural Network (CNN) used to extract the discriminative features from the eye region. The next stage is to use a Recursive Neural Network with Long Short Term cells (LSTM-RNN) to guess the state of the eye with $0$ equating to open, and $1$ being closed. To do this it uses the following function:
 
 \begin{equation}
 \begin{array}{l}
@@ -116,13 +116,13 @@ $\sigma$ is the sigmoid function, $f_t$ is forget gate to control what previous 
 
 Finally, the output is then used to determine whether or not a blink has occurred, and over what time period.\\
 
-A simplified method is used to determine whether the blink patterns are consistent with a normal human being. This solely detects the number of blinks in a set period of time (60 seconds),the average person blinks 34.1 times a minute. This leads to an accuracy of 99\% when tested on a dataset of 32 videos.
+As the accuracy of data is reduced from the amount an eye is open to a binary open/close, the simplicity of the validity algorithm needs to be greatly reduced. The algorithm implemented detects the number of blinks in a set period of time (60 seconds),the average person blinks 34.1 times a minute. This leads to an accuracy of 99\% when tested on a dataset of 32 videos.
 
 \subsubsection{Analysis}
 
-DeepVision's primary advantage is that it is very easy to compute and implement. Fast-HyperFace is a pre-trained model and therefore is a simple drag and drop implementation. Once $p_{1-6}$ are located in a frame, it is a simple calculation to determine the $EAR$. The following statistical analysis to determine if the blinking is consistent with real videos or not is also relatively simple and non-computationally intensive. Therefore any methodology involving DeepVision would be fast to implement and relatively easy to debug.\\
+DeepVision's primary advantage is that it is very easy to compute and implement. Fast-HyperFace is a pre-trained model and therefore is a simple drag and drop implementation. Once $p_{1-6}$ are located in a frame, it is a simple calculation to determine the EAR. The following statistical analysis to determine if the blinking is consistent with real videos or not is also relatively simple and non-computationally intensive. Therefore any methodology involving DeepVision would be fast to implement and relatively easy to debug. It also benefits from more granularity in eye state data for more complex analysis.\\
 
-The primary downsides to DeepVision is potential obstruction of the eyes. $EAR$ requires the entire eye to be visible in the frame of a video to identify all of the points required. A partial $EAR$ can be calculated with a single eye but the accuracy of this is going to be less than if two eyes were visible. The second disadvantage is the database required to determine whether blinking is consistent with normal blinking. The database requires a large number of labelled examples which would be time consuming to produce.\\
+The primary downsides to DeepVision is the potential obstruction of the eye(s). EAR requires the entire eye to be visible in the frame of a video to identify all of the points required. A partial $EAR$ can be calculated with a single eye but the accuracy of this is going to be less than if two eyes were visible. The second disadvantage is the database required to determine whether blinking is consistent with normal blinking. The database requires a large number of labelled examples which would be time consuming to produce.\\
 
 Ictu Oculi has a much more complex blink-detection system, requiring two separate machine learning models to be trained to identify if a blink is happening or not. This is a lot more complex and requires pre-processing resulting in a longer development time and training time. On the other hand, it results in a much more resilient blink detection mechanism as the eyes can be partially obscured in a frame but the eye's state can still be accurately determined.\\
 
@@ -132,19 +132,21 @@ The planned implementation can be found in Section \ref{sec:future-blink}.
 
 \subsection{Adversarial Noise}
 
-It has been demonstrated by various works that the majority of current DeepFake detectors, even state of the art ones, can be fooled by a variety of adversarial attacks\cite{juefei2022countering}. These work by manipulating the image produced by a DeepFake to try and throw off any detectors.
+It has been demonstrated by various works that the majority of current DeepFake detectors, even state of the art ones, can be fooled by a variety of adversarial attacks\cite{juefei2022countering}. These work by manipulating the image produced by a DeepFake to try and throw off detectors.
 
 \subsubsection{Adversarial Perturbations}
 
-The first way to try and fool DeepFakes is Fast Gradient Sign Method (FGSM)\cite{pertubations}.
+Adversarial Perturbations Fool Deepfake Detectors is a paper that proposes two unique methods to add adversarial noise\cite{pertubations}. The first way is Fast Gradient Sign Method (FGSM).
 
 \begin{equation}
     \mathbf{x}_{adv} = \mathbf{x} + \varepsilon \operatorname{sign} (\nabla _x J( \mathbf{x},\mathbf{y}, \theta ))
 \end{equation}
 
-$\mathbf{x}_{adv}$ is the image produced once the adversarial attack has been completed. $\mathbf{x}$ denotes a vector of pixel value to denote the image produced by a GAN. $J$ is the training loss function (one possible example is categorical cross-entropy loss) which takes $\theta$ as the parameters of the model. Finally $\varepsilon$, is a hyperparamter for the magnitude of perturbation per pixel. A high $\varepsilon$ leads to higher chance to disrupt the model but a higher chance the perturbations become visible to humans, it is recommended to keep $\varepsilon$ in the range [0,01, 0.1]. 0.02 was used in the paper\cite{pertubations}. Through the loss function, this will alter a pixel to the maximum allowed by $\varepsilon$ which will subtly alter each pixel enough to throw off a DeepFake detector.\\
+$\mathbf{x}_{adv}$ is the image produced once the adversarial attack has been completed. $\mathbf{x}$ denotes a vector of pixel value to denote the image produced by a GAN. $J$ is the training loss function (one possible example is categorical cross-entropy loss) which takes $\theta$ as the parameters of the model. Finally $\varepsilon$, is a hyperparamter for the magnitude of perturbation per pixel. A high $\varepsilon$ leads to higher chance to disrupt the model but a higher chance the perturbations become visible to humans, it is recommended to keep $\varepsilon$ in the range [0,01, 0.1]. 0.02 was used in the paper\cite{pertubations}.\\
 
-The other method proposed by \cite{pertubations} is Carlini and Wagner $L_2$ Norm Attack ($CW-L_2$). The following method is based on the original paper\cite{carlini2017towards} and a PyTorch implementation\cite{cwl2python}. The first aim is to minimise the $L_2$ norm for the adversarial image $\mathbf{x}'$:
+This is a very primitive method to add noise compared to the other methodologies but is sufficient (Figure \ref{fig:fgsm})/ The primary difficulty is choosing $J$, in the paper they use categorical entropy loss.\\
+
+The other method proposed by \cite{pertubations} is Carlini and Wagner $L_2$ Norm Attack (CWLl\textsubscript{2}). The following method is based on the original paper\cite{carlini2017towards} and a PyTorch implementation\cite{cwl2python}. The first aim is to minimise the $L_2$ norm for the adversarial image $\mathbf{x}'$:
 
 \begin{equation}
 \label{eq:l2_norm}
@@ -161,9 +163,9 @@ The other objective is:
 \end{array}
 \end{equation}
 
-Where $\mathbf{Z}(\mathbf{x}')$ is the product of DeepFake detector. $i$ is the index of the current target class and $y$ is the index of the true target class (if no perturbations were made). Thus by minimising $f(\mathbf{x}')$, the difference between the incorrect class ($\mathbf{Z}{{\left( {{\mathbf{x}}'} \right)}_i}$) and the correct class (${\mathbf{Z}}{{\left( {{\mathbf{x}}'} \right)}_y}$) is maximised meaning a miss-classification is most likely. $\kappa$ defines a threshold for the maximum difference between the incorrect and correct classes.\\
+Where $\mathbf{Z}(\mathbf{x}')$ is the product of DeepFake detector. $i$ is the index of the current target class and $y$ is the index of the true target class (if no alterations were made). Thus by minimising $f(\mathbf{x}')$, the difference between the incorrect class ($\mathbf{Z}{{\left( {{\mathbf{x}}'} \right)}_i}$) and the correct class (${\mathbf{Z}}{{\left( {{\mathbf{x}}'} \right)}_y}$) is maximised meaning a miss-classification is more likely. $\kappa$ defines a threshold for the maximum difference between the incorrect and correct classes.\\
 
-To ensure a pixel is only floating between 0 and 1:
+To ensure a pixel is only altered by a value between 0 and 1:
 
 \begin{equation}
 \label{eq:tanh}
@@ -179,12 +181,12 @@ Thus combining \ref{eq:l2_norm}, \ref{eq:min_f(x')}, and \ref{eq:tanh}:
 \end{array}
 \end{equation}
 
-$c$ is a positive parameter designed to weight the two objectives of the $CS-L_2$ attack. It is typically found via binary search during run time. To determine the parameters takes a long time, however sometimes leads to better results, especially on whitebox testing:
+$c$ is a positive parameter designed to weight the two objectives of the CW-L\textsubscript{2} attack. It is typically found via binary search during run time. To determine the parameters takes a long time, however sometimes leads to better results, especially on whitebox testing:
 
 \begin{figure}[H]
     \centering
     \fbox{\includegraphics[width=0.5\linewidth]{images/fgsm.png}}
-    \caption{Evaluation of FGSM and $CW-L_2$}
+    \caption{Evaluation of FGSM and CW-L\textsubscript{2}}
     \label{fig:fgsm}
 \end{figure}
 
@@ -210,16 +212,18 @@ Adversarial Patch is a method for confusing DeepFake detectors that adds a speci
 \begin{figure}[H]
     \centering
     \fbox{\includegraphics[width=0.25\linewidth]{images/adverserial_patch.png}}
-    \caption{An image of a dog with the adversarial patch added in the bottom left\cite{brown2017adversarial}}
+    \caption{An image of a dog with the adversarial patch added in the bottom left to attempt to misclassify the image as a toaster\cite{brown2017adversarial}}
 \end{figure}
 
 This methodology will not be used as it is clear to a human that there is something malicious going on with the patch, even if it is not immediately obvious it would be for.
 
 \subsubsection{Analysis}
 
-Out of the three methods, FakeRetouch seems to be the quickest and easiest to implement. It also is the quickest to apply as there are no hyperparamters to be fine-tuned\cite{huang2020fakeretouch}. This is major factor as the model will need to be run on all the videos in the dataset to try, which could millions, possibly billions of frames, thus efficiency is key. It has slightly worse reported effectiveness than $CW-L_2$ and FGSM but this is made up for by its speed.\\
+FGSM will not be used due to its relative ineffectiveness. As shown in Figure \ref{fig:fgsm}, CW-L\textsubscript{2} is more effective on both black and whitebox attacks.\\
 
-To improve testing results, a second model will also be used. This will be $CW-L_2$ as it is more effective at fooling current DeepFake detectors than FGSM (Figure \ref{fig:fgsm}). It also benefits from a pre-built PyTorch implementation \cite{cwl2python} meaning it can be used for an initial proof-of concept.\\
+Out of the remaining two methods, FakeRetouch seems to be the quickest and easiest to implement. It also is the quickest to apply as there are no hyperparamters to be fine-tuned\cite{huang2020fakeretouch}. This is major factor as the model will need to be run on all the videos in the dataset to try, which could millions, possibly billions of frames, thus efficiency is key. It has slightly worse reported effectiveness than CW-L\textsubscript{2} and FGSM but this is made up for by its speed.\\
+
+Due to its effectiveness, CW-L\textsubscript{2} will also be implemented. This task will be easier as there is already a pre-existing pyTorch implementation\cite{cwl2python}.\\
 
 The planned implementation can be found in Section \ref{sec:future-noise}
 
@@ -228,6 +232,8 @@ The planned implementation can be found in Section \ref{sec:future-noise}
 There is an extensive range of DeepFake datasets due to their potential to produce misinformation and other damaging content. One such example is FaceForensics++\cite{roessler2019faceforensicspp}, a vast (approximately 2TB) dataset of short clips generated through a variety of generation methods. Once you get access, you also get access to Google's \& JigSaw's DeepFake Detection Dataset\cite{DDD_GoogleJigSaw2019} which contains a (slightly smaller) set of videos.\\
 
 Meta have also created a detection dataset\cite{DFDC2020}, made available through Kaggle\cite{kagglemeta}. This dataset contains 124,000 videos created by 8 different DeepFake generators to create a comprehensive dataset.\\
+
+The final dataset being used is FakeAVCeleb\cite{khalid2021fakeavceleb}. It consists of videos of celebrities from five racial backgrounds (Caucasian (American),  Caucasian (European), African, Asian (East), and Asian (South)) intended to ``counter the racial bias issue" present in a lot of modern DeepFake generators and detectors.
 
 An analysis on how these datasets will be stored can be found in Section \ref{sec:datasets}
 
@@ -239,13 +245,13 @@ Unfortunately, the project is currently delayed by approximately 2 weeks. This i
 
 \subsubsection{Courseworks}
 
-In the specification, it was stated: ``whilst other modules have their coursework at the same time as this project is happening, with effective time management, there will be no major clash with timings; at least not enough to delay the course of the project significantly." It turns out some of the courseworks were more work than anticipated, most notably compilers. This lead to the project being delayed by roughly two weeks.\\
+In the specification, it was stated: ``whilst other modules have their coursework at the same time as this project is happening, with effective time management, there will be no major clash with timings; at least not enough to delay the course of the project significantly." It turns out some of the courseworks were more work than anticipated, most notably the compilers coursework. This lead to the project being delayed by roughly two weeks.\\
 
-To remedy this, Wednesday afternoons have been set aside as dedicated time to work on project. Other times will also be used should there be any free time available. Additionally, next term, there are fewer modules being taken which will have smaller courseworks and thus the workload that is not project related will be reduced.
+To remedy this, Wednesday afternoons have been set aside as dedicated time to work on project. Other times will also be used should there be any free time available. Additionally, next term, I will be taking fewer modules which will have smaller courseworks and thus the workload that is not project related will be reduced.
 
 \subsubsection{Research Required}
 
-The initial project specification called was written assuming that the project would only be implementing an existing DeepFake detection methodology that only existed as a theoretical proof of concept. The chosen methodology, blink detection, involves two models: one to determine the state of the eyes, and the other to determine whether the sequence produced by the previous model is feasible. Additionally, methods to add adversarial noise to image needed to be researched. Thus the research phase took three weeks rather than the intended two, further setting the project behind.
+The initial project specification was written assuming that the project would only be implementing an existing DeepFake detection methodology that only existed as a theoretical proof of concept. The chosen methodology, blink detection, involves two models: one to determine the state of the eyes, and the other to determine whether the sequence produced by the previous model is feasible. Additionally, methods to add adversarial noise to image needed to be researched. Thus the research phase took three weeks rather than the intended two, further setting the project behind.
 
 \subsection{Literature Review}
 
@@ -255,26 +261,26 @@ After reviewing the variable literature, they were analysed to work out which ap
 
 \subsection{Datasets} \label{sec:datasets}
 
-Obviously, DeepFake detection datasets are incredibly large and so there is a difficulty in how they can be stored. The typical maximal allowance of an account on the department of computer science's systems is 500GB (an increase from 25GB)\cite{dcsquota}. The department has been contacted about the viability of storing such a large amount of data (approximately 10TB once images have been updated with a noise masks). Possible solutions are: to use old hard drives and attach them to the existing computer science compute cluster; use the  Scientific Computing Research Technology Platform (SCRTP) clusters which has the appropriate specifications to handle large volumes of data; or to only test partial amounts of each dataset at a time. An account has been requested with SCRTP.\\
+Obviously, DeepFake detection datasets are incredibly large and so there is a difficulty in how they can be stored. The typical maximal allowance of an account on the department of computer science's systems is 500GB (an increase from 25GB)\cite{dcsquota}. The department has been contacted about the viability of storing such a large amount of data (approximately 10TB once images have been updated with a noise masks). Possible solutions are: to use old hard drives and attach them to the existing computer science compute cluster; use the  Scientific Computing Research Technology Platform (SCRTP) clusters which has the appropriate specifications to handle large volumes of data; or to only test partial amounts of each dataset at a time. An account has been created SCRTP with access to Avon (SCRTP's HPC cluster) being requested.\\
 
-To gain access to most of the datasets, a Google form has to be filled in to prove and confirm that you will only use the dataset for academic purposes. Such forms for all relevant datasets have been filled out. As of writing (18th November), permission has been granted to access FaceForensics++ and Google's DeepFake Detection Dataset.
+To gain access to most of the datasets, a Google form has to be filled in to prove and confirm that you will only use the dataset for academic purposes. Such forms for all relevant datasets have been filled out. As of writing (18th November), permission has been granted to access FaceForensics++, Google's DeepFake Detection Dataset, and FakeAVCeleb. A Kaggle account has yet to be created to get access to Meta's Deep Fake Detection Challenge Dataset.
 
 \section{Future Progress} \label{sec:future-progress}
 \subsection{Proof of Concept}
 
-Over the Christmas holiday, to test if all the research presented previously is valid, a proof of concept of both the blink detection mechanism and adversarial noise injector will be made. These are intended to be quick and so will use pre-trained models and existing codebases, such as Google's MediaPipe\cite{mediapipe}. 
+Over the Christmas holiday, to test if all the research presented previously is valid, a proof of concept of both the blink detection mechanism and adversarial noise injector will be made. These are intended to be quick to develop and test and so will use pre-trained models and existing codebases, such as Google's MediaPipe\cite{mediapipe} and the PyTorch CW-L\textsubscript{2}\cite{cwl2python}. 
 
 \subsection{Blink Detection} \label{sec:future-blink}
 
-The primary disadvantage of the $EAR$ is that it cannot calculate the state of an eye if any of $p_{1-6}$ is obscured\cite{ictuoculi}. However, various AI models such as Google's MediaPipe \cite{mediapipe} and OpenFace\cite{openface} maintain detection of these features even when obscured. Hence it is possible to maintain an accurate $EAR$ even when the face is partially obscured in a frame. Therefore, for the blink detection in my project, I will initially use MediaPipe as a proof of concept and then move on to training my own model from various eye datasets such as Kaggle's eye blinking prediction\cite{eyeblinkprediction}.\\
+The primary disadvantage of the EAR is that it cannot calculate the state of an eye if any of $p_{1-6}$ is obscured\cite{ictuoculi}. However, various AI models such as Google's MediaPipe\cite{mediapipe} and OpenFace\cite{openface} maintain detection of these features even when obscured. Hence it is possible to maintain an accurate EAR even when the face is partially obscured in a frame. Therefore, for the blink detection in my project, I will initially use MediaPipe as a proof of concept and then move on to training my own model from various eye datasets such as Kaggle's eye blinking prediction\cite{eyeblinkprediction}.\\
 
-Having the $EAR$ data allows for more sophisticated methods of blink detection than what was utilised than Ictu Oculi. However a method such as the database employed by DeepVision\cite{blinking-pattern} would be too time consuming to label and store all the data given the amount of time given to this project. Given the large amount of data available: such as the time taken to blink, the period between blinking, and the overall progression of the $EAR$ it may be possible to train a classifier neural network to determine whether or not a sequence of $EAR$ readings overtime is a that of a genuine video or a DeepFake. As this has never been done before, further research and experimentation would need to be done. For a proof of concept, Ictu Oculi has proved even a simple approach of frequency of blinks is sufficient\cite{ictuoculi}.
+Having the EAR data allows for more sophisticated methods of blink detection than what was utilised than Ictu Oculi. However a method such as the database employed by DeepVision\cite{blinking-pattern} would be too time consuming to label and store all the data given the amount of time given to this project. Given the large amount of data available: such as the time taken to blink, the period between blinking, and the overall progression of the EAR it may be possible to train a classifier neural network to determine whether or not a sequence of EAR readings overtime is a that of a genuine video or a DeepFake. As this has never been done before, further research and experimentation would need to be done. For a proof of concept, Ictu Oculi has proved even a simple approach of frequency of blinks is sufficient\cite{ictuoculi}.
 
 \subsection{Adversarial Noise} \label{sec:future-noise}
 
-Because there is a pre-existing implementation\cite{cwl2python}, when developing a proof-of-concept, $CW-L_2$ will be used as the method to add noise to a subset of images. All methods of adversarial noise injection require the model being targeted to be fully developed, therefore this has to be trained after the blink detection model is trained.\\
+Because there is a pre-existing implementation\cite{cwl2python}, when developing a proof-of-concept, CW-L\textsubscript{2} will be used as the method to add noise to a subset of images. All methods of adversarial noise injection require the model being targeted to be fully developed, therefore this has to be trained after the blink detection model is trained.\\
 
-Once a proof of concept has been verified and the full blink detector is trained, a full version of FakeRetouch and $CW-L_2$ shall be trained to act as a testing dataset when evaluating how resilient a blink-based DeepFake detector is.
+Once a proof of concept has been verified and the full blink detector is trained, a full version of FakeRetouch and CW-L\textsubscript{2} shall be trained to act as a testing dataset when evaluating how resilient a blink-based DeepFake detector is.
 
 \subsection{Noise Reduction}
 
@@ -282,7 +288,7 @@ Diffusion models are a machine learning concept that are primarily used for comp
 
 It has been shown that there is potential to use diffusion models to at least partially remove adversarial noise from images\cite{nie2022diffusion}\cite{croitoru2023diffusion}. Thus there is potential to further enhance an adversarial-noise-resilient-blink-detection pipeline by placing a diffusion model at the start to aid in the future detection of images.\\
 
-This will be viewed as an extension because: it may not be necessary as the existing models may already be naturally resilient to adversarial attack; this will recquire the creation of another model which might not be possible given the time period of this project.
+This will be viewed as an extension because: it may not be necessary as the existing models may already be naturally resilient to adversarial attack; this will require the creation of another model which might not be possible given the time period of this project.
 
 \newpage
 \thispagestyle{empty}
