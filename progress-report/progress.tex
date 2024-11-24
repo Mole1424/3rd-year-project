@@ -239,9 +239,9 @@ An analysis on how these datasets will be stored can be found in Section \ref{se
 
 \section{Current Progress}
 
-\subsection{Delay}
+\subsection{Delay} \label{sec:delay}
 
-Unfortunately, the project is currently delayed by approximately 2 weeks. This is due to two primary reasons: courseworks and extent of research required.
+Unfortunately, the project is currently delayed by approximately two weeks. This is due to two primary reasons: courseworks and extent of research required.
 
 \subsubsection{Courseworks}
 
@@ -307,31 +307,34 @@ This will be viewed as an extension because: it may not be necessary as the exis
 \noindent As it is the holiday, work in this period will be extended to compensate for the reduced time available. In all cases, as any creation of adversarial noise requires a working model to be developed, creation of this has to happen after the detection model has been made.
 \subsubsection{Spring Term}
 \resizebox{1.5\textwidth}{!}{\input{term}}\\
-Constant work will be done on the final report, however this will be in the form of note taking rather than academic writing. Testing will be throughout the Easter holiday as there are large amounts of data to test on.
+Constant work will be done on the final report, however this will be in the form of note taking rather than academic writing. Testing will be throughout the Easter holiday as there are large amounts of data to test on. Some will be done before to provide evidence for the presentation.
 \fillandplacepagenumber
 \end{landscape}
 
 \section{Appraisals \& Reflections}
 
-Overall progress has been slower than expected, even given the unforeseeable delays. Obviously I am disappointing with this as it means more work in the future. However, given the plan defined in Section \ref{sec:timeline} has clear steps and finishing points, I am confidence that the future progress of this dissertation will be consistent.\\
+As discussed in Section \ref{sec:delay}, there has been a delay. This was primarily due to an underestimation as to how much time courseworks would take along with the need to have a break in between finishing one piece of work and beginning a new one.\\
+
+The first way to rectify this is that I am taking fewer modules in the spring term, these modules also have less-demanding courseworks. The courseworks for both Digital Forensics and Mobile Robotics are lab-reports and hence there is a clear dedicated time (the labs) to do them, further more the Mobile Robotics report can be done over the Easter Holiday. This only leaves Neural Computing which, from previous years, is a lot quicker than Compilers.\\
+
+Secondly, as show in the Gantt charts (Section \ref{sec:timeline}), a buffer of a week has been added to each major section of the report. This is available for use as either: a break, continues work on the previous section, or to get an early start on the next section. Hence there is now flexibility in timings to enable something to take longer or shorter than expected.\\
+
 
 On the other hand, the development of my research skills is welcome. Until now, I had not undertaken a significant amount of academic research at any kind of scale. For example, this is the first time I have ever used Google Scholar. Completing the literature review has shown me that research is something that I can do which I am grateful for.
 
 \section{Legal, Social, Ethical, and Professional Issues \& Considerations}
 
-The only valid consideration with this project is the use of datasets that are covered by licenses. This is covered by declaring the intended manipulation of the data when requesting access via the various Google forms.\\
+With respect to datasets, there are two possible considerations: licenses and consent. Due to their potential use for training DeepFakes, the vast majority of datasets are locked behind a Google Form and terms of use stipulating that use of the dataset can only be used for educational purposes, as this is a research project it fulfils these requirements. Consent of subjects is a potential large issue for DeepFake datasets. If an individual has their likeness imitated in a dataset, any use of such data would be illegal. Thankfully, all the datasets intended to be used for this project have gotten consent from all individuals included in datasets.\\
 
-There are no further legal, social, ethical, and professional issues \& considerations.
+The other potential ethical consideration of this project is that it potentially aids in the creation of more sophisticated DeepFakes. The creation of DeepFakes is a cat and mouse game, as is the very nature of GANs. This project plays the game of the cat, attempting to catch the mouse-like DeepFakes. Thus, it is entirely possible that future DeepFake generators will know blinking is a key flaw and will specifically train to have accurate blinking. This is an ethical flaw in the creation of any DeepFake detectors and it is better to have at least a temporary solution to detect DeepFakes than no method at all. Furthermore, this project aims to verify that an existing method is more resilient than initially perceived and so this point further does not apply.
 
 \section{Project Management}
 
 The code for this project is spread out over various platforms: initial development on the DCS systems; large scale compute on either the DCS or SCRTP HPC clusters; and finally report development in Overleaf. Therefore it will be crucial to centrally track all code to avoid loosing track of changes made. The central tracker will be a git repository stored in the cloud via GitHub. To avoid overloading individual systems, certain parts of the repository will not be tracked enabled by \verb|.gitignore|. An obvious example is the datasets themselves which will only be stored on the the HPC clusters.\\
 
-GitHub can also be used to keep track of current progress through the use of the issues and tasks tab. Each issue can have multiple tasks assigned to it, only when all tasks have been completed can the issue be marked as ``completed". This can then effectively track progress throughout the project.\\
+GitHub can also be used to keep track of current progress through the use of the issues and tasks tab. Each issue can have multiple tasks assigned to it, only when all tasks have been completed can the issue be marked as ``completed". This can then effectively track progress throughout the project. The central repository for this project can be found at \url{https://github.com/Mole1424/3rd-year-project}.\\
 
-The central repository for this project can be found at \url{https://github.com/Mole1424/3rd-year-project}.\\
-
-To monitor progress, regular meetings with my supervisor will be taken to ensure the work is being done.\\
+To monitor progress, regular meetings with my supervisor will be taken to ensure the work is being done. In addition, progress will be tracked against the Gantt charts in Section \ref{sec:timeline} to determine whether the project is ahead, behind, or on time. If it is ever behind schedule, identify the cause and attempt to get back on track either by applying more work or using the buffer zones.\\
 
 \bibliographystyle{IEEEtran}
 \bibliography{progress}
