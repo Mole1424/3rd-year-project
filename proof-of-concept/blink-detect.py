@@ -1,16 +1,17 @@
 import mediapipe as mp
 import cv2 as cv
 
+# setup video capture
 path_to_video = "sample.mp4"
 video = cv.VideoCapture(path_to_video)
+video_length = int(video.get(cv.CAP_PROP_FRAME_COUNT))
 
+# setup face landmark detection
 model_path = "face_landmarker.task"
 BaseOptions = mp.tasks.BaseOptions
 FaceLandmarker = mp.tasks.vision.FaceLandmarker
 FaceLandmarkerOptions = mp.tasks.vision.FaceLandmarkerOptions
 VisionRunningMode = mp.tasks.vision.RunningMode
-
-# default options for face landmark detection
 options = FaceLandmarkerOptions(
     base_options=BaseOptions(model_asset_path=model_path),
     running_mode=VisionRunningMode.VIDEO,
@@ -64,4 +65,29 @@ with FaceLandmarker.create_from_options(options) as landmarker:
         EAR = (left_eye_ear + right_eye_ear) / 2
         EARs.append(EAR)
 
-print(EARs)
+video.release()
+
+# calculate blink threshold
+average_EAR = sum([ear for ear in EARs]) / len(EARs)
+standard_deviation = (
+    sum([(ear - average_EAR) ** 2 for ear in EARs]) / len(EARs)
+) ** 0.5
+thereshold = average_EAR - 2 * standard_deviation
+
+# calculate number of blinks
+blink_count = 0
+blink_occuring = False
+for ear in EARs:
+    if ear[1] < thereshold:
+        if not blink_occuring:
+            blink_count += 1
+            blink_occuring = True
+    else:
+        blink_occuring = False
+
+# the average human blinks 10 times per minute
+expected_blinks = video_length / 60000 * 10
+if blink_count >= expected_blinks:
+    print("Video is NOT a DeepFake")
+else:
+    print("Video IS a DeepFake")
