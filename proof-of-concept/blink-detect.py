@@ -1,9 +1,9 @@
 import mediapipe as mp
 import cv2 as cv
-from os import listdir
+from os import listdir, remove
 from concurrent.futures import ThreadPoolExecutor
 from matplotlib import pyplot as plt
-from math import floor, ceil
+from math import floor
 
 model_path = "face_landmarker.task"
 BaseOptions = mp.tasks.BaseOptions
@@ -12,7 +12,7 @@ FaceLandmarkerOptions = mp.tasks.vision.FaceLandmarkerOptions
 VisionRunningMode = mp.tasks.vision.RunningMode
 options = FaceLandmarkerOptions(
     base_options=BaseOptions(model_asset_path=model_path),
-    running_mode=VisionRunningMode.VIDEO,
+    running_mode=VisionRunningMode.VIDEO
 )
 
 
@@ -32,10 +32,16 @@ def process_video(video_path, is_real):
 
             # get the timestamp of the frame and detect face landmarks
             timestamp = int(video.get(cv.CAP_PROP_POS_MSEC))
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame)
+            frame_rgb = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
+
             face_landmarker_result = landmarker.detect_for_video(mp_image, timestamp)
 
             if not face_landmarker_result.face_landmarks:
+                if len(EARs) == 0:
+                    print(f"No face landmarks detected: {video_path}")
+                    cv.imwrite(f"frames/{video_path.split('/')[-1]}_{timestamp}.jpg", frame_rgb)
+                    break
                 continue
 
             # get the landmarks of the left and right eye
@@ -67,7 +73,6 @@ def process_video(video_path, is_real):
     video.release()
 
     if len(EARs) == 0:
-        print(f"Failed to process video: {video_path}")
         return (1, 0)
 
     # calculate blink threshold
@@ -88,17 +93,26 @@ def process_video(video_path, is_real):
         else:
             blink_occuring = False
 
-    # the average human blinks 14-17 +-2 times per minute
-    min_blinks = floor(12 * video_length / 60)
-    max_blinks = ceil(19 * video_length / 60)
-    is_correct = (min_blinks <= blink_count <= max_blinks) == is_real
+    # the average human blinks around 14 times per minute
+    min_blinks = floor(14 * video_length / 60)
+    is_correct = (min_blinks <= blink_count) == is_real
     if not is_correct:
-        print(f"Failed to classify video: {video_path}")
         # save graph of EARs
         plt.figure()
-        plt.plot(EARs)
-        plt.axhline(y=threshold, color="r", linestyle="--")
-        plt.title(f"Expected: {min_blinks} - {max_blinks}, Actual: {blink_count}")
+        plt.plot(EARs, label="EAR")
+        plt.axhline(
+            y=threshold, color="r", linestyle="--", label=f"Threshold ({threshold:.2f})"
+        )
+        plt.axhline(
+            y=average_EAR,
+            color="g",
+            linestyle="--",
+            label=f"Average ({average_EAR:.2f})",
+        )
+        plt.legend()
+        plt.xlabel("Frame")
+        plt.ylabel("EAR")
+        plt.title(f"Expected: <={min_blinks}, Actual: {blink_count}")
         plt.savefig(f"EARs/{video_path.split('/')[-1]}.png")
     return (1 if is_correct else 0, 0 if is_correct else 1)
 
@@ -132,4 +146,9 @@ def process_dataset():
 
 
 if __name__ == "__main__":
+    # remove content of EARs directory
+    for file in listdir("EARs"):
+        remove(f"EARs/{file}")
+    for file in listdir("frames"):
+        remove(f"frames/{file}")
     process_dataset()
