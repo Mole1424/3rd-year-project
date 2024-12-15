@@ -68,9 +68,9 @@ def process_video(video_path, is_real):
 
     video.release()
 
-    if len(EARs) == 0:
+    if len(EARs) <= 30:
         print(f"Failed to process {video_path}")
-        return (0, 0, 1)
+        return (is_real, 0, 0, 1)
 
     # calculate blink threshold
     average_EAR = sum(EARs) / len(EARs)
@@ -111,10 +111,15 @@ def process_video(video_path, is_real):
     plt.ylabel("EAR")
     plt.title(f"Expected: <={min_blinks}, Actual: {blink_count}, Correct: {is_correct}")
     plt.savefig(f"EARs/{video_path.split('/')[-1]}.png")
-    return (1 if is_correct else 0, 0 if is_correct else 1, 0)
+    return (is_real, 1 if is_correct else 0, 0 if is_correct else 1, 0)
 
 def process_dataset():
-    num_correct, num_incorrect, num_unkown = 0, 0, 0
+    true_positives = 0
+    true_negatives = 0
+    false_positives = 0
+    false_negatives = 0
+    unkown_real = 0
+    unkown_fake = 0
 
     path_to_dataset = "/dcs/large/u2204489/faceforensics"
 
@@ -134,13 +139,23 @@ def process_dataset():
     #     results.append(process_video(video_path, is_real))
 
     # count the number of correct and incorrect results
-    for correct, incorrect, unkown in results:
-        num_correct += correct
-        num_incorrect += incorrect
-        num_unkown += unkown
+    for real, correct, incorrect, unkown in results:
+        if real:
+            true_positives += correct
+            false_negatives += incorrect
+            unkown_real += unkown
+        else:
+            true_negatives += correct
+            false_positives += incorrect
+            unkown_fake += unkown
 
-    print(f"Correct: {num_correct}, Incorrect: {num_incorrect}", f"Unknown: {num_unkown}")
-
+    print(f"True Positives: {true_positives}")
+    print(f"True Negatives: {true_negatives}")
+    print(f"False Positives: {false_positives}")
+    print(f"False Negatives: {false_negatives}")
+    print(f"Unknown Real: {unkown_real}")
+    print(f"Unknown Fake: {unkown_fake}")
+    print(f"Accuracy: {(true_positives + true_negatives) / (true_positives + true_negatives + false_positives + false_negatives)}")
 
 if __name__ == "__main__":
     # remove content of EARs directory
