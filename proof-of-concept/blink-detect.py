@@ -15,9 +15,9 @@ options = FaceLandmarkerOptions(
     running_mode=VisionRunningMode.VIDEO
 )
 
-
 def process_video(video_path, is_real):
     """Attempt to detect if a video is real or fake based on the number of blinks."""
+    print(f"Processing {video_path}")
     EARs = []
     # open the video and get the length
     video = cv.VideoCapture(video_path)
@@ -38,10 +38,6 @@ def process_video(video_path, is_real):
             face_landmarker_result = landmarker.detect_for_video(mp_image, timestamp)
 
             if not face_landmarker_result.face_landmarks:
-                if len(EARs) == 0:
-                    print(f"No face landmarks detected: {video_path}")
-                    cv.imwrite(f"frames/{video_path.split('/')[-1]}_{timestamp}.jpg", frame_rgb)
-                    break
                 continue
 
             # get the landmarks of the left and right eye
@@ -73,14 +69,15 @@ def process_video(video_path, is_real):
     video.release()
 
     if len(EARs) == 0:
-        return (1, 0)
+        print(f"Failed to process {video_path}")
+        return (0, 0, 1)
 
     # calculate blink threshold
     average_EAR = sum(EARs) / len(EARs)
     standard_deviation = (
         sum([(ear - average_EAR) ** 2 for ear in EARs]) / len(EARs)
     ) ** 0.5
-    threshold = max(0.05, average_EAR - 2 * standard_deviation)  # change this
+    threshold = min(EARs) + 0.5 * standard_deviation
 
     # calculate number of blinks
     blink_count = 0
@@ -96,29 +93,28 @@ def process_video(video_path, is_real):
     # the average human blinks around 14 times per minute
     min_blinks = floor(14 * video_length / 60)
     is_correct = (min_blinks <= blink_count) == is_real
-    if not is_correct:
-        # save graph of EARs
-        plt.figure()
-        plt.plot(EARs, label="EAR")
-        plt.axhline(
-            y=threshold, color="r", linestyle="--", label=f"Threshold ({threshold:.2f})"
-        )
-        plt.axhline(
-            y=average_EAR,
-            color="g",
-            linestyle="--",
-            label=f"Average ({average_EAR:.2f})",
-        )
-        plt.legend()
-        plt.xlabel("Frame")
-        plt.ylabel("EAR")
-        plt.title(f"Expected: <={min_blinks}, Actual: {blink_count}")
-        plt.savefig(f"EARs/{video_path.split('/')[-1]}.png")
-    return (1 if is_correct else 0, 0 if is_correct else 1)
 
+    # save graph of EARs
+    plt.figure()
+    plt.plot(EARs, label="EAR")
+    plt.axhline(
+        y=threshold, color="r", linestyle="--", label=f"Threshold ({threshold:.2f})"
+    )
+    plt.axhline(
+        y=average_EAR,
+        color="g",
+        linestyle="--",
+        label=f"Average ({average_EAR:.2f})",
+    )
+    plt.legend()
+    plt.xlabel("Frame")
+    plt.ylabel("EAR")
+    plt.title(f"Expected: <={min_blinks}, Actual: {blink_count}, Correct: {is_correct}")
+    plt.savefig(f"EARs/{video_path.split('/')[-1]}.png")
+    return (1 if is_correct else 0, 0 if is_correct else 1, 0)
 
 def process_dataset():
-    num_correct, num_incorrect = 0, 0
+    num_correct, num_incorrect, num_unkown = 0, 0, 0
 
     path_to_dataset = "/dcs/large/u2204489/faceforensics"
 
@@ -138,17 +134,16 @@ def process_dataset():
     #     results.append(process_video(video_path, is_real))
 
     # count the number of correct and incorrect results
-    for correct, incorrect in results:
+    for correct, incorrect, unkown in results:
         num_correct += correct
         num_incorrect += incorrect
+        num_unkown += unkown
 
-    print(f"Correct: {num_correct}, Incorrect: {num_incorrect}")
+    print(f"Correct: {num_correct}, Incorrect: {num_incorrect}", f"Unknown: {num_unkown}")
 
 
 if __name__ == "__main__":
     # remove content of EARs directory
     for file in listdir("EARs"):
         remove(f"EARs/{file}")
-    for file in listdir("frames"):
-        remove(f"frames/{file}")
     process_dataset()
