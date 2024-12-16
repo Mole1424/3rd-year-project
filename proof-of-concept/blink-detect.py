@@ -130,11 +130,12 @@ def process_dataset():
         for video in listdir(f"{path_to_dataset}/{type}")
     ]
 
+    results = []
     # process the videos in parallel
     with ThreadPoolExecutor() as executor:
         results = executor.map(lambda args: process_video(*args), video_paths)
 
-    # results = []
+    # process the videos in serial (slower but avoids parallelism issues in matplotlib)
     # for video_path, is_real in video_paths:
     #     results.append(process_video(video_path, is_real))
 
