@@ -109,7 +109,7 @@ def process_video(video_path, is_real):
     plt.legend()
     plt.xlabel("Frame")
     plt.ylabel("EAR")
-    plt.title(f"Expected: <={min_blinks}, Actual: {blink_count}, Correct: {is_correct}")
+    plt.title(f"Fake: <={min_blinks}, Actual: {blink_count}, Correct: {is_correct}")
     plt.savefig(f"EARs/{video_path.split('/')[-1]}.png")
     return (is_real, 1 if is_correct else 0, 0 if is_correct else 1, 0)
 

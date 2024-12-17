@@ -10,10 +10,15 @@ The datset used was the FaceForensics++ dataset (Rosslet et al) for the original
 
 Blink detection was accomplished using Google MediaPipe's Face Landmarker model to detect the key points around the eyes to then calculate EAR (Eye Aspect Ratio) to determine whether a blink has occurred. The threshold for a blink was set at min(EAR) + 0.5 * standard deviation(EAR) to account for the variability in the data. The result for blink detection were as follows:
 
-True Positives: 44
-True Negatives: 14
-False Positives: 18
-False Negatives: 5
-Unknown Real: 1
-Unknown Fake: 18
+True Positives (declared real when real): 44  
+True Negatives (declared fake when fake): 14  
+False Positives (declared real when fake): 18  
+False Negatives (delcared fake when real): 5  
+Unknown Real: 1  
+Unknown Fake: 18  
 Accuracy: 0.7160493827160493
+
+| Confusion Matrix: | Predicted Positive | Predicted Negative |
+|-|-|-|
+| Actual Positive | 44  | 18 |
+| Actual Negative | 5   | 14 |
