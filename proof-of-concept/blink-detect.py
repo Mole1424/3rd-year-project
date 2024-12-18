@@ -1,9 +1,12 @@
-import mediapipe as mp
-import cv2 as cv
-from os import listdir, remove
 from concurrent.futures import ThreadPoolExecutor
-from matplotlib import pyplot as plt
 from math import floor
+from os import listdir
+from pathlib import Path
+from typing import Tuple
+
+import cv2 as cv
+import mediapipe as mp
+from matplotlib import pyplot as plt
 
 model_path = "face_landmarker.task"
 BaseOptions = mp.tasks.BaseOptions
@@ -12,13 +15,27 @@ FaceLandmarkerOptions = mp.tasks.vision.FaceLandmarkerOptions
 VisionRunningMode = mp.tasks.vision.RunningMode
 options = FaceLandmarkerOptions(
     base_options=BaseOptions(model_asset_path=model_path),
-    running_mode=VisionRunningMode.VIDEO
+    running_mode=VisionRunningMode.VIDEO,
 )
 
-def process_video(video_path, is_real):
+
+def calculate_ear(eye_landmarks: list) -> float:
+    p2_p6 = ((eye_landmarks[1].x - eye_landmarks[5].x) ** 2) + (
+        (eye_landmarks[1].y - eye_landmarks[5].y) ** 2
+    )
+    p3_p5 = ((eye_landmarks[2].x - eye_landmarks[4].x) ** 2) + (
+        (eye_landmarks[2].y - eye_landmarks[4].y) ** 2
+    )
+    p1_p4 = ((eye_landmarks[0].x - eye_landmarks[3].x) ** 2) + (
+        (eye_landmarks[0].y - eye_landmarks[3].y) ** 2
+    )
+    return (p2_p6 + p3_p5) / (2.0 * p1_p4)
+
+
+def process_video(video_path: str, is_real: bool) -> Tuple[bool, int, int, int]:  # noqa: PLR0915
     """Attempt to detect if a video is real or fake based on the number of blinks."""
     print(f"Processing {video_path}")
-    EARs = []
+    ears = []
     # open the video and get the length
     video = cv.VideoCapture(video_path)
     video_length = int(video.get(cv.CAP_PROP_FRAME_COUNT)) / video.get(cv.CAP_PROP_FPS)
@@ -49,40 +66,29 @@ def process_video(video_path, is_real):
             right_eye_landmarks = [face_landmarks[i] for i in right_eye_indices]
 
             # calculate eye aspect ratio (EAR)
-            def calculate_EAR(eye_landmarks):
-                p2_p6 = ((eye_landmarks[1].x - eye_landmarks[5].x) ** 2) + (
-                    (eye_landmarks[1].y - eye_landmarks[5].y) ** 2
-                )
-                p3_p5 = ((eye_landmarks[2].x - eye_landmarks[4].x) ** 2) + (
-                    (eye_landmarks[2].y - eye_landmarks[4].y) ** 2
-                )
-                p1_p4 = ((eye_landmarks[0].x - eye_landmarks[3].x) ** 2) + (
-                    (eye_landmarks[0].y - eye_landmarks[3].y) ** 2
-                )
-                return (p2_p6 + p3_p5) / (2.0 * p1_p4)
-
-            left_eye_ear = calculate_EAR(left_eye_landmarks)
-            right_eye_ear = calculate_EAR(right_eye_landmarks)
-            EAR = (left_eye_ear + right_eye_ear) / 2
-            EARs.append(EAR)
+            left_eye_ear = calculate_ear(left_eye_landmarks)
+            right_eye_ear = calculate_ear(right_eye_landmarks)
+            ear = (left_eye_ear + right_eye_ear) / 2
+            ears.append(ear)
 
     video.release()
 
-    if len(EARs) <= 30:
+    minimum_frames = 30
+    if len(ears) <= minimum_frames:
         print(f"Failed to process {video_path}")
         return (is_real, 0, 0, 1)
 
     # calculate blink threshold
-    average_EAR = sum(EARs) / len(EARs)
+    average_ear = sum(ears) / len(ears)
     standard_deviation = (
-        sum([(ear - average_EAR) ** 2 for ear in EARs]) / len(EARs)
+        sum([(ear - average_ear) ** 2 for ear in ears]) / len(ears)
     ) ** 0.5
-    threshold = min(EARs) + 0.5 * standard_deviation
+    threshold = min(ears) + 0.5 * standard_deviation
 
     # calculate number of blinks
     blink_count = 0
     blink_occuring = False
-    for ear in EARs:
+    for ear in ears:
         if ear < threshold:
             if not blink_occuring:
                 blink_count += 1
@@ -96,15 +102,15 @@ def process_video(video_path, is_real):
 
     # save graph of EARs
     plt.figure()
-    plt.plot(EARs, label="EAR")
+    plt.plot(ears, label="EAR")
     plt.axhline(
         y=threshold, color="r", linestyle="--", label=f"Threshold ({threshold:.2f})"
     )
     plt.axhline(
-        y=average_EAR,
+        y=average_ear,
         color="g",
         linestyle="--",
-        label=f"Average ({average_EAR:.2f})",
+        label=f"Average ({average_ear:.2f})",
     )
     plt.legend()
     plt.xlabel("Frame")
@@ -113,7 +119,8 @@ def process_video(video_path, is_real):
     plt.savefig(f"EARs/{video_path.split('/')[-1]}.png")
     return (is_real, 1 if is_correct else 0, 0 if is_correct else 1, 0)
 
-def process_dataset():
+
+def process_dataset() -> None:
     true_positives = 0
     true_negatives = 0
     false_positives = 0
@@ -156,10 +163,14 @@ def process_dataset():
     print(f"False Negatives: {false_negatives}")
     print(f"Unknown Real: {unkown_real}")
     print(f"Unknown Fake: {unkown_fake}")
-    print(f"Accuracy: {(true_positives + true_negatives) / (true_positives + true_negatives + false_positives + false_negatives)}")
+    accuracy = (true_positives + true_negatives) / (
+        true_positives + true_negatives + false_positives + false_negatives
+    )
+    print(f"Accuracy: {accuracy}")
+
 
 if __name__ == "__main__":
     # remove content of EARs directory
     for file in listdir("EARs"):
-        remove(f"EARs/{file}")
+        Path(f"EARs/{file}").unlink()
     process_dataset()
