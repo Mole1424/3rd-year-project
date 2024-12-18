@@ -167,6 +167,8 @@ def process_dataset() -> None:
         true_positives + true_negatives + false_positives + false_negatives
     )
     print(f"Accuracy: {accuracy}")
+    unknown_accuracy = (true_positives + true_negatives + unkown_fake) / 100
+    print(f"Accuracy (assuming unkown is deepfake): {unknown_accuracy}")
 
 
 if __name__ == "__main__":

@@ -17,6 +17,7 @@ False Negatives (delcared fake when real): 5
 Unknown Real: 1  
 Unknown Fake: 18  
 Accuracy: 0.7160493827160493
+Accuracy (assuming unknowns are fake): 0.76
 
 | Confusion Matrix: | Predicted Positive | Predicted Negative |
 |-|-|-|
