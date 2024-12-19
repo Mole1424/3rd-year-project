@@ -2,6 +2,6 @@ mediapipe
 opencv-python
 matplotlib
 dlib
-tensorflow
+tensorflow[and-cuda]
 pillow
 scikit-learn

@@ -2,6 +2,9 @@ datasets/
 venv/
 
 proof-of-concept/EARs/
+proof-of-concept/vgg19.h5
+proof-of-concept/accuracy.png
+proof-of-concept/loss.png
 
 *.err
 *.out

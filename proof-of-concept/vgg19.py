@@ -9,6 +9,7 @@ import dlib
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.model_selection import train_test_split
+from tensorflow.config import list_physical_devices
 from tensorflow.keras import optimizers
 from tensorflow.keras.applications import VGG19
 from tensorflow.keras.callbacks import History
@@ -131,7 +132,8 @@ if __name__ == "__main__":
         create_image_dataset()
     print("Dataset created")
 
-    model_trained = False
+    model_trained = True
     if not model_trained:
+        print(list_physical_devices("GPU"))
         train_model()
     print("Model trained")
