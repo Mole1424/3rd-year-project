@@ -1,7 +1,10 @@
 mediapipe
 opencv-python
 matplotlib
+
 dlib
 tensorflow[and-cuda]
 pillow
 scikit-learn
+
+torchvision
