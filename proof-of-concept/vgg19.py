@@ -14,11 +14,12 @@ from tensorflow.keras import optimizers
 from tensorflow.keras.applications import VGG19
 from tensorflow.keras.callbacks import History
 from tensorflow.keras.layers import Dense, GlobalAveragePooling2D
-from tensorflow.keras.models import Sequential
+from tensorflow.keras.models import Sequential, load_model
 from tensorflow.keras.preprocessing.image import img_to_array, load_img
 from tensorflow.keras.utils import to_categorical
 
-path_to_data = "/dcs/large/u2204489/faceforensics/train"
+path_to_train_data = "/dcs/large/u2204489/faceforensics/train"
+path_to_test_data = "/dcs/large/u2204489/faceforensics"
 model_path = "vgg19.h5"
 input_shape = (128, 128, 3)
 
@@ -26,10 +27,12 @@ input_shape = (128, 128, 3)
 def create_image_dataset() -> None:
     detector = dlib.get_frontal_face_detector()
     for type in ["fake", "real"]:
-        videos = [f for f in listdir(f"{path_to_data}/{type}") if f.endswith(".mp4")]
+        videos = [
+            f for f in listdir(f"{path_to_train_data}/{type}") if f.endswith(".mp4")
+        ]
         for video in videos:
             count = 0
-            cap = cv2.VideoCapture(str(Path(path_to_data) / type / video))
+            cap = cv2.VideoCapture(str(Path(path_to_train_data) / type / video))
             frame_rate = cap.get(5)
             while cap.isOpened():
                 frame_id = cap.get(1)
@@ -46,7 +49,11 @@ def create_image_dataset() -> None:
                         crop = frame[y1:y2, x1:x2]
                         if crop.shape[0] > 0 and crop.shape[1] > 0:
                             cv2.imwrite(
-                                str(Path(path_to_data) / type / f"{video}{count}.png"),
+                                str(
+                                    Path(path_to_train_data)
+                                    / type
+                                    / f"{video}{count}.png"
+                                ),
                                 cv2.resize(crop, (128, 128)),
                             )
                             count += 1
@@ -77,14 +84,18 @@ def save_graphs(history: History, epochs: int) -> None:
 def train_model() -> None:
     X, Y = [], []  # noqa: N806
 
-    real_data = [f for f in listdir(f"{path_to_data}/real") if f.endswith(".png")]
-    fake_data = [f for f in listdir(f"{path_to_data}/fake") if f.endswith(".png")]
+    real_data = [f for f in listdir(f"{path_to_train_data}/real") if f.endswith(".png")]
+    fake_data = [f for f in listdir(f"{path_to_train_data}/fake") if f.endswith(".png")]
 
     for img in real_data:
-        X.append(img_to_array(load_img(f"{path_to_data}/real/{img}")).flatten() / 255.0)
+        X.append(
+            img_to_array(load_img(f"{path_to_train_data}/real/{img}")).flatten() / 255.0
+        )
         Y.append(0)
     for img in fake_data:
-        X.append(img_to_array(load_img(f"{path_to_data}/fake/{img}")).flatten() / 255.0)
+        X.append(
+            img_to_array(load_img(f"{path_to_train_data}/fake/{img}")).flatten() / 255.0
+        )
         Y.append(1)
 
     X = np.array(X)  # noqa: N806
@@ -125,6 +136,76 @@ def train_model() -> None:
     save_graphs(history, epochs)
 
 
+def process_video(
+    video_path: str,
+    is_real: bool,
+    model: Sequential,
+    detector: dlib.fhog_object_detector,
+) -> bool:
+    cap = cv2.VideoCapture(video_path)
+    frame_rate = cap.get(5)
+    count = 0
+    while cap.isOpened():
+        frame_id = cap.get(1)
+        ret, frame = cap.read()
+        if not ret:
+            break
+        if frame_id % (int(frame_rate) + 1) == 0:
+            face_rects, _, _ = detector.run(frame, 0)
+            for _, d in enumerate(face_rects):
+                x1 = d.left()
+                y1 = d.top()
+                x2 = d.right()
+                y2 = d.bottom()
+                crop = frame[y1:y2, x1:x2]
+                if crop.shape[0] > 0 and crop.shape[1] > 0:
+                    img = cv2.resize(crop, (128, 128))
+                    img = img_to_array(img).flatten() / 255.0
+                    img = img.reshape(-1, 128, 128, 3)
+                    prediction = model.predict(img, verbose=0)
+                    if np.argmax(prediction) == 1:
+                        count += 1
+    cap.release()
+    threshold = 10  # magic number
+    fake = count > threshold
+    correct = fake != is_real
+    print(
+        f"video: {video_path}, is_real: {is_real}, count: {count}, correct: {correct}"
+    )
+    return correct
+
+
+def test_data() -> None:
+    true_positives = 0
+    true_negatives = 0
+    false_positives = 0
+    false_negatives = 0
+
+    model = load_model(model_path)
+    detector = dlib.get_frontal_face_detector()
+    video_paths = [
+        (f"{path_to_test_data}/{type}/{video}", type == "real")
+        for type in ["real", "fake"]
+        for video in listdir(f"{path_to_test_data}/{type}")
+    ]
+
+    for video_path, is_real in video_paths:
+        is_correct = process_video(video_path, is_real, model, detector)
+        true_positives += is_real and is_correct
+        false_negatives += is_real and not is_correct
+        true_negatives += not is_real and is_correct
+        false_positives += not is_real and not is_correct
+
+    print(f"True Positives: {true_positives}")
+    print(f"True Negatives: {true_negatives}")
+    print(f"False Positives: {false_positives}")
+    print(f"False Negatives: {false_negatives}")
+    accuracy = (true_positives + true_negatives) / (
+        true_positives + true_negatives + false_positives + false_negatives
+    )
+    print(f"Accuracy: {accuracy}")
+
+
 if __name__ == "__main__":
     dataset_created = True
     if not dataset_created:
@@ -137,3 +218,6 @@ if __name__ == "__main__":
         print(list_physical_devices("GPU"))
         train_model()
     print("Model trained")
+
+    test_data()
+    print("done :)")

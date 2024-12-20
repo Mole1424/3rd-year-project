@@ -4,7 +4,7 @@ A proof of concept done over the winter holidays to confirm whether this idea ha
 
 ### Dataset
 
-The datset used was the FaceForensics++ dataset (Rosslet et al) for the original videos with the DeepFaked videos generated through the Google and JigSaw DeepFake Detection Challenge (Dufour et al). 50 real and 50 fake videos were used for the proof of concept.
+The datset used was the FaceForensics++ dataset (Rosslet et al) for the original videos with the DeepFaked videos generated through the Google and JigSaw DeepFake Detection Challenge (Dufour et al). 50 real and 50 fake videos were used for testing the proof of concepts.
 
 ### Blink detection
 
@@ -23,3 +23,18 @@ Accuracy (assuming unknowns are fake): 0.76
 |-|-|-|
 | Actual Positive | 44  | 18 |
 | Actual Negative | 5   | 14 |
+
+### Conventional Detection
+
+The CW-L2 attack (Carlini and Wagner) was prooved effective against a VGG-based DeepFake Detector (Gandhi and Jain). I used an implementation from [Yadav et al](https://github.com/rahul9903/Deepfake/blob/main/Deepfake_detection.ipynb) to train and then predict using VGG19. An additional 50 real and 50 fake videos were used for testing the proof of concepts. The result for conventional detection were as follows:
+
+True Positives: 46
+True Negatives: 49
+False Positives: 1
+False Negatives: 4
+Accuracy: 0.95
+
+| Confusion Matrix: | Predicted Positive | Predicted Negative |
+|-|-|-|
+| Actual Positive | 46  | 4 |
+| Actual Negative | 1   | 49 |
