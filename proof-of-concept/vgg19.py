@@ -26,28 +26,35 @@ input_shape = (128, 128, 3)
 
 def create_image_dataset() -> None:
     detector = dlib.get_frontal_face_detector()
+    # loop over the training videos
     for type in ["fake", "real"]:
         videos = [
             f for f in listdir(f"{path_to_train_data}/{type}") if f.endswith(".mp4")
         ]
         for video in videos:
             count = 0
+            # open the video and get the frame rate
             cap = cv2.VideoCapture(str(Path(path_to_train_data) / type / video))
             frame_rate = cap.get(5)
             while cap.isOpened():
+                # attempt to read the video frame by frame
                 frame_id = cap.get(1)
                 ret, frame = cap.read()
                 if not ret:
                     break
+                # only process every nth frame
                 if frame_id % (int(frame_rate) + 1) == 0:
+                    # detect faces in the frame and iterate over them
                     face_rects, _, _ = detector.run(frame, 0)
                     for _, d in enumerate(face_rects):
+                        # crop the face and resize it to 128x128
                         x1 = d.left()
                         y1 = d.top()
                         x2 = d.right()
                         y2 = d.bottom()
                         crop = frame[y1:y2, x1:x2]
                         if crop.shape[0] > 0 and crop.shape[1] > 0:
+                            # save the cropped face as a png file
                             cv2.imwrite(
                                 str(
                                     Path(path_to_train_data)
@@ -61,6 +68,7 @@ def create_image_dataset() -> None:
 
 
 def save_graphs(history: History, epochs: int) -> None:
+    # plot the accuracy and loss graphs
     plt.figure()
     epoch_list = list(range(1, epochs + 1))
     plt.plot(epoch_list, history.history["accuracy"], label="Train Accuracy")
@@ -82,8 +90,10 @@ def save_graphs(history: History, epochs: int) -> None:
 
 
 def train_model() -> None:
+    # X is images, Y is real(0)/fake(1)
     X, Y = [], []  # noqa: N806
 
+    # load the images and labels
     real_data = [f for f in listdir(f"{path_to_train_data}/real") if f.endswith(".png")]
     fake_data = [f for f in listdir(f"{path_to_train_data}/fake") if f.endswith(".png")]
 
@@ -98,6 +108,7 @@ def train_model() -> None:
         )
         Y.append(1)
 
+    # preprocess the data
     X = np.array(X)  # noqa: N806
     Y = to_categorical(Y, 2)  # noqa: N806
 
@@ -107,9 +118,11 @@ def train_model() -> None:
         X, Y, test_size=0.2, random_state=5
     )
 
+    # create the VGG19 model
     vgg19 = VGG19(include_top=False, weights="imagenet", input_shape=input_shape)
     vgg19.trainable = True
 
+    # create the final model
     model = Sequential()
     model.add(vgg19)
     model.add(GlobalAveragePooling2D())
@@ -122,6 +135,7 @@ def train_model() -> None:
         metrics=["accuracy"],
     )
 
+    # train the model
     epochs = 20
     batch_size = 100
     history = model.fit(
@@ -132,6 +146,7 @@ def train_model() -> None:
         validation_data=(X_val, Y_val),
         verbose=1,
     )
+    # save the model and graphs
     model.save(model_path)
     save_graphs(history, epochs)
 
@@ -142,17 +157,23 @@ def process_video(
     model: Sequential,
     detector: dlib.fhog_object_detector,
 ) -> bool:
+    # open the video and get the frame rate
     cap = cv2.VideoCapture(video_path)
     frame_rate = cap.get(5)
     count = 0
     while cap.isOpened():
+        # attempt to read the video frame by frame
         frame_id = cap.get(1)
         ret, frame = cap.read()
         if not ret:
             break
+
+        # only process every nth frame
         if frame_id % (int(frame_rate) + 1) == 0:
+            # detect faces in the frame and iterate over them
             face_rects, _, _ = detector.run(frame, 0)
             for _, d in enumerate(face_rects):
+                # crop the face and resize it to 128x128
                 x1 = d.left()
                 y1 = d.top()
                 x2 = d.right()
@@ -160,13 +181,15 @@ def process_video(
                 crop = frame[y1:y2, x1:x2]
                 if crop.shape[0] > 0 and crop.shape[1] > 0:
                     img = cv2.resize(crop, (128, 128))
+                    # classify the frame as real or fake
                     img = img_to_array(img).flatten() / 255.0
                     img = img.reshape(-1, 128, 128, 3)
                     prediction = model.predict(img, verbose=0)
                     if np.argmax(prediction) == 1:
                         count += 1
     cap.release()
-    threshold = 10  # magic number
+    # a video is classified as fake if >10 frames are fake
+    threshold = 10
     fake = count > threshold
     correct = fake != is_real
     print(
@@ -181,8 +204,11 @@ def test_data() -> None:
     false_positives = 0
     false_negatives = 0
 
+    # pre-load models for performance
     model = load_model(model_path)
     detector = dlib.get_frontal_face_detector()
+
+    # loop over the test videos
     video_paths = [
         (f"{path_to_test_data}/{type}/{video}", type == "real")
         for type in ["real", "fake"]
@@ -190,6 +216,7 @@ def test_data() -> None:
     ]
 
     for video_path, is_real in video_paths:
+        # process the video and update the counts
         is_correct = process_video(video_path, is_real, model, detector)
         true_positives += is_real and is_correct
         false_negatives += is_real and not is_correct

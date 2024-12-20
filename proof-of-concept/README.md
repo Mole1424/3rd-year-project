@@ -1,6 +1,12 @@
 ## Proof of Concept
 
 A proof of concept done over the winter holidays to confirm whether this idea has any basis in reality.
+note: to run succesfully on DCS, need to install venv in kudu
+This needs the following `pip.conf` file to be added in the venv's root directory:
+```
+[install]
+user = false
+```
 
 ### Dataset
 
