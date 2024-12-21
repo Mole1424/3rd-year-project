@@ -1,5 +1,7 @@
 datasets/
+
 venv/
+__pycache__/
 
 proof-of-concept/EARs/
 proof-of-concept/vgg19.h5
