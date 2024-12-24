@@ -7,4 +7,4 @@ tensorflow[and-cuda]
 pillow
 scikit-learn
 
-cleverhans
+foolbox

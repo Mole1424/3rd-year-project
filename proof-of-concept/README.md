@@ -34,13 +34,13 @@ Accuracy (assuming unknowns are fake): 0.76
 
 The CW-L2 attack (Carlini and Wagner) was prooved effective against a VGG-based DeepFake Detector (Gandhi and Jain). I used an implementation from [Yadav et al](https://github.com/rahul9903/Deepfake/blob/main/Deepfake_detection.ipynb) to train and then predict using VGG19. An additional 50 real and 50 fake videos were used for testing the proof of concepts. The result for conventional detection were as follows:
 
-True Positives: 46
+True Positives: 43
 True Negatives: 49
 False Positives: 1
-False Negatives: 4
-Accuracy: 0.95
+False Negatives: 7
+Accuracy: 0.92
 
-| Confusion Matrix: | Predicted Positive | Predicted Negative |
+| Confusion Matrix | Predicted Real | Predicted Fake |
 |-|-|-|
-| Actual Positive | 46  | 4 |
-| Actual Negative | 1   | 49 |
+| Actual Real | 46  | 4 |
+| Actual Fake | 1   | 49 |
