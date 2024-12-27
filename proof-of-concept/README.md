@@ -50,7 +50,7 @@ Accuracy (on fake videos): 1
 
 Initially the CW-L2 method was going to be used but was too slow. FGSM was also implemented by [Foolbox](https://github.com/bethgelab/foolbox/tree/master) and so was used as a drag and drop replacement. Work will need to be done to try and find either a faster implementation of CW-L2 or a way to speed up the process. Only fake videos had noise added to them, to refelct reliality. The results for perturbation using FGSM are as follows:
 
-**VGG19**
+**VGG19**  
 True Positives: 48  
 True Negatives: 4  
 False Positives: 46  
@@ -63,7 +63,7 @@ Accuracy (on fake videos): 0.08
 | Actual Real | 48  | 2  |
 | Actual Fake | 46  | 4  |
 
-**Blink Detection**
+**Blink Detection**  
 True Positives: 44  
 True Negatives: 14  
 False Positives: 18  
