@@ -1,7 +1,7 @@
 # vgg19 model based on https://github.com/rahul9903/Deepfake/blob/main/Deepfake_detection.ipynb
 # thanks to Pradyumna Yadav, Priyansh Sharma, and Sakshi Verma
 # also influenced by https://www.kaggle.com/code/navneethkrishna23/deepfake-detection-vgg16
-# thanks to Navneeth Krishna
+# thanks to Navneeth Krishna, Darshan V Prasad, Haxrsxha, and Sanjay Tc
 
 from os import listdir
 from pathlib import Path
