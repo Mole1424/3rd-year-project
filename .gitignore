@@ -4,9 +4,7 @@ venv/
 __pycache__/
 
 proof-of-concept/EARs/
-proof-of-concept/vgg19.h5
-proof-of-concept/accuracy.png
-proof-of-concept/loss.png
+proof-of-concept/*.png
 
 *.err
 *.out

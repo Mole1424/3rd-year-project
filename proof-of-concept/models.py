@@ -3,6 +3,9 @@
 # also influenced by https://www.kaggle.com/code/navneethkrishna23/deepfake-detection-vgg16
 # thanks to Navneeth Krishna, Darshan V Prasad, Haxrsxha, and Sanjay Tc
 
+# resnet model based on https://www.kaggle.com/code/lightningblunt/deepfake-image-detection-using-resnet50
+# thanks to Manas Tiwari
+
 from os import listdir
 from pathlib import Path
 
@@ -10,18 +13,24 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.model_selection import train_test_split
-from tensorflow.config import list_physical_devices  # type: ignore
+from tensorflow.config import list_physical_devices  # type: ignore  # noqa: F401
 from tensorflow.keras import optimizers  # type: ignore
-from tensorflow.keras.applications import VGG19  # type: ignore
+from tensorflow.keras.applications import VGG19, ResNet50  # type: ignore
 from tensorflow.keras.callbacks import History  # type: ignore
-from tensorflow.keras.layers import Dense, GlobalAveragePooling2D  # type: ignore
+from tensorflow.keras.layers import (  # type: ignore
+    BatchNormalization,
+    Dense,
+    Dropout,
+    GlobalAveragePooling2D,
+)
 from tensorflow.keras.models import Sequential, load_model  # type: ignore
 from tensorflow.keras.preprocessing.image import img_to_array, load_img  # type: ignore
 from tensorflow.keras.utils import to_categorical  # type: ignore
 
 path_to_train_data = "/dcs/large/u2204489/faceforensics/train"
 path_to_test_data = "/dcs/large/u2204489/faceforensics"
-model_path = "/dcs/large/u2204489/vgg19.keras"
+vgg_model_path = "/dcs/large/u2204489/vgg19.keras"
+resnet_model_path = "/dcs/large/u2204489/resnet50.keras"
 input_shape = (256, 256, 3)
 
 
@@ -53,7 +62,7 @@ def create_image_dataset() -> None:
             cap.release()
 
 
-def save_graphs(history: History, epochs: int) -> None:
+def save_graphs(history: History, epochs: int, model_type: str) -> None:
     # plot the accuracy and loss graphs
     plt.figure()
     epoch_list = list(range(1, epochs + 1))
@@ -63,8 +72,8 @@ def save_graphs(history: History, epochs: int) -> None:
     plt.xticks(epoch_list)
     plt.ylabel("Accuracy")
     plt.legend()
-    plt.title("Accuracy for VGG19")
-    plt.savefig("accuracy.png")
+    plt.title(f"Accuracy for {model_type}")
+    plt.savefig(f"{model_type}-accuracy.png")
 
     plt.figure()
     plt.plot(epoch_list, history.history["loss"], label="Train Loss")
@@ -73,11 +82,11 @@ def save_graphs(history: History, epochs: int) -> None:
     plt.xticks(epoch_list)
     plt.ylabel("Loss")
     plt.legend()
-    plt.title("Loss for VGG19")
-    plt.savefig("loss.png")
+    plt.title(f"Loss for {model_type}")
+    plt.savefig(f"{model_type}-loss.png")
 
 
-def train_model() -> None:
+def preprocess_data() -> tuple:
     # X is images, Y is real(0)/fake(1)
     X, Y = [], []  # noqa: N806
 
@@ -105,6 +114,11 @@ def train_model() -> None:
     X_train, X_val, Y_train, Y_val = train_test_split(  # noqa: N806
         X, Y, test_size=0.2, random_state=5
     )
+    return X_train, X_val, Y_train, Y_val
+
+
+def train_vgg_model() -> None:
+    X_train, X_val, Y_train, Y_val = preprocess_data()  # noqa: N806
 
     # create the VGG19 model
     vgg19 = VGG19(include_top=False, weights="imagenet", input_shape=input_shape)
@@ -135,18 +149,53 @@ def train_model() -> None:
         verbose=1,
     )
     # save the model and graphs
-    model.save(model_path)
-    save_graphs(history, epochs)
+    model.save(vgg_model_path)
+    save_graphs(history, epochs, "vgg19")
+
+
+def train_resnet_model() -> None:
+    X_train, X_val, Y_train, Y_val = preprocess_data()  # noqa: N806
+
+    resnet = ResNet50(weights="imagenet", include_top=False, input_shape=input_shape)
+    model = Sequential()
+    model.add(resnet)
+    model.add(GlobalAveragePooling2D())
+    model.add(Dense(64, activation="relu"))
+    model.add(BatchNormalization())
+    model.add(Dropout(0.5))
+    model.add(Dense(2, activation="softmax"))
+    model.compile(
+        optimizer=optimizers.Adam(),
+        loss="binary_crossentropy",
+        metrics=["accuracy"],
+    )
+
+    epochs = 8
+    steps_per_epoch = 256
+    validation_steps = 256
+    history = model.fit(
+        X_train,
+        Y_train,
+        epochs=epochs,
+        steps_per_epoch=steps_per_epoch,
+        validation_data=(X_val, Y_val),
+        validation_steps=validation_steps,
+    )
+    model.save(resnet_model_path)
+    save_graphs(history, epochs, "resnet50")
 
 
 def process_video(
     video_path: str,
     is_real: bool,
-    model: Sequential,
-) -> bool:
+    vgg_model: Sequential,
+    resnet_model: Sequential,
+) -> tuple:
     # open the video and get the frame rate
     cap = cv2.VideoCapture(video_path)
-    count = 0
+    vgg_count = 0
+    resnet_count = 0
+
     while cap.isOpened():
         # attempt to read the video frame by frame
         ret, frame = cap.read()
@@ -157,29 +206,33 @@ def process_video(
         # classify the frame as real or fake
         img = img_to_array(img).flatten() / 255.0
         img = img.reshape(-1, 256, 256, 3)
-        prediction = model.predict(img, verbose=0)
-        if np.argmax(prediction) == 1:
-            count += 1
+        vgg_prediction = vgg_model.predict(img, verbose=0)
+        resnet_prediction = resnet_model.predict(img, verbose=0)
+        if np.argmax(vgg_prediction) == 1:
+            vgg_count += 1
+        if np.argmax(resnet_prediction) == 1:
+            resnet_count += 1
 
     cap.release()
     # a video is classified as fake if >10 frames are fake
     threshold = 100
-    fake = count > threshold
-    correct = fake != is_real
-    print(
-        f"video: {video_path}, is_real: {is_real}, count: {count}, correct: {correct}"
-    )
-    return correct
+    vgg_fake = vgg_count > threshold
+    vgg_correct = vgg_fake != is_real
+
+    resnet_fake = resnet_count > threshold
+    resnet_correct = resnet_fake != is_real
+
+    return vgg_correct, resnet_correct
 
 
 def test_data() -> None:
-    true_positives = 0
-    true_negatives = 0
-    false_positives = 0
-    false_negatives = 0
+    # [false positive, true negative, false negative, true positive]
+    vgg_correct = [0, 0, 0, 0]
+    resnet_correct = [0, 0, 0, 0]
 
     # pre-load models for performance
-    model = load_model(model_path)
+    vgg_model = load_model(vgg_model_path)
+    resnet_model = load_model(resnet_model_path)
 
     # loop over the test videos
     video_paths = [
@@ -190,19 +243,25 @@ def test_data() -> None:
 
     for video_path, is_real in video_paths:
         # process the video and update the counts
-        is_correct = process_video(video_path, is_real, model)
-        true_positives += is_real and is_correct
-        false_negatives += is_real and not is_correct
-        true_negatives += not is_real and is_correct
-        false_positives += not is_real and not is_correct
+        vgg, resnet = process_video(video_path, is_real, vgg_model, resnet_model)
+        vgg_correct[2 * is_real + vgg] += 1
+        resnet_correct[2 * is_real + resnet] += 1
 
-    print(f"True Positives: {true_positives}")
-    print(f"True Negatives: {true_negatives}")
-    print(f"False Positives: {false_positives}")
-    print(f"False Negatives: {false_negatives}")
-    accuracy = (true_positives + true_negatives) / (
-        true_positives + true_negatives + false_positives + false_negatives
-    )
+    # print the results
+    print("VGG19")
+    print(f"True Positives: {vgg_correct[3]}")
+    print(f"True Negatives: {vgg_correct[1]}")
+    print(f"False Positives: {vgg_correct[0]}")
+    print(f"False Negatives: {vgg_correct[2]}")
+    accuracy = (vgg_correct[1] + vgg_correct[3]) / sum(vgg_correct)
+    print(f"Accuracy: {accuracy}")
+    print()
+    print("ResNet50")
+    print(f"True Positives: {resnet_correct[3]}")
+    print(f"True Negatives: {resnet_correct[1]}")
+    print(f"False Positives: {resnet_correct[0]}")
+    print(f"False Negatives: {resnet_correct[2]}")
+    accuracy = (resnet_correct[1] + resnet_correct[3]) / sum(resnet_correct)
     print(f"Accuracy: {accuracy}")
 
 
@@ -213,11 +272,16 @@ if __name__ == "__main__":
         create_image_dataset()
     print("Dataset created")
 
-    model_trained = False
-    if not model_trained:
-        print(list_physical_devices("GPU"))
-        train_model()
-    print("Model trained")
+    vgg_trained = False
+    if not vgg_trained:
+        # print(list_physical_devices("GPU"))
+        train_vgg_model()
+    print("VGG model trained")
+
+    resnet_trained = False
+    if not resnet_trained:
+        train_resnet_model()
+    print("ResNet model trained")
 
     test_data()
     print("done :)")
