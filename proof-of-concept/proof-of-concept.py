@@ -1,5 +1,5 @@
-from concurrent.futures import ThreadPoolExecutor
 from math import floor
+from multiprocessing import Pool
 from os import listdir
 from pathlib import Path
 from typing import Tuple, Union
@@ -20,6 +20,9 @@ path_to_dataset = "/dcs/large/u2204489/faceforensics"
 # load the VGG19 model and create a foolbox model
 vgg19_model = load_model("/dcs/large/u2204489/vgg19.keras")
 foolbox_model = TensorFlowModel(vgg19_model, bounds=(0, 255))
+
+# load the ResNet50 model
+resnet_model = load_model("/dcs/large/u2204489/resnet50.keras")
 
 # load the mediapipe model with options
 mediapipe_model_path = "/dcs/large/u2204489/face_landmarker.task"
@@ -104,6 +107,7 @@ def create_ear_plot(  # noqa: PLR0913
         f"Fake: <={min_blinks}, Actual: {blink_count}, Correct: {is_correct}, Perturbated: {perturbated}"  # noqa: E501
     )
     plt.savefig(f"EARs/{video_name}_{perturbated}.png")
+    plt.close()
 
 
 # given a list of EARs, calculate if the video is real or fake
@@ -152,14 +156,14 @@ def process_ears(
     return correct
 
 
-# classify a frame using the VGG19 model
-def process_frame_vgg(frame: np.ndarray) -> np.ndarray:
+# classify a frame using the VGG19 and ResNet50 model
+def process_frame_models(frame: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     # resize the face to 256x256 and normalise the pixel values
     frame = cv.resize(frame, (256, 256))
     frame = img_to_array(frame).flatten() / 255.0
     frame = frame.reshape(-1, 256, 256, 3)
     # classify using vgg19
-    return vgg19_model.predict(frame, verbose=0)
+    return vgg19_model.predict(frame, verbose=0), resnet_model.predict(frame, verbose=0)
 
 
 # add guided noise to a frame
@@ -194,16 +198,19 @@ def perturbate_frame(frame: np.ndarray) -> np.ndarray:
 
 
 # process a video and return the classification results
-def process_video(video_path: str, is_real: bool) -> Tuple[bool, int, bool, int, bool]:
+def process_video(
+    video_path: str, is_real: bool
+) -> Tuple[bool, bool, int, bool, bool, int, bool]:
     print(f"Processing video: {video_path}")
     # get the video and metadata
     video = cv.VideoCapture(video_path)
     frame_rate = video.get(cv.CAP_PROP_FPS)
     video_length = int(video.get(cv.CAP_PROP_FRAME_COUNT) / frame_rate)
 
-    # initalise trackers for vgg and blinking
+    # initalise trackers for vgg, resnet, and blinking
     ears, perturbated_ears = [], []
     vgg_fake_frames, perturbated_vgg_fake_frames = 0, 0
+    resnet_fake_frames, perturbated_resnet_fake_frames = 0, 0
 
     with (
         FaceLandmarker.create_from_options(options) as landmarker,
@@ -218,16 +225,25 @@ def process_video(video_path: str, is_real: bool) -> Tuple[bool, int, bool, int,
             # perturbate the frame only if fake
             perturbated_frame = frame if is_real else perturbate_frame(frame)
 
-            # classify the frame using the VGG19 model
-            vgg_prediction = process_frame_vgg(frame)
+            # classify the frame using the VGG19 and ResNet50 model
+            vgg_prediction, resnet_prediction = process_frame_models(frame)
             if len(vgg_prediction) == 0 or np.argmax(vgg_prediction) == 1:
                 vgg_fake_frames += 1
-            prerurbated_vgg_prediction = process_frame_vgg(perturbated_frame)
+            if len(resnet_prediction) == 0 or np.argmax(resnet_prediction) == 1:
+                resnet_fake_frames += 1
+            perturbated_vgg_prediction, perturbated_resnet_prediction = (
+                process_frame_models(perturbated_frame)
+            )
             if (
-                len(prerurbated_vgg_prediction) == 0
-                or np.argmax(prerurbated_vgg_prediction) == 1
+                len(perturbated_vgg_prediction) == 0
+                or np.argmax(perturbated_vgg_prediction) == 1
             ):
                 perturbated_vgg_fake_frames += 1
+            if (
+                len(perturbated_resnet_prediction) == 0
+                or np.argmax(perturbated_resnet_prediction) == 1
+            ):
+                perturbated_resnet_fake_frames += 1
 
             # get the timestamp of the frame and detect face landmarks
             timestamp = int(video.get(cv.CAP_PROP_POS_MSEC))
@@ -247,6 +263,13 @@ def process_video(video_path: str, is_real: bool) -> Tuple[bool, int, bool, int,
     vgg_correct = (vgg_fake_frames <= vgg_threshold) == is_real
     perturbated_vgg_correct = (perturbated_vgg_fake_frames <= vgg_threshold) == is_real
 
+    # classify video using resnet
+    resnet_threshold = 100
+    resnet_correct = (resnet_fake_frames <= resnet_threshold) == is_real
+    perturbated_resnet_correct = (
+        perturbated_resnet_fake_frames <= resnet_threshold
+    ) == is_real
+
     # classify video using blink detection
     blink_correct = process_ears(
         ears, video_length, is_real, video_path.split("/")[-1], False
@@ -257,8 +280,10 @@ def process_video(video_path: str, is_real: bool) -> Tuple[bool, int, bool, int,
 
     return (
         vgg_correct,
+        resnet_correct,
         blink_correct,
         perturbated_vgg_correct,
+        perturbated_resnet_correct,
         perturbated_blink_correct,
         is_real,
     )
@@ -296,19 +321,31 @@ def main() -> None:
 
     # process videos in parallel
     # results = [process_video(*video_path) for video_path in video_paths]
-    with ThreadPoolExecutor() as executor:
-        results = executor.map(lambda args: process_video(*args), video_paths)
+    with Pool() as pool:
+        results = pool.starmap(process_video, video_paths)
 
     # [false positive, true negative, false negative, true positive]
     # for original and perturbated
     vgg_correct = [0, 0, 0, 0, 0, 0, 0, 0]
+    resnet_correct = [0, 0, 0, 0, 0, 0, 0, 0]
     # [..., unkown fake, unkown real]
     blink_correct = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
     # aggregate the results
-    for vgg, blink, perturbated_vgg, perturbated_blink, is_real in results:
+    for (
+        vgg,
+        resnet,
+        blink,
+        perturbated_vgg,
+        perturbated_resnet,
+        perturbated_blink,
+        is_real,
+    ) in results:
         vgg_correct[2 * is_real + vgg] += 1
         vgg_correct[4 + 2 * is_real + perturbated_vgg] += 1
+        resnet_correct[2 * is_real + resnet] += 1
+        resnet_correct[4 + 2 * is_real + perturbated_resnet] += 1
+
         if blink == 2:  # noqa: PLR2004
             blink_correct[4 + is_real] += 1
         else:
@@ -320,6 +357,8 @@ def main() -> None:
 
     print_results("VGG19", vgg_correct[:4])
     print_results("Perturbated VGG19", vgg_correct[4:])
+    print_results("ResNet50", resnet_correct[:4])
+    print_results("Perturbated ResNet50", resnet_correct[4:])
     print_results("Blink Detection", blink_correct[6:])
     print_results("Perturbated Blink Detection", blink_correct[:6])
 

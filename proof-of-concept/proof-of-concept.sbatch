@@ -15,4 +15,4 @@ source /etc/profile.d/conda.sh
 
 module load CUDA
 source venv/bin/activate
-python3.12 -u proof-of-concept.py
+python3.12 proof-of-concept.py

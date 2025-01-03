@@ -32,8 +32,9 @@ Accuracy (on fake videos): 0.68
 
 ### Conventional Detection
 
-The Fast Gradient Sign Method was prooved effective against a VGG-based DeepFake Detector [Gandhi and Jain](https://ieeexplore.ieee.org/abstract/document/9207034). I used implementations from [Yadav et al](https://github.com/rahul9903/Deepfake/blob/main/Deepfake_detection.ipynb) and [Krishna et al](https://www.kaggle.com/code/navneethkrishna23/deepfake-detection-vgg16) to train and then predict using VGG19. An additional 50 real and 50 fake videos were used for testing the proof of concepts. The result for conventional detection were as follows:
+The Fast Gradient Sign Method was prooved effective against a VGG-based and ResNet-based DeepFake Detector [Gandhi and Jain](https://ieeexplore.ieee.org/abstract/document/9207034). I used implementations from [Yadav et al](https://github.com/rahul9903/Deepfake/blob/main/Deepfake_detection.ipynb) and [Krishna et al](https://www.kaggle.com/code/navneethkrishna23/deepfake-detection-vgg16) to train and then predict using VGG19 and [Manas Tiwari](https://www.kaggle.com/code/lightningblunt/deepfake-image-detection-using-resnet50) for the ResNet model (the resnet model was modified to output a binary output rather than a probability to unify the vgg and resnet implementations). An additional 50 real and 50 fake videos were used for testing the proof of concepts. The result for conventional detection were as follows:
 
+**VGG19**  
 True Positives: 48  
 True Negatives: 50  
 False Positives: 0  
@@ -45,6 +46,19 @@ Accuracy (on fake videos): 1
 |-|-|-|
 | Actual Real | 48  | 2  |
 | Actual Fake | 0   | 50 |
+
+**ResNet**  
+True Positives: 45  
+True Negatives: 50  
+False Positives: 5  
+False Negatives: 0  
+Accuracy: 0.91  
+Accuracy (on fake videos): 1  
+
+| Confusion Matrix | Predicted Real | Predicted Fake |
+|-|-|-|
+| Actual Real | 45  | 0  |
+| Actual Fake | 5   | 50 |
 
 ### Perturbation using Fast Gradient Sign Method
 
@@ -62,6 +76,20 @@ Accuracy (on fake videos): 0.08
 |-|-|-|
 | Actual Real | 48  | 2  |
 | Actual Fake | 46  | 4  |
+
+**ResNet**
+True Positives: 45  
+True Negatives: 46  
+False Positives: 4  
+False Negatives: 5  
+Accuracy: 0.91  
+Accuracy (on fake videos): 0.92
+
+| Confusion Matrix | Predicted Real | Predicted Fake |
+|-|-|-|
+| Actual Real | 45  | 5  |
+| Actual Fake | 4   | 46 |
+
 
 **Blink Detection**  
 True Positives: 44  
@@ -81,6 +109,6 @@ Accuracy (on fake videos): 0.64
 
 ### Conclusion
 
-The results are promising: adversarial perturbation can be used to fool a VGG19-based DeepFake detector, but not a blink detection model. Hence this project has a basis in reality.  
+The results are promising: adversarial perturbation can be used to fool a VGG19-based DeepFake detector, but has a lesser effect on both the ResNet50-based DeepFake detector and the blink detection model. However, the ResNet model still showed a larger degredation in performance when compared to the blink detection model (a drop in 4% vs 8%).
 
-The next steps are to improve the blink detection model (CNNs?) and to find a faster implementation of the CW-L2 method and investigate other noise attacks. The project will then be expanded to include more models and more datasets to further test the robustness of the adversarial perturbation.
+The next steps are to improve the blink detection model (CNNs?) and to find a faster implementation of the CW-L2 method and investigate other noise attacks. Custom implementations of all other attacks will need to be made to allow for specific targeting of the blink detection model which current methods do not provide. The project will then be expanded to include more models and more datasets to further test the robustness of the adversarial perturbation.
