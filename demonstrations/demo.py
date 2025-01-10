@@ -1,7 +1,10 @@
 import sys
+import threading
 
 import cv2 as cv
+import matplotlib.pyplot as plt
 import mediapipe as mp
+from matplotlib.animation import FuncAnimation
 
 path_to_dataset = "/dcs/large/u2204489/faceforensics"
 
@@ -14,6 +17,27 @@ options = FaceLandmarkerOptions(
     base_options=BaseOptions(model_asset_path=mediapipe_model_path),
     running_mode=VisionRunningMode.VIDEO,
 )
+
+ears = []
+
+
+def plot_ears() -> None:
+    global ears  # noqa: PLW0602
+
+    figure, axis = plt.subplots()
+    x_data, y_data = [], []
+
+    def update(frame) -> None:  # noqa: ANN001, ARG001
+        if len(ears) > len(x_data):
+            x_data.append(len(x_data))
+            y_data.append(ears[len(x_data) - 1])
+        axis.clear()
+        axis.set_xlabel("Time")
+        axis.set_ylabel("EAR")
+        axis.plot(x_data, y_data, label="EAR")
+
+    _ = FuncAnimation(figure, update, interval=2)  # type: ignore
+    plt.show()
 
 
 # given a list of eye landmarks, calculate the eye aspect ratio (EAR)
@@ -30,10 +54,10 @@ def calculate_ear(eye_landmarks: list) -> float:
     return (p2_p6 + p3_p5) / (2.0 * p1_p4)
 
 
-def run_video():
+def run_video() -> None:
     path_to_video = f"{path_to_dataset}/fake/09_13__kitchen_pan__21H6XSPE.mp4"
     video = cv.VideoCapture(path_to_video)
-    ears = []
+    global ears  # noqa: PLW0602
 
     with FaceLandmarker.create_from_options(options) as face_landmarker:
         while video.isOpened():
@@ -70,6 +94,17 @@ def run_video():
                     color=(0, 0, 255),
                     thickness=-1,
                 )
+            # add ear to top right of frame
+            cv.putText(
+                original_frame,
+                f"EAR: {ears[-1]:.2f}",
+                (frame_width - 200, 50),
+                cv.FONT_HERSHEY_SIMPLEX,
+                1,
+                (0, 0, 255),
+                2,
+                cv.LINE_AA,
+            )
             cv.imshow("Frame", original_frame)
             cv.waitKey(1)
 
@@ -82,9 +117,12 @@ if __name__ == "__main__":
         arg = sys.argv[1]
     except IndexError:
         print('Please provide an argument: "video" or "live"')
+
     if arg == "video":
-        run_video()
+        threading.Thread(target=run_video).start()
+        plot_ears()
     elif arg == "live":
+        threading.Thread(target=run_video).start()
         run_live()
     else:
         print('Invalid argument. Please provide "video" or "live"')
