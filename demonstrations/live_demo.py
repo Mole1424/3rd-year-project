@@ -6,9 +6,7 @@ import matplotlib.pyplot as plt
 import mediapipe as mp
 from matplotlib.animation import FuncAnimation
 
-path_to_dataset = "/dcs/large/u2204489/faceforensics"
-
-mediapipe_model_path = "/dcs/large/u2204489/face_landmarker.task"
+mediapipe_model_path = "face_landmarker.task"
 BaseOptions = mp.tasks.BaseOptions
 FaceLandmarker = mp.tasks.vision.FaceLandmarker
 FaceLandmarkerOptions = mp.tasks.vision.FaceLandmarkerOptions
@@ -22,8 +20,6 @@ ears = []
 
 
 def plot_ears() -> None:
-    global ears  # noqa: PLW0602
-
     figure, axis = plt.subplots()
     x_data, y_data = [], []
 
@@ -54,11 +50,7 @@ def calculate_ear(eye_landmarks: list) -> float:
     return (p2_p6 + p3_p5) / (2.0 * p1_p4)
 
 
-def run_video() -> None:
-    path_to_video = f"{path_to_dataset}/fake/09_13__kitchen_pan__21H6XSPE.mp4"
-    video = cv.VideoCapture(path_to_video)
-    global ears  # noqa: PLW0602
-
+def process_video(video: cv.VideoCapture, live: bool) -> None:
     with FaceLandmarker.create_from_options(options) as face_landmarker:
         while video.isOpened():
             success, frame = video.read()
@@ -66,7 +58,11 @@ def run_video() -> None:
                 break
 
             frame_height, frame_width, _ = frame.shape
+            if live:
+                frame = cv.resize(frame, (frame_width * 2, frame_height * 2))
+                frame_height, frame_width, _ = frame.shape
             original_frame = frame.copy()
+
             frame_rgb = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
             mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
             face_landmarker_result = face_landmarker.detect_for_video(
@@ -107,7 +103,8 @@ def run_video() -> None:
             )
             cv.imshow("Frame", original_frame)
             cv.waitKey(1)
-
+            if live and cv.waitKey(1) & 0xFF == ord("q"):
+                break
     video.release()
 
 
@@ -118,11 +115,7 @@ if __name__ == "__main__":
     except IndexError:
         print('Please provide an argument: "video" or "live"')
 
-    if arg == "video":
-        threading.Thread(target=run_video).start()
-        plot_ears()
-    elif arg == "live":
-        threading.Thread(target=run_video).start()
-        run_live()
-    else:
-        print('Invalid argument. Please provide "video" or "live"')
+    source = 0 if arg == "live" else "09_13__kitchen_pan__21H6XSPE.mp4"
+    video = cv.VideoCapture(source)
+    threading.Thread(target=process_video, args=(video, arg == "live")).start()
+    plot_ears()
