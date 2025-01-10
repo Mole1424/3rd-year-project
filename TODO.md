@@ -1,6 +1,7 @@
 ## Proof of Concept
-- [ ] Add RESNET50 model to proof of concept
+- [X] Add RESNET50 model to proof of concept
 - [ ] Start write up for main diss
+- [ ] Make demos (live view, noise visualisation, etc.)
 
 ## Main model
 - [ ] Research and implement custom model for eye landmark detection (cropping on eye, then some kind of pre-trained model?)
