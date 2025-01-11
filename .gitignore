@@ -6,5 +6,7 @@ __pycache__/
 proof-of-concept/EARs/
 proof-of-concept/*.png
 
+demonstrations/images/
+
 *.err
 *.out
