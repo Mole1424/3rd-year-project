@@ -170,7 +170,6 @@ def process_frame_models(frame: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
 def perturbate_frame(frame: np.ndarray) -> np.ndarray:
     # save the original frame
     original_dimensions = frame.shape
-    original_frame = frame
 
     # pre-process frame for the VGG19 model
     frame = cv.resize(frame, (256, 256))
@@ -181,7 +180,7 @@ def perturbate_frame(frame: np.ndarray) -> np.ndarray:
     # generate noise using the fast gradient sign attack
     attack = LinfFastGradientAttack()
     epsilon = 0.1
-    noise = attack.run(
+    noisy_frame = attack.run(
         foolbox_model,
         frame,
         # attempt to misclassify the frame as real
@@ -190,11 +189,10 @@ def perturbate_frame(frame: np.ndarray) -> np.ndarray:
     )
 
     # post-process the noise and add it to the original frame
-    noise = np.squeeze(noise, axis=0)
-    noise = np.clip(noise, 0, 1)
-    noise = (noise * 255).astype(np.uint8)
-    noise = cv.resize(noise, (original_dimensions[1], original_dimensions[0]))
-    return cv.addWeighted(original_frame, 1, noise, 1, 0)
+    noisy_frame = np.squeeze(noisy_frame, axis=0)
+    noisy_frame = np.clip(noisy_frame, 0, 1)
+    noisy_frame = (noisy_frame * 255).astype(np.uint8)
+    return cv.resize(noisy_frame, (original_dimensions[1], original_dimensions[0]))
 
 
 # process a video and return the classification results
@@ -320,9 +318,9 @@ def main() -> None:
     ]
 
     # process videos in parallel
-    # results = [process_video(*video_path) for video_path in video_paths]
-    with Pool() as pool:
-        results = pool.starmap(process_video, video_paths)
+    results = [process_video(*video_path) for video_path in video_paths]
+    # with Pool() as pool:
+    #     results = pool.starmap(process_video, video_paths)
 
     # [false positive, true negative, false negative, true positive]
     # for original and perturbated

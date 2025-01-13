@@ -16,19 +16,19 @@ The datset used was the FaceForensics++ dataset ([Rosslet et al](https://github.
 Blink detection was accomplished using [Google MediaPipe's Face Landmarker model](https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker) to detect the key points around the eyes to then calculate EAR (Eye Aspect Ratio) to determine whether a blink has occurred. The threshold for a blink was set at `min(EAR) + 0.5 * standard_deviation(EAR)` to account for the variability in the data. The result for blink detection were as follows:
 
 True Positives (declared real when real): 44  
-True Negatives (declared fake when fake): 10  
-False Positives (declared real when fake): 16  
+True Negatives (declared fake when fake): 9  
+False Positives (declared real when fake): 14  
 False Negatives (delcared fake when real): 5  
 Unknown Real: 1  
-Unknown Fake: 24  
-Accuracy: 0.72  
-Accuracy (assuming unknowns are classed fake): 0.78  
-Accuracy (on fake videos): 0.68
+Unknown Fake: 27  
+Accuracy: 0.7361111111111112  
+Accuracy (assuming unknowns are classed fake): 0.8  
+Accuracy (on fake videos): 0.72  
 
 | Confusion Matrix: | Predicted Real | Predicted Fake |
 |-|-|-|
 | Actual Real | 44   | 5  |
-| Actual Fake | 16   | 10 |
+| Actual Fake | 14   | 9  |
 
 ### Conventional Detection
 
@@ -49,16 +49,16 @@ Accuracy (on fake videos): 1
 
 **ResNet**  
 True Positives: 45  
-True Negatives: 50  
-False Positives: 5  
-False Negatives: 0  
+True Negatives: 45  
+False Positives: 4  
+False Negatives: 5  
 Accuracy: 0.91  
-Accuracy (on fake videos): 1  
+Accuracy (on fake videos): 0.9  
 
 | Confusion Matrix | Predicted Real | Predicted Fake |
 |-|-|-|
-| Actual Real | 45  | 0  |
-| Actual Fake | 5   | 50 |
+| Actual Real | 45  | 5  |
+| Actual Fake | 4   | 46 |
 
 ### Perturbation using Fast Gradient Sign Method
 
@@ -66,29 +66,29 @@ Initially the CW-L2 method was going to be used but was too slow. FGSM was also 
 
 **VGG19**  
 True Positives: 48  
-True Negatives: 4  
-False Positives: 46  
+True Negatives: 0  
+False Positives: 50  
 False Negatives: 2  
 Accuracy: 0.52  
-Accuracy (on fake videos): 0.08
+Accuracy (on fake videos): 0
 
 | Confusion Matrix | Predicted Real | Predicted Fake |
 |-|-|-|
 | Actual Real | 48  | 2  |
-| Actual Fake | 46  | 4  |
+| Actual Fake | 50  | 0  |
 
 **ResNet**
 True Positives: 45  
-True Negatives: 46  
-False Positives: 4  
+True Negatives: 50  
+False Positives: 0  
 False Negatives: 5  
-Accuracy: 0.91  
-Accuracy (on fake videos): 0.92
+Accuracy: 0.95  
+Accuracy (on fake videos): 1
 
 | Confusion Matrix | Predicted Real | Predicted Fake |
 |-|-|-|
 | Actual Real | 45  | 5  |
-| Actual Fake | 4   | 46 |
+| Actual Fake | 0   | 50 |
 
 
 **Blink Detection**  
@@ -109,6 +109,6 @@ Accuracy (on fake videos): 0.64
 
 ### Conclusion
 
-The results are promising: adversarial perturbation can be used to fool a VGG19-based DeepFake detector, but has a lesser effect on both the ResNet50-based DeepFake detector and the blink detection model. However, the ResNet model still showed a larger degredation in performance when compared to the blink detection model (a drop in 4% vs 8%).
+The results are promising: adversarial perturbation can be used to fool a VGG19-based DeepFake detector, but has little to no effect on different models, thus a deliberate attack on a blink detection model will need to be developed. It is worth noting that when changing the method of adding noise, the results of blink detection remained unchanged implying an inherent resistance to noise attacks.
 
 The next steps are to improve the blink detection model (CNNs?) and to find a faster implementation of the CW-L2 method and investigate other noise attacks. Custom implementations of all other attacks will need to be made to allow for specific targeting of the blink detection model which current methods do not provide. The project will then be expanded to include more models and more datasets to further test the robustness of the adversarial perturbation.
