@@ -14,5 +14,5 @@ source /etc/profile.d/modules.sh
 source /etc/profile.d/conda.sh
 
 module load CUDA
-source venv/bin/activate
+source ../venv/bin/activate
 python3.12 proof-of-concept.py
