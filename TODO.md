@@ -1,15 +1,25 @@
 ## Proof of Concept
 - [X] Add RESNET50 model to proof of concept
 - [ ] Start write up for main diss
-- [ ] Make demos (live view, noise visualisation, etc.)
+- [X] Make demos (live view, noise visualisation, etc.)
 
 ## Main model
 - [ ] Research and implement custom model for eye landmark detection (cropping on eye, then some kind of pre-trained model?)
-- [ ] Implement EAR analysis (look at feature vectors being: (length of down, length of up, period closed, period between blinks, etc.))
+  - [ ] Model is from https://www.sciencedirect.com/science/article/pii/S0031320319303772
+  - [ ] Create and annotate dataset (email authors?)
+  - [ ] Train model
+  - [ ] Test model
+- [ ] Implement EAR analysis
+  - Could do a 1d CNN
+  - split each blink into a feature vector (length of down, length of up, period closed, period between blinks, etc.)
+  - non-ML-based analysis (thresholds, entropy, etc.)
+  - or a combination of the above
 
 ## Noise
-- [ ] Test speed of other implementations of CW-L2 attack (look at speedup with multiple-threading and GPU (not in Python?))
-- [ ] Look at other methods (FGSM, FakeRetouch) and implement/improve when necessary
+- [ ] Code own versions of all the noise functions
+  - [ ] CW-L2
+  - [ ] FGSM
+  - [ ] FakeRetouch
 
 ## Testing
 - [ ] Email SCRTP to ask for more space
@@ -17,6 +27,11 @@
 - [ ] Look into complete deepfaked models (not changing the face with another clip, but changing the face with a generated face)
 - [ ] Adapt script to be generalised (`python test.py <path_to_dataset>`)
 - [ ] Work on test script to make multithreaded and save progress as it goes (add buffer back in to speed up testing)
+
+## Presentation
+- [ ] Make presentation
+- [ ] Practice presentation
+- [ ] Present presentation (ideally will have final data by this point)
 
 ## Dissertation
 - [ ] Words (a lot of them (an awful lot of them)) 
