@@ -114,6 +114,7 @@ if __name__ == "__main__":
         arg = sys.argv[1]
     except IndexError:
         print('Please provide an argument: "video" or "live"')
+        sys.exit(1)
 
     source = 0 if arg == "live" else "09_13__kitchen_pan__21H6XSPE.mp4"
     video = cv.VideoCapture(source)
