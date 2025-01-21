@@ -3,8 +3,9 @@
 import sys
 from pathlib import Path
 
-import cv2 as cv  # noqa: F401
+import cv2 as cv
 import numpy as np
+from scipy.io import loadmat
 
 path_to_eyes = "/dcs/large/u2204489/eyes"
 
@@ -39,7 +40,23 @@ def format_helen_dataset() -> None:
         Path(f"{path_to_eyes}/helen/{i}.txt").unlink()
 
 
-def format_eye_datasets(
+def format_aflw_dataset() -> None:
+    annotations = loadmat(f"{path_to_eyes}/aflw/AFLWinfo_release.mat")
+    for i in range(len(annotations["nameList"])):
+        image_title = annotations["nameList"][i][0][0].split("/")[-1].split(".")[0]
+        if Path(f"{path_to_eyes}/aflw/{image_title}.jpg").exists():
+            landmarks = annotations["data"][i]
+            points = list(zip(landmarks[:19], landmarks[19:]))
+            with Path(f"{path_to_eyes}/aflw/{image_title}.pts").open("w") as f:
+                f.write("version: 1\n")
+                f.write(f"n_points: {len(points)}\n")
+                f.write("{\n")
+                for x, y in points:
+                    f.write(f"{x} {y}\n")
+                f.write("}\n")
+
+
+def format_eye_dataset(
     path: str,
     landmark_indices: list[list[int]],
     strong: bool,
@@ -64,24 +81,27 @@ def format_eye_datasets(
         file.unlink()
 
 
-def visualise_points(path: str) -> None:
-    with Path(f"{path}.pts").open() as f:
-        points = np.loadtxt(f, comments=("version:", "n_points:", "{", "}"))
-        img = cv.imread(f"{path}.jpg")
-        for x, y in points:
-            cv.circle(img, (int(float(x)), int(float(y))), 1, (0, 0, 255), -1)
-            cv.putText(
-                img,
-                f"{x}, {y}",
-                (int(float(x)), int(float(y))),
-                cv.FONT_HERSHEY_SIMPLEX,
-                0.3,
-                (0, 0, 0),
-                1,
-            )
-        cv.imshow("image", img)
-        cv.waitKey(0)
-        cv.destroyAllWindows()
+def visualise_points(
+    path: str, image_type: str, points: list[list[int]] | None = None
+) -> None:
+    if points is None:
+        with Path(f"{path}.pts").open() as f:
+            points = np.loadtxt(f, comments=("version:", "n_points:", "{", "}"))  # type: ignore
+    img = cv.imread(f"{path}.{image_type}")
+    for i, (x, y) in enumerate(points):  # type: ignore
+        cv.circle(img, (int(float(x)), int(float(y))), 1, (0, 0, 255), -1)
+        cv.putText(
+            img,
+            f"{i}",
+            (int(float(x)), int(float(y))),
+            cv.FONT_HERSHEY_SIMPLEX,
+            0.3,
+            (255, 255, 255),
+            1,
+        )
+    cv.imshow("image", img)
+    cv.waitKey(0)
+    cv.destroyAllWindows()
 
 
 if __name__ == "__main__":
@@ -94,3 +114,5 @@ if __name__ == "__main__":
 
     if arg == "helen":
         format_helen_dataset()
+    elif arg == "aflw":
+        format_aflw_dataset()
