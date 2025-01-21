@@ -4,9 +4,9 @@
 - [X] Make demos (live view, noise visualisation, etc.)
 
 ## Main model
-- [ ] Research and implement custom model for eye landmark detection (cropping on eye, then some kind of pre-trained model?)
-  - [ ] Model is from https://www.sciencedirect.com/science/article/pii/S0031320319303772
-  - [ ] Create and annotate dataset (email authors?)
+- [X] Research and implement custom model for eye landmark detection (cropping on eye, then some kind of pre-trained model?)
+  - [X] Model is from https://www.sciencedirect.com/science/article/pii/S0031320319303772
+  - [X] Create and annotate dataset (email authors?)
   - [ ] Train model
   - [ ] Test model
 - [ ] Implement EAR analysis
