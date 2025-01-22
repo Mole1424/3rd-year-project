@@ -1,6 +1,7 @@
 # utils for project
 
 import sys
+from os import system
 from pathlib import Path
 
 import cv2 as cv
@@ -297,12 +298,9 @@ def reflect_datasets() -> None:
 # also NFS might complain if hit it too hard
 def reflect_dataset(path: str, type: str) -> None:
     """reflects an individual dataset horizontally"""
-    # delete all files ending in "_r.txt"
-    # can avoid deleting images as will be overwritten
+    # delete all files with "*_r_r*"
     # oops
-    files = list(Path(path).glob("*_r.txt"))
-    for file in files:
-        file.unlink()
+    system("find /dcs/large/u2204489/eyes -type f -name '*_r_r*' -exec rm -f {} +")
 
     files = list(Path(path).glob("*.txt"))
     for file in files:
