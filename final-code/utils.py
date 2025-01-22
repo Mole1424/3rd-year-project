@@ -78,18 +78,23 @@ def visualise_eye_datasets() -> None:
     # 300w
     # visualise_points(f"{path_to_eyes}/300w/indoor_001", "png")
     visualise_bounding_boxes(f"{path_to_eyes}/300w/indoor_001", "png")
+    visualise_bounding_boxes(f"{path_to_eyes}/300w/indoor_001_r", "png")
     # aflw
     # visualise_points(f"{path_to_eyes}/aflw/image00002", "jpg")
     visualise_bounding_boxes(f"{path_to_eyes}/aflw/image00002", "jpg")
+    visualise_bounding_boxes(f"{path_to_eyes}/aflw/image00002_r", "jpg")
     # afw
     # visualise_points(f"{path_to_eyes}/afw/134212_1", "jpg")
     visualise_bounding_boxes(f"{path_to_eyes}/afw/134212_1", "jpg")
+    visualise_bounding_boxes(f"{path_to_eyes}/afw/134212_1_r", "jpg")
     # helen
     # visualise_points(f"{path_to_eyes}/helen/12799337_1", "jpg")
     visualise_bounding_boxes(f"{path_to_eyes}/helen/12799337_1", "jpg")
+    visualise_bounding_boxes(f"{path_to_eyes}/helen/12799337_1_r", "jpg")
     # lfpw
     # visualise_points(f"{path_to_eyes}/lfpw/trainset/image_0001", "png")
     visualise_bounding_boxes(f"{path_to_eyes}/lfpw/trainset/image_0001", "png")
+    visualise_bounding_boxes(f"{path_to_eyes}/lfpw/trainset/image_0001_r", "png")
 
 
 def visualise_points(
@@ -277,6 +282,55 @@ def create_weighted_box(
     return x_mid - width / 2, y_mid - height / 2, width, height
 
 
+def reflect_datasets() -> None:
+    """reflects the datasets horizontally to double the size"""
+    reflect_dataset(f"{path_to_eyes}/300w/", "png")
+    reflect_dataset(f"{path_to_eyes}/aflw/", "jpg")
+    reflect_dataset(f"{path_to_eyes}/afw/", "jpg")
+    reflect_dataset(f"{path_to_eyes}/helen/", "jpg")
+    reflect_dataset(f"{path_to_eyes}/lfpw/testset/", "png")
+    reflect_dataset(f"{path_to_eyes}/lfpw/trainset/", "png")
+
+
+# this takes a while, could be sped up with parallelism
+# but its only run once so not a big deal
+# also NFS might complain if hit it too hard
+def reflect_dataset(path: str, type: str) -> None:
+    """reflects an individual dataset horizontally"""
+    # delete all files ending in "_r.txt"
+    # can avoid deleting images as will be overwritten
+    # oops
+    files = list(Path(path).glob("*_r.txt"))
+    for file in files:
+        file.unlink()
+
+    files = list(Path(path).glob("*.txt"))
+    for file in files:
+        print("Reflecting file:", file)
+        # reflect the image
+        # (thanks to python3.12 for embedded f-strings)
+        img = cv.imread(f"{file.with_suffix(f".{type}")}")
+        reflected_img = cv.flip(img, 1)
+        cv.imwrite(str(file.with_name(file.stem + f"_r.{type}")), reflected_img)
+
+        with Path(file).open() as f:
+            lines = f.read().split("\n")
+
+        file_string = ""
+        # reflect bounding boxes
+        for i in range(6):
+            x, y, w, h = map(float, lines[i].split())
+            file_string += f"{img.shape[1] - x - w} {y} {w} {h}\n"
+        # reflect eye points (if applicable)
+        if len(lines) == 18:  # noqa: PLR2004
+            for i in range(6, 18):
+                x, y = map(float, lines[i].split())
+                file_string += f"{img.shape[1] - x} {y}\n"
+
+        with file.with_name(file.stem + "_r.txt").open("w") as f:
+            f.write(file_string.strip())
+
+
 if __name__ == "__main__":
     arg = None
     try:
@@ -295,6 +349,8 @@ if __name__ == "__main__":
         check_300w_dataset()
     elif arg == "format":
         format_eye_datasets()
+    elif arg == "reflect":
+        reflect_datasets()
     else:
         print("invalid argument")
         sys.exit(1)
