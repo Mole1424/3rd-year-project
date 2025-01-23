@@ -16,6 +16,7 @@ from tensorflow.keras.layers import (  # type: ignore
     RepeatVector,
     TimeDistributed,
 )
+from tensorflow.keras.losses import CategoricalCrossentropy, Huber  # type: ignore
 
 
 def shared_convolutional_model() -> Model:
@@ -65,6 +66,13 @@ def facial_classification_network() -> Model:
 
 
 def reigonal_proposal_network() -> Model:
+    """
+    reigonal proposal network to detect facial reigons
+    output is:
+        label in the form (1, 0, 0, 0)
+        reigon proposals in the form (x, y, w, h)
+        landmarks in the form (x1, y1, ..., x6, y6)
+    """
     pass
 
 
@@ -85,13 +93,44 @@ def faster_rcnn() -> Model:
     return Model(inputs=input, outputs=x, name="faster_rcnn")
 
 
+num_reigon_proposals = 3
+
+
+@tf.function
+def faster_rcnn_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
+    lambda_c = 1 / num_reigon_proposals
+    lambda_l = 1
+    lambda_s = num_reigon_proposals
+
+    total_loss = 0
+    for i in range(num_reigon_proposals):
+        predicted_label = y_pred[i, :4]
+        true_label = y_true[i, :4]
+        total_loss += lambda_c * CategoricalCrossentropy()(true_label, predicted_label)
+
+        if predicted_label >= 1:
+            predicted_bbox = y_pred[i, 4:8]
+            true_bbox = y_true[i, 4:8]
+            total_loss += lambda_l * Huber(reduction="sum")(true_bbox, predicted_bbox)
+        else:
+            predicted_landmarks = y_pred[i, 8:]
+            true_landmarks = y_true[i, 8:]
+            squared_diff = tf.square(predicted_landmarks - true_landmarks)
+            distance_per_landmark = tf.reduce_sum(squared_diff, axis=-1)
+            total_loss += lambda_s * tf.reduce_sum(distance_per_landmark, axis=-1)
+
+    return total_loss
+
+
+time_steps = 4
+
+
 def recurrent_learning_module() -> Model:
     """
     fine tunes the original eye landmarks using LSTM
     """
 
     num_ltsm_units = 256
-    time_steps = 4
     num_landmarks = 6
 
     initial_landmarks = Input(shape=(num_landmarks * 2,))
@@ -117,3 +156,10 @@ def recurrent_learning_module() -> Model:
         outputs=x,
         name="recurrent_learning_module",
     )
+
+
+@tf.function
+def recurrent_learning_module_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
+    cumulative_prediction = tf.cumsum(y_pred, axis=1)
+    final_prediction = cumulative_prediction[:, -1, :]
+    return tf.reduce_mean(tf.reduce_sum(tf.square(y_true - final_prediction), axis=-1))
