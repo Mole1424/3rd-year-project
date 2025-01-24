@@ -3,10 +3,10 @@
 import sys
 from os import system
 from pathlib import Path
+from shutil import copy
 
 import cv2 as cv
 import numpy as np
-from scipy.io import loadmat
 
 path_to_eyes = "/dcs/large/u2204489/eyes"
 
@@ -37,29 +37,6 @@ def format_helen_dataset() -> None:
                     w.write("}")
         # remove old txt file
         Path(f"{path_to_eyes}/helen/{i}.txt").unlink()
-
-
-def format_aflw_dataset() -> None:
-    """reformats the aflw dataset annotations to pts files"""
-    # load mat annotations
-    annotations = loadmat(f"{path_to_eyes}/aflw/AFLWinfo_release.mat")
-
-    # loop over all annotated images
-    for i in range(len(annotations["nameList"])):
-        image_title = annotations["nameList"][i][0][0].split("/")[-1].split(".")[0]
-
-        if Path(f"{path_to_eyes}/aflw/{image_title}.jpg").exists():
-            # convert landmarks from [x1, x2, ..., y1, y2, ...] to [x1, y1, ...]
-            landmarks = annotations["data"][i]
-            points = list(zip(landmarks[:19], landmarks[19:]))
-            # save landmarks to pts file
-            with Path(f"{path_to_eyes}/aflw/{image_title}.pts").open("w") as f:
-                f.write("version: 1\n")
-                f.write(f"n_points: {len(points)}\n")
-                f.write("{\n")
-                for x, y in points:
-                    f.write(f"{x} {y}\n")
-                f.write("}")
 
 
 def check_300w_dataset() -> None:
@@ -232,65 +209,67 @@ def get_rectangle(points: np.ndarray) -> tuple[float, float, float, float]:
 
 def reformat_aflw_dataset() -> None:
     """converts aflw into bounding boxes"""
-    files = list(Path(f"{path_to_eyes}/aflw/").glob("*.pts"))
-    landmarks = [
-        [6, 7, 8],
-        [9, 10, 11],
-        [0, 1, 2],
-        [3, 4, 5],
-        [12, 13, 14],
-        [15, 16, 17],
-    ]
+    # convert pngs to jpgs
+    imgs = list(Path(f"{path_to_eyes}/aflw/").glob("*.png"))
+    for img in imgs:
+        jpg = cv.imread(str(img))
+        cv.imwrite(str(img.with_suffix(".jpg")), jpg)
+        img.unlink()
+
+    # delete all images without a txt file
+    imgs = list(Path(f"{path_to_eyes}/aflw/").rglob("*.jpg"))
+    for img in imgs:
+        # txts are of form "image00002_01.txt"
+        if not Path(f"{path_to_eyes}/aflw/{img.stem}_01.txt").exists():
+            img.unlink()
+
+    files = list(Path(f"{path_to_eyes}/aflw/").glob("*.txt"))
     for file in files:
+        # delete if no corresponding image
+        if not Path(f"{path_to_eyes}/aflw/{file.stem.split("_"[0])}.jpg").exists():
+            file.unlink()
+            continue
+
         print("Processing file:", file)
-        points = np.loadtxt(file, comments=("version:", "n_points:", "{", "}"))
+        points = np.loadtxt(file)
+        aflw_landmarks = [
+            [7, 8, 9, 46, 47, 48, 49, 82, 83],
+            [10, 11, 12, 50, 51, 52, 53, 84, 85],
+            [1, 2, 3, 36, 37, 72, 73, 74],
+            [4, 5, 6, 38, 39, 75, 76, 77],
+            [14, 15, 16, 40, 41, 42, 43, 44, 45, 78, 79, 80, 81],
+            [18, 20, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63],
+        ]
         file_content = ""
-        # create bounding box
-        # the average eye width to height ratio is 0.353 (https://www.researchgate.net/figure/Average-eye-index-average-width-and-average-height-along-with-the-eye-classifications_tbl1_289499995)
-        for landmark in landmarks[:2]:
-            file_content += "{} {} {} {}\n".format(
-                *create_weighted_box(points[landmark], 0.353)
-            )
-        # eyebrows can just take the bounding box of the points
-        for landmark in landmarks[2:4]:
-            file_content += "{} {} {} {}\n".format(*get_rectangle(points[landmark]))
-        # nose
-        nose_points = points[landmarks[4]]
-        x1, y1 = points[8]
-        x2, y2 = points[9]
-        midpoint = [(x1 + x2) / 2, (y1 + y2) / 2]
-        nose_points = np.vstack([nose_points, midpoint])
-        file_content += "{} {} {} {}\n".format(*get_rectangle(nose_points))
-        # mouth
-        file_content += "{} {} {} {}\n".format(
-            *create_weighted_box(points[landmarks[5]], 1)
-        )
-        # save to file
-        with file.with_suffix(".txt").open("w") as f:
+        for landmark in aflw_landmarks:
+            landmarks = points[landmark]
+            x, y, w, h = get_rectangle(landmarks)
+            file_content += f"{x} {y} {w} {h}\n"
+        with Path(file).open("w") as f:
             f.write(file_content.strip())
 
+    # each image (for example image00002.jpg) can have >= 1 txt files related to it
+    # rename the images, to match, copying the image if necessary
+    files = list(Path(f"{path_to_eyes}/aflw/").glob("*.txt"))
+    for file in files:
+        image = Path(f"{path_to_eyes}/aflw/{file.stem.split('_')[0]}.jpg")
+        copy(image, f"{path_to_eyes}/aflw/{file.with_suffix('.jpg')}")
 
-def create_weighted_box(
-    points: np.ndarray, ratio: float = 1
-) -> tuple[float, float, float, float]:
-    """create a bounding box with a given height to width ratio"""
-    x_min, y_min = np.min(points, axis=0)
-    x_max, y_max = np.max(points, axis=0)
-    width = x_max - x_min
-    height = width * ratio
-    x_mid = (x_max + x_min) / 2
-    y_mid = (y_max + y_min) / 2
-    return x_mid - width / 2, y_mid - height / 2, width, height
+    # delete all images without a "_"
+    imgs = list(Path(f"{path_to_eyes}/aflw/").glob("*.jpg"))
+    for img in imgs:
+        if "_" not in img.stem:
+            img.unlink()
 
 
 def reflect_datasets() -> None:
     """reflects the datasets horizontally to double the size"""
-    reflect_dataset(f"{path_to_eyes}/300w/", "png")
+    # reflect_dataset(f"{path_to_eyes}/300w/", "png")
     reflect_dataset(f"{path_to_eyes}/aflw/", "jpg")
-    reflect_dataset(f"{path_to_eyes}/afw/", "jpg")
-    reflect_dataset(f"{path_to_eyes}/helen/", "jpg")
-    reflect_dataset(f"{path_to_eyes}/lfpw/testset/", "png")
-    reflect_dataset(f"{path_to_eyes}/lfpw/trainset/", "png")
+    # reflect_dataset(f"{path_to_eyes}/afw/", "jpg")
+    # reflect_dataset(f"{path_to_eyes}/helen/", "jpg")
+    # reflect_dataset(f"{path_to_eyes}/lfpw/testset/", "png")
+    # reflect_dataset(f"{path_to_eyes}/lfpw/trainset/", "png")
 
 
 # this takes a while, could be sped up with parallelism
@@ -340,7 +319,7 @@ if __name__ == "__main__":
     if arg == "helen":
         format_helen_dataset()
     elif arg == "aflw":
-        format_aflw_dataset()
+        reformat_aflw_dataset()
     elif arg == "visualise":
         visualise_eye_datasets()
     elif arg == "300w":
