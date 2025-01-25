@@ -1,18 +1,26 @@
-# an adapted version of Eye landmarks detection via weakly supervised learning
+# an adapted version of "Eye landmarks detection via weakly supervised learning"
 # available at https://www.sciencedirect.com/science/article/pii/S0031320319303772
 # thanks to Bin Huang, Renwen Chen, Qinbang Zhou, and Wang Xu
 
+# rpn work was aided by "Facial landmark detection by semi-supervised deep learning"
+# available at https://www.sciencedirect.com/science/article/pii/S0031320319303772
+# thanks to Xin Tang, Fang Guo, Jianbing Shen, and Tianyuan Du
+# and "Region Proposal Network(RPN) (in Faster RCNN) from scratch in Keras"
+# available at https://martian1231-py.medium.com/region-proposal-network-rpn-in-faster-rcnn-from-scratch-in-keras-1311c67c13cf
+# thanks to Akash Kewar
+
+import numpy as np
+import pandas as pd
 import tensorflow as tf
 from roi_pooling import ROIPoolingLayer
 from tensorflow.keras import Input, Model  # type: ignore
+from tensorflow.keras.applications import VGG16  # type: ignore
 from tensorflow.keras.layers import (  # type: ignore
     LSTM,
     Concatenate,
-    Conv2D,
     Dense,
     GlobalMaxPool2D,
     Lambda,
-    MaxPool2D,
     RepeatVector,
     TimeDistributed,
 )
@@ -21,31 +29,12 @@ from tensorflow.keras.losses import CategoricalCrossentropy, Huber  # type: igno
 
 def shared_convolutional_model() -> Model:
     """shared convolutional area to act as the backbone"""
-    input = Input(shape=(None, None, 3))
-
-    x = Conv2D(64, (3, 3), activation="relu", padding="same")(input)
-    x = Conv2D(64, (3, 3), activation="relu", padding="same")(x)
-    x = MaxPool2D()(x)  # default for MaxPool2D is (2, 2)
-
-    x = Conv2D(128, (3, 3), activation="relu", padding="same")(x)
-    x = Conv2D(128, (3, 3), activation="relu", padding="same")(x)
-    x = MaxPool2D()(x)
-
-    x = Conv2D(256, (3, 3), activation="relu", padding="same")(x)
-    x = Conv2D(256, (3, 3), activation="relu", padding="same")(x)
-    x = Conv2D(256, (3, 3), activation="relu", padding="same")(x)
-    x = MaxPool2D()(x)
-
-    x = Conv2D(512, (3, 3), activation="relu", padding="same")(x)
-    x = Conv2D(512, (3, 3), activation="relu", padding="same")(x)
-    x = Conv2D(512, (3, 3), activation="relu", padding="same")(x)
-    x = MaxPool2D()(x)
-
-    x = Conv2D(512, (3, 3), activation="relu", padding="same")(x)
-    x = Conv2D(512, (3, 3), activation="relu", padding="same")(x)
-    x = Conv2D(512, (3, 3), activation="relu", padding="same")(x)
-
-    return Model(inputs=input, outputs=x, name="shared_convolutional_model")
+    # VGG16 without the top and final max pooling layer
+    vgg16 = VGG16(include_top=False, input_shape=(None, None, 3))
+    custom_vgg = vgg16.get_layer("block5_conv3").output
+    return Model(
+        inputs=vgg16.input, outputs=custom_vgg, name="shared_convolutional_model"
+    )
 
 
 def facial_classification_network() -> Model:
@@ -65,15 +54,88 @@ def facial_classification_network() -> Model:
     return Model(inputs=input, outputs=x, name="facial_classification_network")
 
 
-def reigonal_proposal_network() -> Model:
+def iou(box1: np.ndarray, box2: np.ndarray) -> float:
     """
-    reigonal proposal network to detect facial reigons
-    output is:
-        label in the form (1, 0, 0, 0)
-        reigon proposals in the form (x, y, w, h)
-        landmarks in the form (x1, y1, ..., x6, y6)
+    intersection over union
     """
-    pass
+    x1, y1, w1, h1 = box1
+    x2, y2, w2, h2 = box2
+
+    x1 = max(x1, x2)
+    y1 = max(y1, y2)
+    x2 = min(x1 + w1, x2 + w2)
+    y2 = min(y1 + h1, y2 + h2)
+
+    intersection = max(0, x2 - x1) * max(0, y2 - y1)
+    union = w1 * h1 + w2 * h2 - intersection
+    if union == 0:
+        return 0
+
+    return intersection / union
+
+
+def train_regional_proposal_network(
+    image: np.ndarray, bounding_boxes: np.ndarray
+) -> Model:
+    """
+    Regional proposal network to detect facial regions
+    Output:
+        - Label in the form (1, 0, 0, 0)
+        - 6x region proposals in the form (x, y, w, h)
+        - 12x landmarks in the form (x1, y1, ..., x6, y6)
+    """
+    image_height, image_width, _ = image.shape
+
+    # labels are 0..4 for 4 facial regions and 5 for background
+    labels = np.zeros(5)
+
+    # run through vgg16
+    backbones = shared_convolutional_model()
+    features = backbones.predict(np.expand_dims(image, axis=0))
+    _, feature_width, feature_height, _ = features.shape
+
+    # calculate stride for anchors
+    x_stride, y_stride = image_width / feature_width, image_height / feature_height
+
+    # find centers of each anchor
+    x_centers = np.arange(x_stride / 2, image_width, x_stride)
+    y_centers = np.arange(y_stride / 2, image_height, y_stride)
+    centers = np.array(np.meshgrid(x_centers, y_centers, indexing="xy")).T.reshape(
+        -1, 2
+    )
+
+    # initial anchor params
+    anchor_ratios = [0.5, 1, 2]
+    anchor_scales = [8, 16, 32]
+    anchors = np.zeros(
+        (feature_width * feature_height * len(anchor_ratios) * len(anchor_scales), 4)
+    )
+
+    # generate anchors for all centers
+    for i, (x, y) in enumerate(centers):
+        for ratio in anchor_ratios:
+            for scale in anchor_scales:
+                h = np.sqrt(scale**2 / ratio) * y_stride
+                w = h * ratio * x_stride / y_stride
+                anchors[i] = [x - w / 2, y - h / 2, x + w / 2, y + h / 2]
+
+    # we only care about anchors that are inside the image
+    inside_anchors = anchors[
+        (anchors[:, 0] >= 0)
+        & (anchors[:, 1] >= 0)
+        & (anchors[:, 2] <= image_width)
+        & (anchors[:, 3] <= image_height)
+    ]
+
+    # find iou for each anchor with each bounding box
+    ious = np.array(
+        [
+            [iou(anchor, ground_truth) for ground_truth in bounding_boxes]
+            for anchor in inside_anchors
+        ]
+    )
+
+    return Model()  # keep pylance happy for the time being
 
 
 def faster_rcnn() -> Model:
