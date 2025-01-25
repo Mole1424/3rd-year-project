@@ -7,6 +7,7 @@ from shutil import copy
 
 import cv2 as cv
 import numpy as np
+from PIL import Image
 
 path_to_eyes = "/dcs/large/u2204489/eyes"
 
@@ -212,34 +213,33 @@ def reformat_aflw_dataset() -> None:
     # convert pngs to jpgs
     imgs = list(Path(f"{path_to_eyes}/aflw/").glob("*.png"))
     for img in imgs:
-        jpg = cv.imread(str(img))
-        cv.imwrite(str(img.with_suffix(".jpg")), jpg)
+        print("Converting:", img)
+        jpg = Image.open(img).convert("RGB")
+        jpg.save(f"{img.with_suffix('.jpg')}")
         img.unlink()
 
     # delete all images without a txt file
-    imgs = list(Path(f"{path_to_eyes}/aflw/").rglob("*.jpg"))
+    imgs = list(Path(f"{path_to_eyes}/aflw/").glob("*.jpg"))
     for img in imgs:
         # txts are of form "image00002_01.txt"
         if not Path(f"{path_to_eyes}/aflw/{img.stem}_01.txt").exists():
+            print("Deleting:", img)
             img.unlink()
+
+    aflw_landmarks = [
+        [7, 8, 9, 46, 47, 48, 49, 82, 83],
+        [10, 11, 12, 50, 51, 52, 53, 84, 85],
+        [1, 2, 3, 36, 37, 72, 73, 74],
+        [4, 5, 6, 38, 39, 75, 76, 77],
+        [14, 15, 16, 40, 41, 42, 43, 44, 45, 78, 79, 80, 81],
+        [18, 20, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63],
+    ]
+    aflw_landmarks = [[i - 1 for i in landmark] for landmark in aflw_landmarks]
 
     files = list(Path(f"{path_to_eyes}/aflw/").glob("*.txt"))
     for file in files:
-        # delete if no corresponding image
-        if not Path(f"{path_to_eyes}/aflw/{file.stem.split("_"[0])}.jpg").exists():
-            file.unlink()
-            continue
-
         print("Processing file:", file)
-        points = np.loadtxt(file)
-        aflw_landmarks = [
-            [7, 8, 9, 46, 47, 48, 49, 82, 83],
-            [10, 11, 12, 50, 51, 52, 53, 84, 85],
-            [1, 2, 3, 36, 37, 72, 73, 74],
-            [4, 5, 6, 38, 39, 75, 76, 77],
-            [14, 15, 16, 40, 41, 42, 43, 44, 45, 78, 79, 80, 81],
-            [18, 20, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63],
-        ]
+        points = np.loadtxt(file, skiprows=1)
         file_content = ""
         for landmark in aflw_landmarks:
             landmarks = points[landmark]
@@ -252,24 +252,30 @@ def reformat_aflw_dataset() -> None:
     # rename the images, to match, copying the image if necessary
     files = list(Path(f"{path_to_eyes}/aflw/").glob("*.txt"))
     for file in files:
+        print("Convert file:", file)
         image = Path(f"{path_to_eyes}/aflw/{file.stem.split('_')[0]}.jpg")
-        copy(image, f"{path_to_eyes}/aflw/{file.with_suffix('.jpg')}")
+        copy(image, f"{file.with_suffix('.jpg')}")
 
     # delete all images without a "_"
     imgs = list(Path(f"{path_to_eyes}/aflw/").glob("*.jpg"))
     for img in imgs:
         if "_" not in img.stem:
+            print("Deleting:", img)
             img.unlink()
 
 
 def reflect_datasets() -> None:
     """reflects the datasets horizontally to double the size"""
-    # reflect_dataset(f"{path_to_eyes}/300w/", "png")
+    # delete all files with "*_r_r*"
+    # oops
+    system("find /dcs/large/u2204489/eyes -type f -name '*_r_r*' -exec rm -f {} +")
+
+    reflect_dataset(f"{path_to_eyes}/300w/", "png")
     reflect_dataset(f"{path_to_eyes}/aflw/", "jpg")
-    # reflect_dataset(f"{path_to_eyes}/afw/", "jpg")
-    # reflect_dataset(f"{path_to_eyes}/helen/", "jpg")
-    # reflect_dataset(f"{path_to_eyes}/lfpw/testset/", "png")
-    # reflect_dataset(f"{path_to_eyes}/lfpw/trainset/", "png")
+    reflect_dataset(f"{path_to_eyes}/afw/", "jpg")
+    reflect_dataset(f"{path_to_eyes}/helen/", "jpg")
+    reflect_dataset(f"{path_to_eyes}/lfpw/testset/", "png")
+    reflect_dataset(f"{path_to_eyes}/lfpw/trainset/", "png")
 
 
 # this takes a while, could be sped up with parallelism
@@ -277,9 +283,6 @@ def reflect_datasets() -> None:
 # also NFS might complain if hit it too hard
 def reflect_dataset(path: str, type: str) -> None:
     """reflects an individual dataset horizontally"""
-    # delete all files with "*_r_r*"
-    # oops
-    system("find /dcs/large/u2204489/eyes -type f -name '*_r_r*' -exec rm -f {} +")
 
     files = list(Path(path).glob("*.txt"))
     for file in files:
