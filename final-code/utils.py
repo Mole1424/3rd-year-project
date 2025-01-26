@@ -12,34 +12,6 @@ from PIL import Image
 path_to_eyes = "/dcs/large/u2204489/eyes"
 
 
-def format_helen_dataset() -> None:
-    """reformats the helen dataset annotations to pts files"""
-    num_files = 2330
-
-    # landmarks are lines 1-194
-    landmarks = list(range(1, 195))
-
-    # iterate over all txt files and save the landmarks to pts files
-    for i in range(1, num_files + 1):
-        with Path(f"{path_to_eyes}/helen/{i}.txt").open() as f:
-            lines = f.read().split("\n")
-            image_title = lines[0]
-
-            # reformat pts if image exists
-            if Path(f"{path_to_eyes}/helen/{image_title}.jpg").exists():
-                # save landmarks to pts file
-                with Path(f"{path_to_eyes}/helen/{image_title}.pts").open("w") as w:
-                    w.write("version: 1\n")
-                    w.write(f"n_points: {len(landmarks)}\n")
-                    w.write("{\n")
-                    for landmark in landmarks:
-                        x, y = lines[landmark].split(" , ")
-                        w.write(f"{x} {y}\n")
-                    w.write("}")
-        # remove old txt file
-        Path(f"{path_to_eyes}/helen/{i}.txt").unlink()
-
-
 def check_300w_dataset() -> None:
     """the 300w dataset can have either 68 or 51 landmarks, check all 68"""
     files = list(Path(f"{path_to_eyes}/300w/").glob("*.pts"))
@@ -60,8 +32,8 @@ def visualise_eye_datasets() -> None:
     visualise_bounding_boxes(f"{path_to_eyes}/300w/indoor_001_r", "png")
     # aflw
     # visualise_points(f"{path_to_eyes}/aflw/image00002", "jpg")
-    visualise_bounding_boxes(f"{path_to_eyes}/aflw/image00002", "jpg")
-    visualise_bounding_boxes(f"{path_to_eyes}/aflw/image00002_r", "jpg")
+    visualise_bounding_boxes(f"{path_to_eyes}/aflw/image00002_01", "jpg")
+    visualise_bounding_boxes(f"{path_to_eyes}/aflw/image00002_01_r", "jpg")
     # afw
     # visualise_points(f"{path_to_eyes}/afw/134212_1", "jpg")
     visualise_bounding_boxes(f"{path_to_eyes}/afw/134212_1", "jpg")
@@ -124,20 +96,13 @@ def visualise_bounding_boxes(path: str, image_type: str) -> None:
 
 
 # points are of form [left eye, right eye, left eyebrow, right eyebrow, nose, mouth]
-# 300w, afw, and lfpw
+# multi_pie
 # [[36:41],
 #  [45, 44, 43, 42, 47, 46],
 #  [17:21],
 #  [22:26],
 #  [27:35],
 #  [48:59]]
-# helen
-# [[144, 141, 137, 134, 151, 147],
-#  [125, 122, 117, 115, 131, 128],
-#  [174:193]
-#  [154:173]
-#  [41:57]
-#  [58:85, midpoint of 134, 114]
 
 # custom txt is bounding boxes in x, y, w, h format
 # followed by x, y points of eye landmarks
@@ -153,17 +118,9 @@ def format_eye_datasets() -> None:
         list(range(27, 36)),
         list(range(48, 60)),
     ]
-    helen_landmarks = [
-        [144, 141, 137, 134, 151, 147],
-        [125, 122, 117, 115, 131, 128],
-        list(range(174, 194)),
-        list(range(154, 174)),
-        list(range(41, 58)),
-        list(range(58, 86)),
-    ]
     format_eye_dataset(f"{path_to_eyes}/300w/", multi_pie_landmarks)
     format_eye_dataset(f"{path_to_eyes}/afw/", multi_pie_landmarks)
-    format_eye_dataset(f"{path_to_eyes}/helen/", helen_landmarks)
+    format_eye_dataset(f"{path_to_eyes}/helen/", multi_pie_landmarks)
     format_eye_dataset(f"{path_to_eyes}/lfpw/testset/", multi_pie_landmarks)
     format_eye_dataset(f"{path_to_eyes}/lfpw/trainset/", multi_pie_landmarks)
     reformat_aflw_dataset()
@@ -183,11 +140,6 @@ def format_eye_dataset(
         # create bounding box
         for landmark in landmark_indices:
             landmarks = points[landmark]
-            if landmark[-1] == 85:  # noqa: PLR2004
-                x1, y1 = points[134]
-                x2, y2 = points[114]
-                midpoint = [(x1 + x2) / 2, (y1 + y2) / 2]
-                landmarks = np.vstack([landmarks, midpoint])
             x, y, w, h = get_rectangle(landmarks)
             file_content += f"{x} {y} {w} {h}\n"
         # combine eye landmarks
@@ -319,9 +271,7 @@ if __name__ == "__main__":
         print("invalid argument")
         sys.exit(1)
 
-    if arg == "helen":
-        format_helen_dataset()
-    elif arg == "aflw":
+    if arg == "aflw":
         reformat_aflw_dataset()
     elif arg == "visualise":
         visualise_eye_datasets()
