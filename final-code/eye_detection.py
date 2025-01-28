@@ -17,6 +17,7 @@ from tensorflow.keras.applications import VGG16  # type: ignore
 from tensorflow.keras.layers import (  # type: ignore
     LSTM,
     Concatenate,
+    Conv2D,
     Dense,
     Lambda,
     RepeatVector,
@@ -25,184 +26,159 @@ from tensorflow.keras.layers import (  # type: ignore
 from tensorflow.keras.losses import CategoricalCrossentropy, Huber  # type: ignore
 
 
-def shared_convolutional_model() -> Model:
-    """shared convolutional area to act as the backbone"""
-    # VGG16 without the top and final max pooling layer
-    vgg16 = VGG16(include_top=False, input_shape=(None, None, 3))
-    custom_vgg = vgg16.get_layer("block5_conv3").output
-    return Model(
-        inputs=vgg16.input, outputs=custom_vgg, name="shared_convolutional_model"
-    )
+class RPN(Model):
+    def __init__(self) -> None:
+        super(RPN, self).__init__()
+        self.conv1 = Conv2D(512, (3, 3), activation="relu", padding="same")
+        self.regressor = Conv2D(4 * 9, (1, 1), activation="linear", padding="same")
+        self.classifier = Conv2D(1 * 9, (1, 1), activation="sigmoid", padding="same")
+        self.eye_landmark_classifier = Conv2D(
+            6 * 9, (1, 1), activation="linear", padding="same"
+        )
+
+    @tf.function
+    def get_anchors(
+        self, features_shape: tuple[int, int], image_shape: tuple[int, int]
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """generate anchors for the image"""
+        features_height, features_width = features_shape
+        image_height, image_width = image_shape
+
+        x_stride, y_stride = (
+            image_width / features_width,
+            image_height / features_height,
+        )
+
+        # find centers of each anchor
+        x_centers = np.arange(x_stride / 2, image_width, x_stride)
+        y_centers = np.arange(y_stride / 2, image_height, y_stride)
+        centers = np.array(np.meshgrid(x_centers, y_centers, indexing="xy")).T.reshape(
+            -1, 2
+        )
+
+        # initial anchor params
+        anchor_ratios = [0.5, 1, 2]
+        anchor_scales = [8, 16, 32]
+        anchors = np.zeros(
+            (
+                features_width
+                * features_height
+                * len(anchor_ratios)
+                * len(anchor_scales),
+                4,
+            )
+        )
+
+        # generate anchors for all centers
+        for i, (x, y) in enumerate(centers):
+            for ratio in anchor_ratios:
+                for scale in anchor_scales:
+                    h = np.sqrt(scale**2 / ratio) * y_stride
+                    w = h * ratio * x_stride / y_stride
+                    anchors[i] = [x - w / 2, y - h / 2, x + w / 2, y + h / 2]
+
+        # we only care about anchors that are inside the image
+        inside_anchors_ids = anchors[
+            (anchors[:, 0] >= 0)
+            & (anchors[:, 1] >= 0)
+            & (anchors[:, 2] <= image_width)
+            & (anchors[:, 3] <= image_height)
+        ][0]
+
+        return inside_anchors_ids, anchors[inside_anchors_ids]
+
+    @tf.function
+    def iou(self, box1: np.ndarray, box2: np.ndarray) -> float:
+        """
+        intersection over union
+        """
+        x1, y1, w1, h1 = box1
+        x2, y2, w2, h2 = box2
+
+        x1 = max(x1, x2)
+        y1 = max(y1, y2)
+        x2 = min(x1 + w1, x2 + w2)
+        y2 = min(y1 + h1, y2 + h2)
+
+        intersection = max(0, x2 - x1) * max(0, y2 - y1)
+        union = w1 * h1 + w2 * h2 - intersection
+        if union == 0:
+            return 0
+
+        return intersection / union
+
+    positivie_ratio = 3
+    batch_size = (positivie_ratio + 1) * 8
+
+    @tf.function
+    def convert_coords(self, proposal: np.ndarray, truth: np.ndarray) -> np.ndarray:
+        g_x, g_y, g_w, g_h = truth
+        r_x, r_y, r_w, r_h = proposal
+
+        t_x = (g_x - r_x) / g_w
+        t_w = np.log(g_w / r_w)
+        t_y = (g_y - r_y) / g_h
+        t_h = np.log(g_h / r_h)
+        return np.array([t_x, t_y, t_w, t_h])
+
+    @tf.function
+    def convert_landmakrs(
+        self, proposal: np.ndarray, bounding_box: np.ndarray
+    ) -> np.ndarray:
+        g_x, g_y, g_w, g_h = bounding_box
+        for i in range(1, 12, 2):
+            proposal[i] = (proposal[i] - g_x) / g_w
+            proposal[i + 1] = (proposal[i + 1] - g_y) / g_h
+        return proposal
 
 
-def get_anchors(image: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    image_height, image_width, _ = image.shape
+class FasterRCNN(Model):
+    def __init__(self) -> None:
+        super(FasterRCNN, self).__init__()
+        self.backbone = self.shared_convolutional_model()
+        self.rpn = RPN()
+        self.roi_pooling = ROIPoolingLayer(2, 2)
+        self.fc1 = Dense(512, activation="relu")
+        self.fc2 = Dense(256, activation="relu")
 
-    # run through vgg16
-    backbones = shared_convolutional_model()
-    features = backbones.predict(np.expand_dims(image, axis=0))
-    _, feature_width, feature_height, _ = features.shape
-
-    # calculate stride for anchors
-    x_stride, y_stride = image_width / feature_width, image_height / feature_height
-
-    # find centers of each anchor
-    x_centers = np.arange(x_stride / 2, image_width, x_stride)
-    y_centers = np.arange(y_stride / 2, image_height, y_stride)
-    centers = np.array(np.meshgrid(x_centers, y_centers, indexing="xy")).T.reshape(
-        -1, 2
-    )
-
-    # initial anchor params
-    anchor_ratios = [0.5, 1, 2]
-    anchor_scales = [8, 16, 32]
-    anchors = np.zeros(
-        (feature_width * feature_height * len(anchor_ratios) * len(anchor_scales), 4)
-    )
-
-    # generate anchors for all centers
-    for i, (x, y) in enumerate(centers):
-        for ratio in anchor_ratios:
-            for scale in anchor_scales:
-                h = np.sqrt(scale**2 / ratio) * y_stride
-                w = h * ratio * x_stride / y_stride
-                anchors[i] = [x - w / 2, y - h / 2, x + w / 2, y + h / 2]
-
-    # we only care about anchors that are inside the image
-    inside_anchors_ids = anchors[
-        (anchors[:, 0] >= 0)
-        & (anchors[:, 1] >= 0)
-        & (anchors[:, 2] <= image_width)
-        & (anchors[:, 3] <= image_height)
-    ][0]
-
-    return inside_anchors_ids, anchors[inside_anchors_ids]
+    def shared_convolutional_model(self) -> Model:
+        """shared convolutional area to act as the backbone"""
+        # VGG16 without the top and final max pooling layer
+        vgg16 = VGG16(include_top=False, input_shape=(None, None, 3))
+        custom_vgg = vgg16.get_layer("block5_conv3").output
+        return Model(
+            inputs=vgg16.input, outputs=custom_vgg, name="shared_convolutional_model"
+        )
 
 
-def iou(box1: np.ndarray, box2: np.ndarray) -> float:
-    """
-    intersection over union
-    """
-    x1, y1, w1, h1 = box1
-    x2, y2, w2, h2 = box2
-
-    x1 = max(x1, x2)
-    y1 = max(y1, y2)
-    x2 = min(x1 + w1, x2 + w2)
-    y2 = min(y1 + h1, y2 + h2)
-
-    intersection = max(0, x2 - x1) * max(0, y2 - y1)
-    union = w1 * h1 + w2 * h2 - intersection
-    if union == 0:
-        return 0
-
-    return intersection / union
-
-
-positivie_ratio = 3
-batch_size = (positivie_ratio + 1) * 8
-
-
-def convert_coords(proposal: np.ndarray, truth: np.ndarray) -> np.ndarray:
-    g_x, g_y, g_w, g_h = truth
-    r_x, r_y, r_w, r_h = proposal
-
-    t_x = (g_x - r_x) / g_w
-    t_w = np.log(g_w / r_w)
-    t_y = (g_y - r_y) / g_h
-    t_h = np.log(g_h / r_h)
-    return np.array([t_x, t_y, t_w, t_h])
-
-
-def convert_landmakrs(proposal: np.ndarray, bounding_box: np.ndarray) -> np.ndarray:
-    g_x, g_y, g_w, g_h = bounding_box
-    for i in range(1, 12, 2):
-        proposal[i] = (proposal[i] - g_x) / g_w
-        proposal[i + 1] = (proposal[i + 1] - g_y) / g_h
-    return proposal
-
-
-def train_regional_proposal_network(
-    image: np.ndarray, bounding_boxes: np.ndarray
-) -> Model:
-    """
-    Regional proposal network to detect facial regions
-    Output:
-        - Label in the form (1, 0, 0, 0)
-        - 6x region proposals in the form (x, y, w, h)
-        - 12x landmarks in the form (x1, y1, ..., x6, y6)
-    """
-    image_height, image_width, _ = image.shape
-
-    # labels are 1..4 for 4 facial regions and 0 for background
-    # labels are 1. eyebrow, 2. eye, 3. nose, 4. mouth
-    labels = np.zeros(5)
-
-    anchor_ids, anchors = get_anchors(image)
-
-    # create iou array, in form [anchor_id, eye_l_iou, eyeb_r_iou, eyebrow_l_iou, eyebrow_r_iou, nose_iou, mouth_iou, max_iou, best_bbox, label]  # noqa: E501
-    ious = np.zeros((len(anchors), 10))
-    iou_threshold = 0.5
-    for i, anchor in enumerate(anchors):
-        for j, bbox in enumerate(bounding_boxes):
-            ious[i, j + 1] = iou(anchor, bbox)
-        ious[i, 0] = anchor_ids[i]
-        ious[i, 7] = np.max(ious[i, 1:7])
-        ious[i, 8] = np.argmax(ious[i, 1:7])
-        if ious[i, 7] > iou_threshold:
-            if 1 <= ious[i, 8] <= 2:
-                ious[i, 9] = 2
-            elif 3 <= ious[i, 8] <= 4:
-                ious[i, 9] = 1
-            else:
-                ious[i, 9] = ious[i, 8] - 2
-        else:
-            ious[i, 9] = 0
-
-    return Model()  # keep pylance happy for the time being
-
-
-def faster_rcnn() -> Model:
-    """
-    the faster rcnn model to detect facial reigons, classifications, and landmarks
-    """
-    input = Input(shape=(None, None, 3))
-
-    x = shared_convolutional_model()(input)
-    rpn = reigonal_proposal_network()(input)
-
-    x = ROIPoolingLayer(2, 2)([x, rpn])
-
-    x = Dense(512, activation="relu")(x)
-    x = Dense(256, activation="relu")(x)
-
-    return Model(inputs=input, outputs=x, name="faster_rcnn")
+positive_ratio = 1 / 3
+batch_size = 32
 
 
 @tf.function
 def faster_rcnn_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
-    lambda_c = 1 / positivie_ratio
+    lambda_c = 1 / positive_ratio
     lambda_l = 1
-    lambda_s = positivie_ratio
+    lambda_s = positive_ratio
 
     total_loss = 0
-    for i in range(positivie_ratio):
-        predicted_label = y_pred[i, :4]
-        true_label = y_true[i, :4]
+    for i in range(batch_size):
+        predicted_label = y_pred[i, :4]  # type: ignore
+        true_label = y_true[i, :4]  # type: ignore
         total_loss += lambda_c * CategoricalCrossentropy()(true_label, predicted_label)
 
         if predicted_label >= 1:
-            predicted_bbox = y_pred[i, 4:8]
-            true_bbox = y_true[i, 4:8]
+            predicted_bbox = y_pred[i, 4:8]  # type: ignore
+            true_bbox = y_true[i, 4:8]  # type: ignore
             total_loss += lambda_l * Huber(reduction="sum")(true_bbox, predicted_bbox)
         else:
-            predicted_landmarks = y_pred[i, 8:]
-            true_landmarks = y_true[i, 8:]
+            predicted_landmarks = y_pred[i, 8:]  # type: ignore
+            true_landmarks = y_true[i, 8:]  # type: ignore
             squared_diff = tf.square(predicted_landmarks - true_landmarks)
             distance_per_landmark = tf.reduce_sum(squared_diff, axis=-1)
             total_loss += lambda_s * tf.reduce_sum(distance_per_landmark, axis=-1)
 
-    return total_loss
+    return total_loss  # type: ignore
 
 
 time_steps = 4
