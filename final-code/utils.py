@@ -81,7 +81,7 @@ def visualise_bounding_boxes(path: str, image_type: str) -> None:
         img = cv.imread(f"{path}.{image_type}")
         # draw bounding boxes
         for i in range(6):
-            x, y, w, h = map(float, lines[i].split())
+            x, y, w, h = cxcywh_to_xywh(list(map(float, lines[i].split())))
             cv.rectangle(
                 img, (int(x), int(y)), (int(x + w), int(y + h)), (0, 255, 0), 1
             )
@@ -157,7 +157,11 @@ def get_rectangle(points: np.ndarray) -> tuple[float, float, float, float]:
     """find bounding rectangle of points"""
     x_min, y_min = np.min(points, axis=0)
     x_max, y_max = np.max(points, axis=0)
-    return x_min, y_min, x_max - x_min, y_max - y_min
+    centre_x = (x_min + x_max) / 2
+    centre_y = (y_min + y_max) / 2
+    width = x_max - x_min
+    height = y_max - y_min
+    return centre_x, centre_y, width, height
 
 
 def reformat_aflw_dataset() -> None:
@@ -252,7 +256,7 @@ def reflect_dataset(path: str, type: str) -> None:
         # reflect bounding boxes
         for i in range(6):
             x, y, w, h = map(float, lines[i].split())
-            file_string += f"{img.shape[1] - x - w} {y} {w} {h}\n"
+            file_string += f"{img.shape[1] - x} {y} {w} {h}\n"
         # reflect eye points (if applicable)
         if len(lines) == 18:  # noqa: PLR2004
             for i in range(6, 18):
@@ -261,6 +265,42 @@ def reflect_dataset(path: str, type: str) -> None:
 
         with file.with_name(file.stem + "_r.txt").open("w") as f:
             f.write(file_string.strip())
+
+
+def convert_dataset_coords() -> None:
+    convert_coords(f"{path_to_eyes}/300w/")
+    convert_coords(f"{path_to_eyes}/aflw/")
+    convert_coords(f"{path_to_eyes}/afw/")
+    convert_coords(f"{path_to_eyes}/helen/")
+    convert_coords(f"{path_to_eyes}/lfpw/testset/")
+    convert_coords(f"{path_to_eyes}/lfpw/trainset/")
+    print("done :)")
+
+
+def convert_coords(path: str) -> None:
+    """converts bounding box of x,y,w,h to center_x, center_y, w, h"""
+
+    files = list(Path(path).glob("*.txt"))
+    for file in files:
+        with file.open() as f:
+            lines = f.read().split("\n")
+        # bounding boxes are the first 6 lines
+        bounding_boxes = [list(map(float, line.split())) for line in lines[:6]]
+        # eye points are the next 12 lines (if applicable)
+        eye_points = [list(map(float, line.split())) for line in lines[6:]]
+        file_string = ""
+        for x, y, w, h in bounding_boxes:
+            file_string += f"{x + w / 2} {y + h / 2} {w} {h}\n"
+        for x, y in eye_points:
+            file_string += f"{x} {y}\n"
+        with file.open("w") as f:
+            f.write(file_string.strip())
+
+
+def cxcywh_to_xywh(initial_box: list[float]) -> list[float]:
+    """converts bounding box of center_x, center_y, w, h to x,y,w,h"""
+    cx, cy, w, h = initial_box
+    return [cx - w / 2, cy - h / 2, w, h]
 
 
 if __name__ == "__main__":
@@ -281,6 +321,8 @@ if __name__ == "__main__":
         format_eye_datasets()
     elif arg == "reflect":
         reflect_datasets()
+    elif arg == "convert":
+        convert_dataset_coords()
     else:
         print("invalid argument")
         sys.exit(1)
