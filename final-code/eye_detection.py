@@ -9,11 +9,18 @@
 # available at https://martian1231-py.medium.com/region-proposal-network-rpn-in-faster-rcnn-from-scratch-in-keras-1311c67c13cf
 # thanks to Akash Kewar
 
+# faster rcnn from tf2-faster-rcnn
+# available at https://github.com/hxuaj/tf2-faster-rcnn/tree/main/model
+# thanks to hxuaj
+
+
 import numpy as np
 import tensorflow as tf
 from roi_pooling import ROIPoolingLayer
+from tensorflow.image import non_max_suppression  # type: ignore
 from tensorflow.keras import Input, Model  # type: ignore
 from tensorflow.keras.applications import VGG16  # type: ignore
+from tensorflow.keras.initializers import RandomNormal  # type: ignore
 from tensorflow.keras.layers import (  # type: ignore
     LSTM,
     Concatenate,
@@ -29,17 +36,170 @@ from tensorflow.keras.losses import CategoricalCrossentropy, Huber  # type: igno
 class RPN(Model):
     def __init__(self) -> None:
         super(RPN, self).__init__()
-        self.conv1 = Conv2D(512, (3, 3), activation="relu", padding="same")
-        self.regressor = Conv2D(4 * 9, (1, 1), activation="linear", padding="same")
-        self.classifier = Conv2D(1 * 9, (1, 1), activation="sigmoid", padding="same")
+        self.initaliser = RandomNormal()
+        self.conv1 = Conv2D(
+            512,
+            (3, 3),
+            activation="relu",
+            padding="same",
+            kernel_initializer=self.initaliser,
+        )
+        self.regressor = Conv2D(
+            8 * 9,
+            (1, 1),
+            activation="linear",
+            padding="same",
+            kernel_initializer=self.initaliser,
+        )
+        self.classifier = Conv2D(
+            1 * 9,
+            (1, 1),
+            activation="sigmoid",
+            padding="same",
+            kernel_initializer=self.initaliser,
+        )
         self.eye_landmark_classifier = Conv2D(
-            6 * 9, (1, 1), activation="linear", padding="same"
+            6 * 9,
+            (1, 1),
+            activation="linear",
+            padding="same",
+            kernel_initializer=self.initalisers,
         )
 
-    @tf.function
-    def get_anchors(
+    def call(
+        self,
+        features: tf.Tensor,
+        image: tf.Tensor,
+        ground_truths: tf.Tensor | None = None,
+    ) -> tf.Tensor:
+        """
+        generates region proposals and initial eye landmarks
+
+        features: features from the backbone
+        image: input image
+        ground_truths: ground truth eye landmarks in the form
+        - left eye landmarks (x1, y1, ..., x6, y6)
+        - right eye landmarks
+        - left eye bounding box (center_x, center_y, w, h)
+        - right eye bounding box
+        - left eye brow
+        - right eye brow
+        - nose
+        - mouth
+
+        output is a 2d tensor:
+        - 1st row is left eye landmarks (x1, y1, ..., x6, y6)
+        - 2nd row is right eye landmarks
+        - 3rd row is left eye bounding box (center_x, center_y, w, h)
+        - 4th row is right eye bounding box
+        - 5th row is left eye brow
+        - 6th row is right eye brow
+        - 7th row is nose
+        - 8th row is mouth
+        """
+        training = ground_truths is not None
+
+        # generate anchors
+        anchor_ids, anchors = self.generate_anchors(
+            (features.shape[1], features.shape[2]), (image.shape[1], image.shape[2])  # type: ignore
+        )
+
+        if training:
+            # find ious between anchors and ground truths
+            ious = np.zeros((len(anchors), len(ground_truths)), dtype=np.float32)
+            for i, anchor in enumerate(anchors):
+                for j, truth in enumerate(ground_truths[2:]):  # type: ignore
+                    ious[i, j] = self.iou(anchor, truth)
+
+            # find best anchors
+            best_iou_indexes = np.argmax(ious, axis=1)
+            best_ious = ious[np.arange(len(anchors)), best_iou_indexes]
+            best_anchors = np.argmax(ious, axis=0)
+            best_gt_ious = ious[best_anchors, np.arange(ious.shape[1])]
+            best_anchors = np.where(ious == best_gt_ious)[0]
+
+            # assign labels to anchors
+            # 0. background, 1. foreground, -1. ignore
+            iou_threshold = 0.5
+            labels = np.zeros(len(anchors))
+            labels.fill(-1)
+            labels[best_ious < iou_threshold] = 0
+            labels[best_anchors] = 1
+            labels[best_ious >= iou_threshold] = 1
+
+            # subsample anchors
+            num_samples = int(positive_ratio * batch_size)
+            num_positives = num_samples
+            positive_indices = np.where(labels == 1)[0]
+
+            if len(positive_indices) > num_positives:
+                labels[
+                    np.random.choice(
+                        positive_indices,
+                        len(positive_indices) - num_positives,
+                        replace=False,
+                    )
+                ] = -1
+            num_negatives = batch_size - num_positives
+            negative_indices = np.where(labels == 0)[0]
+            if len(negative_indices) > num_negatives:
+                labels[
+                    np.random.choice(
+                        negative_indices,
+                        len(negative_indices) - num_negatives,
+                        replace=False,
+                    )
+                ] = -1
+
+            # find deltas
+            w_anchors = anchors[:, 2] - anchors[:, 0]
+            h_anchors = anchors[:, 3] - anchors[:, 1]
+            x_anchors = anchors[:, 0] + w_anchors / 2
+            y_anchors = anchors[:, 1] + h_anchors / 2
+
+            relevant_truths = ground_truths[2:]  # type: ignore
+            w_truths = relevant_truths[:, 2] - relevant_truths[:, 0]
+            h_truths = relevant_truths[:, 3] - relevant_truths[:, 1]
+            x_truths = relevant_truths[:, 0] + w_truths / 2
+            y_truths = relevant_truths[:, 1] + h_truths / 2
+
+            eps = np.finfo(anchors.dtype).eps
+            w_anchors = np.maximum(w_anchors, eps)
+            h_anchors = np.maximum(h_anchors, eps)
+
+            tx = (x_truths - x_anchors) / w_anchors
+            ty = (y_truths - y_anchors) / h_anchors
+            tw = np.log(w_truths / w_anchors)
+            th = np.log(h_truths / h_anchors)
+
+            deltas = np.stack([tx, ty, tw, th], axis=1)
+
+            # apply model
+            offsets = np.zeros((len(anchors), 4))
+            offsets[labels == 1] = deltas[best_anchors]
+            offsets = np.expand_dims(offsets, axis=0)
+
+            offset_labels = np.column_stack([labels, offsets])
+
+            x = self.conv1(offset_labels)
+            anchor_deltas = self.regressor(x)
+            objectivness_scores = self.classifier(x)
+            eye_landmarks = self.eye_landmark_classifier(x)
+
+        else:
+            x = self.conv1(anchors)
+            anchor_deltas = self.regressor(x)
+            objectivness_scores = self.classifier(x)
+            eye_landmarks = self.eye_landmark_classifier(x)
+
+            x_anchors = anchors[:, 0] + (anchors[:, 2] - anchors[:, 0]) / 2  # type: ignore
+            y_anchors = anchors[:, 1] + (anchors[:, 3] - anchors[:, 1]) / 2  # type: ignore
+            w_anchors = anchors[:, 2] - anchors[:, 0]  # type: ignore
+            h_anchors = anchors[:, 3] - anchors[:, 1]  # type: ignore
+
+    def generate_anchors(
         self, features_shape: tuple[int, int], image_shape: tuple[int, int]
-    ) -> tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[tf.Tensor, tf.Tensor]:
         """generate anchors for the image"""
         features_height, features_width = features_shape
         image_height, image_width = image_shape
@@ -59,7 +219,7 @@ class RPN(Model):
         # initial anchor params
         anchor_ratios = [0.5, 1, 2]
         anchor_scales = [8, 16, 32]
-        anchors = np.zeros(
+        anchors = tf.zeros(
             (
                 features_width
                 * features_height
@@ -73,7 +233,7 @@ class RPN(Model):
         for i, (x, y) in enumerate(centers):
             for ratio in anchor_ratios:
                 for scale in anchor_scales:
-                    h = np.sqrt(scale**2 / ratio) * y_stride
+                    h = tf.sqrt(scale**2 / ratio) * y_stride
                     w = h * ratio * x_stride / y_stride
                     anchors[i] = [x - w / 2, y - h / 2, x + w / 2, y + h / 2]
 
@@ -87,48 +247,29 @@ class RPN(Model):
 
         return inside_anchors_ids, anchors[inside_anchors_ids]
 
-    @tf.function
-    def iou(self, box1: np.ndarray, box2: np.ndarray) -> float:
+    def iou(self, box1: tf.Tensor, box2: tf.Tensor) -> float:
         """
         intersection over union
         """
-        x1, y1, w1, h1 = box1
-        x2, y2, w2, h2 = box2
+        cx1, cy1, w1, h1 = box1
+        cx2, cy2, w2, h2 = box2
 
-        x1 = max(x1, x2)
-        y1 = max(y1, y2)
-        x2 = min(x1 + w1, x2 + w2)
-        y2 = min(y1 + h1, y2 + h2)
+        x1 = max(cx1 - w1 / 2, cx2 - w2 / 2)
+        y1 = max(cy1 - h1 / 2, cy2 - h2 / 2)
+        x2 = min(cx1 + w1 / 2, cx2 + w2 / 2)
+        y2 = min(cy1 + h1 / 2, cy2 + h2 / 2)
 
         intersection = max(0, x2 - x1) * max(0, y2 - y1)
         union = w1 * h1 + w2 * h2 - intersection
-        if union == 0:
-            return 0
+        return intersection / union if intersection > 0 else 0
 
-        return intersection / union
-
-    positivie_ratio = 3
-    batch_size = (positivie_ratio + 1) * 8
-
-    @tf.function
-    def convert_coords(self, proposal: np.ndarray, truth: np.ndarray) -> np.ndarray:
-        g_x, g_y, g_w, g_h = truth
-        r_x, r_y, r_w, r_h = proposal
-
-        t_x = (g_x - r_x) / g_w
-        t_w = np.log(g_w / r_w)
-        t_y = (g_y - r_y) / g_h
-        t_h = np.log(g_h / r_h)
-        return np.array([t_x, t_y, t_w, t_h])
-
-    @tf.function
     def convert_landmakrs(
-        self, proposal: np.ndarray, bounding_box: np.ndarray
-    ) -> np.ndarray:
+        self, proposal: tf.Tensor, bounding_box: tf.Tensor
+    ) -> tf.Tensor:
         g_x, g_y, g_w, g_h = bounding_box
         for i in range(1, 12, 2):
-            proposal[i] = (proposal[i] - g_x) / g_w
-            proposal[i + 1] = (proposal[i + 1] - g_y) / g_h
+            proposal[i] = (proposal[i] - g_x) / g_w  # type: ignore
+            proposal[i + 1] = (proposal[i + 1] - g_y) / g_h  # type: ignore
         return proposal
 
 
@@ -140,6 +281,17 @@ class FasterRCNN(Model):
         self.roi_pooling = ROIPoolingLayer(2, 2)
         self.fc1 = Dense(512, activation="relu")
         self.fc2 = Dense(256, activation="relu")
+
+    def call(
+        self, image: tf.Tensor, ground_truths: tf.Tensor | None = None
+    ) -> tf.Tensor:
+        features = self.backbone(image)
+
+        training = ground_truths is not None
+        rois = self.rpn(features, ground_truths) if training else self.rpn(features)
+        pooled = self.roi_pooling([features, rois])  # type: ignore
+        x = self.fc1(pooled)
+        return self.fc2(x)
 
     def shared_convolutional_model(self) -> Model:
         """shared convolutional area to act as the backbone"""
