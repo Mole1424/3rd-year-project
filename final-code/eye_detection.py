@@ -37,6 +37,7 @@ class RPN(Model):
     def __init__(self) -> None:
         super(RPN, self).__init__()
         self.initaliser = RandomNormal()
+        self.num_points_per_anchor = 9
         self.conv1 = Conv2D(
             512,
             (3, 3),
@@ -45,27 +46,29 @@ class RPN(Model):
             kernel_initializer=self.initaliser,
         )
         self.regressor = Conv2D(
-            8 * 9,
+            8 * self.num_points_per_anchor,
             (1, 1),
             activation="linear",
             padding="same",
             kernel_initializer=self.initaliser,
         )
         self.classifier = Conv2D(
-            1 * 9,
+            1 * self.num_points_per_anchor,
             (1, 1),
             activation="sigmoid",
             padding="same",
             kernel_initializer=self.initaliser,
         )
-        self.eye_landmark_classifier = Conv2D(
-            6 * 9,
-            (1, 1),
-            activation="linear",
-            padding="same",
-            kernel_initializer=self.initalisers,
-        )
+        # self.eye_landmark_classifier = Conv2D(
+        #     6 * self.num_points_per_anchor,
+        #     (1, 1),
+        #     activation="linear",
+        #     padding="same",
+        #     kernel_initializer=self.initalisers,
+        # )
+        self.num_landmarks = 6
 
+    @tf.function
     def call(
         self,
         features: tf.Tensor,
@@ -104,6 +107,11 @@ class RPN(Model):
             (features.shape[1], features.shape[2]), (image.shape[1], image.shape[2])  # type: ignore
         )
 
+        x = self.conv1(features)
+        anchor_deltas = self.regressor(x)
+        objectivness_scores = self.classifier(x)
+        # eye_landmarks = self.eye_landmark_classifier(x)
+
         if training:
             # find ious between anchors and ground truths
             ious = np.zeros((len(anchors), len(ground_truths)), dtype=np.float32)
@@ -111,51 +119,16 @@ class RPN(Model):
                 for j, truth in enumerate(ground_truths[2:]):  # type: ignore
                     ious[i, j] = self.iou(anchor, truth)
 
-            # find best anchors
-            best_iou_indexes = np.argmax(ious, axis=1)
-            best_ious = ious[np.arange(len(anchors)), best_iou_indexes]
-            best_anchors = np.argmax(ious, axis=0)
-            best_gt_ious = ious[best_anchors, np.arange(ious.shape[1])]
-            best_anchors = np.where(ious == best_gt_ious)[0]
-
-            # assign labels to anchors
-            # 0. background, 1. foreground, -1. ignore
-            iou_threshold = 0.5
-            labels = np.zeros(len(anchors))
-            labels.fill(-1)
-            labels[best_ious < iou_threshold] = 0
-            labels[best_anchors] = 1
-            labels[best_ious >= iou_threshold] = 1
+            best_anchors, labels = self.compute_labels(ious, anchors)
 
             # subsample anchors
-            num_samples = int(positive_ratio * batch_size)
-            num_positives = num_samples
-            positive_indices = np.where(labels == 1)[0]
-
-            if len(positive_indices) > num_positives:
-                labels[
-                    np.random.choice(
-                        positive_indices,
-                        len(positive_indices) - num_positives,
-                        replace=False,
-                    )
-                ] = -1
-            num_negatives = batch_size - num_positives
-            negative_indices = np.where(labels == 0)[0]
-            if len(negative_indices) > num_negatives:
-                labels[
-                    np.random.choice(
-                        negative_indices,
-                        len(negative_indices) - num_negatives,
-                        replace=False,
-                    )
-                ] = -1
+            labels = self.filter_labels(labels, 256)
 
             # find deltas
-            w_anchors = anchors[:, 2] - anchors[:, 0]
-            h_anchors = anchors[:, 3] - anchors[:, 1]
-            x_anchors = anchors[:, 0] + w_anchors / 2
-            y_anchors = anchors[:, 1] + h_anchors / 2
+            w_anchors = anchors[:, 2] - anchors[:, 0]  # type: ignore
+            h_anchors = anchors[:, 3] - anchors[:, 1]  # type: ignore
+            x_anchors = anchors[:, 0] + w_anchors / 2  # type: ignore
+            y_anchors = anchors[:, 1] + h_anchors / 2  # type: ignore
 
             relevant_truths = ground_truths[2:]  # type: ignore
             w_truths = relevant_truths[:, 2] - relevant_truths[:, 0]
@@ -163,7 +136,7 @@ class RPN(Model):
             x_truths = relevant_truths[:, 0] + w_truths / 2
             y_truths = relevant_truths[:, 1] + h_truths / 2
 
-            eps = np.finfo(anchors.dtype).eps
+            eps = np.finfo(anchors.dtype).eps  # type: ignore
             w_anchors = np.maximum(w_anchors, eps)
             h_anchors = np.maximum(h_anchors, eps)
 
@@ -178,24 +151,41 @@ class RPN(Model):
             offsets = np.zeros((len(anchors), 4))
             offsets[labels == 1] = deltas[best_anchors]
             offsets = np.expand_dims(offsets, axis=0)
-
-            offset_labels = np.column_stack([labels, offsets])
-
-            x = self.conv1(offset_labels)
-            anchor_deltas = self.regressor(x)
-            objectivness_scores = self.classifier(x)
-            eye_landmarks = self.eye_landmark_classifier(x)
-
         else:
-            x = self.conv1(anchors)
-            anchor_deltas = self.regressor(x)
-            objectivness_scores = self.classifier(x)
-            eye_landmarks = self.eye_landmark_classifier(x)
-
             x_anchors = anchors[:, 0] + (anchors[:, 2] - anchors[:, 0]) / 2  # type: ignore
             y_anchors = anchors[:, 1] + (anchors[:, 3] - anchors[:, 1]) / 2  # type: ignore
             w_anchors = anchors[:, 2] - anchors[:, 0]  # type: ignore
             h_anchors = anchors[:, 3] - anchors[:, 1]  # type: ignore
+
+        anchor_deltas = anchor_deltas.reshape(-1, len(anchors), 4)
+        objectivness_scores = objectivness_scores.reshape(-1, len(anchors))
+
+        rois = self.post_processing(
+            anchors,
+            x_anchors,
+            y_anchors,
+            w_anchors,
+            h_anchors,
+            anchor_deltas,
+            objectivness_scores,
+            image,
+        )
+
+        # apply final labels
+        # 1. right_eyebrow, 2. left_eyebrow, 3. right_eye, 4. left_eye, 5. nose, 6. mouth  # noqa: E501
+        labels = np.zeros((len(rois), self.num_landmarks))
+        for i, roi in enumerate(rois):
+            # labels are is the ground truth with highest iou
+            ious = np.zeros(self.num_landmarks)
+            for j, truth in enumerate(ground_truths[4:]):  # type: ignore
+                ious[j] = self.iou(roi, truth)
+            labels[i] = ground_truths[np.argmax(ious)][4:]  # type: ignore
+
+        if training:
+            # return logits (errors)
+            return rois, labels, offsets
+
+        return rois, labels
 
     def generate_anchors(
         self, features_shape: tuple[int, int], image_shape: tuple[int, int]
@@ -247,6 +237,27 @@ class RPN(Model):
 
         return inside_anchors_ids, anchors[inside_anchors_ids]
 
+    def compute_labels(
+        self, ious: np.ndarray, anchors: tf.Tensor
+    ) -> tuple[np.ndarray, np.ndarray]:
+        # find best anchors
+        best_iou_indexes = np.argmax(ious, axis=1)
+        best_ious = ious[np.arange(len(anchors)), best_iou_indexes]
+        best_anchors = np.argmax(ious, axis=0)
+        best_gt_ious = ious[best_anchors, np.arange(ious.shape[1])]
+        best_anchors = np.where(ious == best_gt_ious)[0]
+
+        # assign labels to anchors
+        # 0. background, 1. foreground, -1. ignore
+        iou_threshold = 0.5
+        labels = np.zeros(len(anchors))
+        labels.fill(-1)
+        labels[best_ious < iou_threshold] = 0
+        labels[best_anchors] = 1
+        labels[best_ious >= iou_threshold] = 1
+
+        return best_anchors, labels
+
     def iou(self, box1: tf.Tensor, box2: tf.Tensor) -> float:
         """
         intersection over union
@@ -263,6 +274,32 @@ class RPN(Model):
         union = w1 * h1 + w2 * h2 - intersection
         return intersection / union if intersection > 0 else 0
 
+    def filter_labels(self, labels: np.ndarray, batch_size: int) -> np.ndarray:
+        num_samples = int(positive_ratio * batch_size)
+        num_positives = num_samples
+        positive_indices = np.where(labels == 1)[0]
+
+        if len(positive_indices) > num_positives:
+            labels[
+                np.random.choice(
+                    positive_indices,
+                    len(positive_indices) - num_positives,
+                    replace=False,
+                )
+            ] = -1
+        num_negatives = batch_size - num_positives
+        negative_indices = np.where(labels == 0)[0]
+        if len(negative_indices) > num_negatives:
+            labels[
+                np.random.choice(
+                    negative_indices,
+                    len(negative_indices) - num_negatives,
+                    replace=False,
+                )
+            ] = -1
+
+        return labels
+
     def convert_landmakrs(
         self, proposal: tf.Tensor, bounding_box: tf.Tensor
     ) -> tf.Tensor:
@@ -271,6 +308,44 @@ class RPN(Model):
             proposal[i] = (proposal[i] - g_x) / g_w  # type: ignore
             proposal[i + 1] = (proposal[i + 1] - g_y) / g_h  # type: ignore
         return proposal
+
+    def post_processing(  # noqa: PLR0913
+        self,
+        anchors: tf.Tensor,
+        x_anchors: tf.Tensor,
+        y_anchors: tf.Tensor,
+        w_anchors: tf.Tensor,
+        h_anchors: tf.Tensor,
+        anchor_deltas: tf.Tensor,
+        objectivness_scores: tf.Tensor,
+        image: tf.Tensor,
+    ) -> tf.Tensor:
+        # apply deltas
+        predicted_anchors = np.zeros((len(anchors), 4))
+        predicted_anchors[:, 0] = x_anchors + w_anchors * anchor_deltas[:, :, 0]  # type: ignore
+        predicted_anchors[:, 1] = y_anchors + h_anchors * anchor_deltas[:, :, 1]  # type: ignore
+        predicted_anchors[:, 2] = w_anchors * np.exp(anchor_deltas[:, :, 2])  # type: ignore
+        predicted_anchors[:, 3] = h_anchors * np.exp(anchor_deltas[:, :, 3])  # type: ignore
+
+        # convert proposals from (center_x, center_y, w, h) to (x1, y1, x2, y2)
+        predicted_anchors[:, 0] = predicted_anchors[:, 0] - predicted_anchors[:, 2] / 2
+        predicted_anchors[:, 1] = predicted_anchors[:, 1] - predicted_anchors[:, 3] / 2
+        predicted_anchors[:, 2] = predicted_anchors[:, 0] + predicted_anchors[:, 2]
+        predicted_anchors[:, 3] = predicted_anchors[:, 1] + predicted_anchors[:, 3]
+
+        # clip proposals to the image
+        predicted_anchors[:, 0] = np.clip(predicted_anchors[:, 0], 0, image.shape[1])  # type: ignore
+        predicted_anchors[:, 1] = np.clip(predicted_anchors[:, 1], 0, image.shape[0])  # type: ignore
+        predicted_anchors[:, 2] = np.clip(predicted_anchors[:, 2], 0, image.shape[1])  # type: ignore
+        predicted_anchors[:, 3] = np.clip(predicted_anchors[:, 3], 0, image.shape[0])  # type: ignore
+
+        # non max suppression
+        nms_indices = non_max_suppression(
+            predicted_anchors,
+            objectivness_scores,
+            max_output_size=self.num_landmarks,
+        )
+        return tf.gather(predicted_anchors, nms_indices)
 
 
 class FasterRCNN(Model):
@@ -304,7 +379,6 @@ class FasterRCNN(Model):
 
 
 positive_ratio = 1 / 3
-batch_size = 32
 
 
 @tf.function
@@ -314,21 +388,20 @@ def faster_rcnn_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
     lambda_s = positive_ratio
 
     total_loss = 0
-    for i in range(batch_size):
-        predicted_label = y_pred[i, :4]  # type: ignore
-        true_label = y_true[i, :4]  # type: ignore
-        total_loss += lambda_c * CategoricalCrossentropy()(true_label, predicted_label)
+    predicted_label = y_pred[:4]  # type: ignore
+    true_label = y_true[:4]  # type: ignore
+    total_loss += lambda_c * CategoricalCrossentropy()(true_label, predicted_label)
 
-        if predicted_label >= 1:
-            predicted_bbox = y_pred[i, 4:8]  # type: ignore
-            true_bbox = y_true[i, 4:8]  # type: ignore
-            total_loss += lambda_l * Huber(reduction="sum")(true_bbox, predicted_bbox)
-        else:
-            predicted_landmarks = y_pred[i, 8:]  # type: ignore
-            true_landmarks = y_true[i, 8:]  # type: ignore
-            squared_diff = tf.square(predicted_landmarks - true_landmarks)
-            distance_per_landmark = tf.reduce_sum(squared_diff, axis=-1)
-            total_loss += lambda_s * tf.reduce_sum(distance_per_landmark, axis=-1)
+    if predicted_label >= 1:
+        predicted_bbox = y_pred[4:8]  # type: ignore
+        true_bbox = y_true[4:8]  # type: ignore
+        total_loss += lambda_l * Huber(reduction="sum")(true_bbox, predicted_bbox)
+    else:
+        predicted_landmarks = y_pred[8:]  # type: ignore
+        true_landmarks = y_true[8:]  # type: ignore
+        squared_diff = tf.square(predicted_landmarks - true_landmarks)
+        distance_per_landmark = tf.reduce_sum(squared_diff, axis=-1)
+        total_loss += lambda_s * tf.reduce_sum(distance_per_landmark, axis=-1)
 
     return total_loss  # type: ignore
 
