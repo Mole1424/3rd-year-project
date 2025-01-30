@@ -34,8 +34,9 @@ from tensorflow.keras.losses import CategoricalCrossentropy, Huber  # type: igno
 
 
 class RPN(Model):
-    def __init__(self) -> None:
+    def __init__(self, ratio: float) -> None:
         super(RPN, self).__init__()
+        self.ratio = ratio
         self.initaliser = RandomNormal()
         self.num_points_per_anchor = 9
         self.conv1 = Conv2D(
@@ -275,8 +276,7 @@ class RPN(Model):
         return intersection / union if intersection > 0 else 0
 
     def filter_labels(self, labels: np.ndarray, batch_size: int) -> np.ndarray:
-        num_samples = int(positive_ratio * batch_size)
-        num_positives = num_samples
+        num_positives = int(batch_size * (1 - self.ratio))
         positive_indices = np.where(labels == 1)[0]
 
         if len(positive_indices) > num_positives:
@@ -349,10 +349,10 @@ class RPN(Model):
 
 
 class FasterRCNN(Model):
-    def __init__(self) -> None:
+    def __init__(self, ratio: float) -> None:
         super(FasterRCNN, self).__init__()
         self.backbone = self.shared_convolutional_model()
-        self.rpn = RPN()
+        self.rpn = RPN(ratio)
         self.roi_pooling = ROIPoolingLayer(2, 2)
         self.fc1 = Dense(512, activation="relu")
         self.fc2 = Dense(256, activation="relu")
@@ -378,38 +378,7 @@ class FasterRCNN(Model):
         )
 
 
-positive_ratio = 1 / 3
-
-
-@tf.function
-def faster_rcnn_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
-    lambda_c = 1 / positive_ratio
-    lambda_l = 1
-    lambda_s = positive_ratio
-
-    total_loss = 0
-    predicted_label = y_pred[:4]  # type: ignore
-    true_label = y_true[:4]  # type: ignore
-    total_loss += lambda_c * CategoricalCrossentropy()(true_label, predicted_label)
-
-    if predicted_label >= 1:
-        predicted_bbox = y_pred[4:8]  # type: ignore
-        true_bbox = y_true[4:8]  # type: ignore
-        total_loss += lambda_l * Huber(reduction="sum")(true_bbox, predicted_bbox)
-    else:
-        predicted_landmarks = y_pred[8:]  # type: ignore
-        true_landmarks = y_true[8:]  # type: ignore
-        squared_diff = tf.square(predicted_landmarks - true_landmarks)
-        distance_per_landmark = tf.reduce_sum(squared_diff, axis=-1)
-        total_loss += lambda_s * tf.reduce_sum(distance_per_landmark, axis=-1)
-
-    return total_loss  # type: ignore
-
-
-time_steps = 4
-
-
-def recurrent_learning_module() -> Model:
+def recurrent_learning_module(time_steps: int) -> Model:
     """
     fine tunes the original eye landmarks using LSTM
     """
@@ -440,6 +409,56 @@ def recurrent_learning_module() -> Model:
         outputs=x,
         name="recurrent_learning_module",
     )
+
+
+class EyeLandmarks(Model):
+    def __init__(self, ratio: float, time_steps: int) -> None:
+        super(EyeLandmarks, self).__init__()
+        self.faster_rcnn = FasterRCNN(ratio)
+        self.recurrent_learning_module = recurrent_learning_module(time_steps)
+
+    def call(
+        self, image: tf.Tensor, ground_truths: tf.Tensor | None = None
+    ) -> tf.Tensor:
+        rois = self.faster_rcnn(image, ground_truths)
+        left_eye_landmarks = rois[0]
+        right_eye_landmarks = rois[1]
+        left_eye_box = rois[2]
+        right_eye_box = rois[3]
+
+        left_eye_landmarks = self.recurrent_learning_module(
+            left_eye_landmarks, left_eye_box
+        )
+        right_eye_landmarks = self.recurrent_learning_module(
+            right_eye_landmarks, right_eye_box
+        )
+
+        return left_eye_landmarks, right_eye_landmarks
+
+
+@tf.function
+def faster_rcnn_loss(y_true: tf.Tensor, y_pred: tf.Tensor, ratio: float) -> tf.Tensor:
+    lambda_c = 1 / ratio
+    lambda_l = 1
+    lambda_s = ratio
+
+    total_loss = 0
+    predicted_label = y_pred[:4]  # type: ignore
+    true_label = y_true[:4]  # type: ignore
+    total_loss += lambda_c * CategoricalCrossentropy()(true_label, predicted_label)
+
+    if predicted_label >= 1:
+        predicted_bbox = y_pred[4:8]  # type: ignore
+        true_bbox = y_true[4:8]  # type: ignore
+        total_loss += lambda_l * Huber(reduction="sum")(true_bbox, predicted_bbox)
+    else:
+        predicted_landmarks = y_pred[8:]  # type: ignore
+        true_landmarks = y_true[8:]  # type: ignore
+        squared_diff = tf.square(predicted_landmarks - true_landmarks)
+        distance_per_landmark = tf.reduce_sum(squared_diff, axis=-1)
+        total_loss += lambda_s * tf.reduce_sum(distance_per_landmark, axis=-1)
+
+    return total_loss  # type: ignore
 
 
 @tf.function
