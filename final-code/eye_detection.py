@@ -20,6 +20,7 @@ from roi_pooling import ROIPoolingLayer
 from tensorflow.image import non_max_suppression  # type: ignore
 from tensorflow.keras import Input, Model  # type: ignore
 from tensorflow.keras.applications import VGG16  # type: ignore
+from tensorflow.keras.callbacks import LearningRateScheduler  # type: ignore
 from tensorflow.keras.initializers import RandomNormal  # type: ignore
 from tensorflow.keras.layers import (  # type: ignore
     LSTM,
@@ -31,6 +32,7 @@ from tensorflow.keras.layers import (  # type: ignore
     TimeDistributed,
 )
 from tensorflow.keras.losses import CategoricalCrossentropy, Huber  # type: ignore
+from tensorflow.keras.optimizers import SGD, Adam  # type: ignore
 
 
 class RPN(Model):
@@ -39,6 +41,7 @@ class RPN(Model):
         self.ratio = ratio
         self.initaliser = RandomNormal()
         self.num_points_per_anchor = 9
+
         self.conv1 = Conv2D(
             512,
             (3, 3),
@@ -67,6 +70,7 @@ class RPN(Model):
         #     padding="same",
         #     kernel_initializer=self.initalisers,
         # )
+
         self.num_landmarks = 6
 
     @tf.function
@@ -74,7 +78,6 @@ class RPN(Model):
         self,
         features: tf.Tensor,
         image: tf.Tensor,
-        ground_truths: tf.Tensor | None = None,
     ) -> tf.Tensor:
         """
         generates region proposals and initial eye landmarks
@@ -100,67 +103,30 @@ class RPN(Model):
         - 6th row is right eye brow
         - 7th row is nose
         - 8th row is mouth
+        - 9th row is the anchor boxes
         """
-        training = ground_truths is not None
 
         # generate anchors
-        anchor_ids, anchors = self.generate_anchors(
+        anchors = self.generate_anchors(
             (features.shape[1], features.shape[2]), (image.shape[1], image.shape[2])  # type: ignore
         )
 
+        # pass through the network
         x = self.conv1(features)
         anchor_deltas = self.regressor(x)
         objectivness_scores = self.classifier(x)
         # eye_landmarks = self.eye_landmark_classifier(x)
 
-        if training:
-            # find ious between anchors and ground truths
-            ious = np.zeros((len(anchors), len(ground_truths)), dtype=np.float32)
-            for i, anchor in enumerate(anchors):
-                for j, truth in enumerate(ground_truths[2:]):  # type: ignore
-                    ious[i, j] = self.iou(anchor, truth)
-
-            best_anchors, labels = self.compute_labels(ious, anchors)
-
-            # subsample anchors
-            labels = self.filter_labels(labels, 256)
-
-            # find deltas
-            w_anchors = anchors[:, 2] - anchors[:, 0]  # type: ignore
-            h_anchors = anchors[:, 3] - anchors[:, 1]  # type: ignore
-            x_anchors = anchors[:, 0] + w_anchors / 2  # type: ignore
-            y_anchors = anchors[:, 1] + h_anchors / 2  # type: ignore
-
-            relevant_truths = ground_truths[2:]  # type: ignore
-            w_truths = relevant_truths[:, 2] - relevant_truths[:, 0]
-            h_truths = relevant_truths[:, 3] - relevant_truths[:, 1]
-            x_truths = relevant_truths[:, 0] + w_truths / 2
-            y_truths = relevant_truths[:, 1] + h_truths / 2
-
-            eps = np.finfo(anchors.dtype).eps  # type: ignore
-            w_anchors = np.maximum(w_anchors, eps)
-            h_anchors = np.maximum(h_anchors, eps)
-
-            tx = (x_truths - x_anchors) / w_anchors
-            ty = (y_truths - y_anchors) / h_anchors
-            tw = np.log(w_truths / w_anchors)
-            th = np.log(h_truths / h_anchors)
-
-            deltas = np.stack([tx, ty, tw, th], axis=1)
-
-            # apply model
-            offsets = np.zeros((len(anchors), 4))
-            offsets[labels == 1] = deltas[best_anchors]
-            offsets = np.expand_dims(offsets, axis=0)
-        else:
-            x_anchors = anchors[:, 0] + (anchors[:, 2] - anchors[:, 0]) / 2  # type: ignore
-            y_anchors = anchors[:, 1] + (anchors[:, 3] - anchors[:, 1]) / 2  # type: ignore
-            w_anchors = anchors[:, 2] - anchors[:, 0]  # type: ignore
-            h_anchors = anchors[:, 3] - anchors[:, 1]  # type: ignore
+        # convert to x, y, w, h
+        w_anchors = anchors[:, 2] - anchors[:, 0]  # type: ignore
+        h_anchors = anchors[:, 3] - anchors[:, 1]  # type: ignore
+        x_anchors = anchors[:, 0] + w_anchors / 2  # type: ignore
+        y_anchors = anchors[:, 1] + h_anchors / 2  # type: ignore
 
         anchor_deltas = anchor_deltas.reshape(-1, len(anchors), 4)
         objectivness_scores = objectivness_scores.reshape(-1, len(anchors))
 
+        # post processing
         rois = self.post_processing(
             anchors,
             x_anchors,
@@ -172,25 +138,11 @@ class RPN(Model):
             image,
         )
 
-        # apply final labels
-        # 1. right_eyebrow, 2. left_eyebrow, 3. right_eye, 4. left_eye, 5. nose, 6. mouth  # noqa: E501
-        labels = np.zeros((len(rois), self.num_landmarks))
-        for i, roi in enumerate(rois):
-            # labels are is the ground truth with highest iou
-            ious = np.zeros(self.num_landmarks)
-            for j, truth in enumerate(ground_truths[4:]):  # type: ignore
-                ious[j] = self.iou(roi, truth)
-            labels[i] = ground_truths[np.argmax(ious)][4:]  # type: ignore
-
-        if training:
-            # return logits (errors)
-            return rois, labels, offsets
-
-        return rois, labels
+        return tf.concat([rois, anchors], axis=0)  # type: ignore
 
     def generate_anchors(
         self, features_shape: tuple[int, int], image_shape: tuple[int, int]
-    ) -> tuple[tf.Tensor, tf.Tensor]:
+    ) -> tf.Tensor:
         """generate anchors for the image"""
         features_height, features_width = features_shape
         image_height, image_width = image_shape
@@ -228,7 +180,7 @@ class RPN(Model):
                     w = h * ratio * x_stride / y_stride
                     anchors[i] = [x - w / 2, y - h / 2, x + w / 2, y + h / 2]
 
-        # we only care about anchors that are inside the image
+        # get anchors that are inside the image
         inside_anchors_ids = anchors[
             (anchors[:, 0] >= 0)
             & (anchors[:, 1] >= 0)
@@ -236,33 +188,9 @@ class RPN(Model):
             & (anchors[:, 3] <= image_height)
         ][0]
 
-        return inside_anchors_ids, anchors[inside_anchors_ids]
-
-    def compute_labels(
-        self, ious: np.ndarray, anchors: tf.Tensor
-    ) -> tuple[np.ndarray, np.ndarray]:
-        # find best anchors
-        best_iou_indexes = np.argmax(ious, axis=1)
-        best_ious = ious[np.arange(len(anchors)), best_iou_indexes]
-        best_anchors = np.argmax(ious, axis=0)
-        best_gt_ious = ious[best_anchors, np.arange(ious.shape[1])]
-        best_anchors = np.where(ious == best_gt_ious)[0]
-
-        # assign labels to anchors
-        # 0. background, 1. foreground, -1. ignore
-        iou_threshold = 0.5
-        labels = np.zeros(len(anchors))
-        labels.fill(-1)
-        labels[best_ious < iou_threshold] = 0
-        labels[best_anchors] = 1
-        labels[best_ious >= iou_threshold] = 1
-
-        return best_anchors, labels
+        return anchors[inside_anchors_ids]
 
     def iou(self, box1: tf.Tensor, box2: tf.Tensor) -> float:
-        """
-        intersection over union
-        """
         cx1, cy1, w1, h1 = box1
         cx2, cy2, w2, h2 = box2
 
@@ -273,32 +201,7 @@ class RPN(Model):
 
         intersection = max(0, x2 - x1) * max(0, y2 - y1)
         union = w1 * h1 + w2 * h2 - intersection
-        return intersection / union if intersection > 0 else 0
-
-    def filter_labels(self, labels: np.ndarray, batch_size: int) -> np.ndarray:
-        num_positives = int(batch_size * (1 - self.ratio))
-        positive_indices = np.where(labels == 1)[0]
-
-        if len(positive_indices) > num_positives:
-            labels[
-                np.random.choice(
-                    positive_indices,
-                    len(positive_indices) - num_positives,
-                    replace=False,
-                )
-            ] = -1
-        num_negatives = batch_size - num_positives
-        negative_indices = np.where(labels == 0)[0]
-        if len(negative_indices) > num_negatives:
-            labels[
-                np.random.choice(
-                    negative_indices,
-                    len(negative_indices) - num_negatives,
-                    replace=False,
-                )
-            ] = -1
-
-        return labels
+        return intersection / union
 
     def convert_landmakrs(
         self, proposal: tf.Tensor, bounding_box: tf.Tensor
@@ -357,13 +260,23 @@ class FasterRCNN(Model):
         self.fc1 = Dense(512, activation="relu")
         self.fc2 = Dense(256, activation="relu")
 
-    def call(
-        self, image: tf.Tensor, ground_truths: tf.Tensor | None = None
-    ) -> tf.Tensor:
-        features = self.backbone(image)
+    def call(self, image: tf.Tensor) -> tf.Tensor:
+        """
+        takes in an image tensor
 
-        training = ground_truths is not None
-        rois = self.rpn(features, ground_truths) if training else self.rpn(features)
+        return a tensor of the following form:
+        - 1st row is left eye landmarks (x1, y1, ..., x6, y6)
+        - 2nd row is right eye landmarks
+        - 3rd row is left eye bounding box (center_x, center_y, w, h)
+        - 4th row is right eye bounding box
+        - 5th row is left eye brow
+        - 6th row is right eye brow
+        - 7th row is nose
+        - 8th row is mouth
+        - 9th row is the anchor boxes
+        """
+        features = self.backbone(image)
+        rois = self.rpn(features)
         pooled = self.roi_pooling([features, rois])  # type: ignore
         x = self.fc1(pooled)
         return self.fc2(x)
@@ -417,15 +330,30 @@ class EyeLandmarks(Model):
         self.faster_rcnn = FasterRCNN(ratio)
         self.recurrent_learning_module = recurrent_learning_module(time_steps)
 
-    def call(
-        self, image: tf.Tensor, ground_truths: tf.Tensor | None = None
-    ) -> tf.Tensor:
-        rois = self.faster_rcnn(image, ground_truths)
+    def call(self, image: tf.Tensor) -> tf.Tensor:
+        """
+        return tensor of the following form:
+        - 1st row is left eye landmarks (x1, y1, ..., x6, y6)
+        - 2nd row is right eye landmarks
+        - 3rd row is left eye bounding box (center_x, center_y, w, h)
+        - 4th row is right eye bounding box
+        - 5th row is left eye brow
+        - 6th row is right eye brow
+        - 7th row is nose
+        - 8th row is mouth
+        - 9th row is the anchor boxes
+        - 10th row is the updated left eye landmarks
+        - 11th row is the updated right eye landmarks
+        """
+        rois = self.faster_rcnn(image)
+
+        # extract the eye landmarks and bounding boxes
         left_eye_landmarks = rois[0]
         right_eye_landmarks = rois[1]
         left_eye_box = rois[2]
         right_eye_box = rois[3]
 
+        # fine tune the eye landmarks
         left_eye_landmarks = self.recurrent_learning_module(
             left_eye_landmarks, left_eye_box
         )
@@ -433,36 +361,260 @@ class EyeLandmarks(Model):
             right_eye_landmarks, right_eye_box
         )
 
-        return left_eye_landmarks, right_eye_landmarks
+        # append to the end
+        return tf.concat([rois, left_eye_landmarks, right_eye_landmarks], axis=0)  # type: ignore
 
 
 @tf.function
-def faster_rcnn_loss(y_true: tf.Tensor, y_pred: tf.Tensor, ratio: float) -> tf.Tensor:
+def frcnn_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
+    ratio = 3
+
+    anchors = y_pred[8]  # type: ignore
+    x_anchors = anchors[:, 0] + anchors[:, 2] / 2
+    y_anchors = anchors[:, 1] + anchors[:, 3] / 2
+    w_anchors = anchors[:, 2] - anchors[:, 0]
+    h_anchors = anchors[:, 3] - anchors[:, 1]
+
+    ground_truths = y_true[:8]  # type: ignore
+
+    # find ious between anchors and ground truths
+    ious = np.zeros((len(anchors), len(ground_truths)), dtype=np.float32)
+    for i, anchor in enumerate(anchors):
+        for j, truth in enumerate(ground_truths[2:]):  # type: ignore
+            ious[i, j] = iou(anchor, truth)
+
+    best_anchors, labels = compute_labels(ious, anchors)
+
+    # subsample anchors
+    labels = filter_labels(labels, 256, ratio)
+
+    # find deltas
+    relevant_truths = ground_truths[2:]  # type: ignore
+    w_truths = relevant_truths[:, 2] - relevant_truths[:, 0]
+    h_truths = relevant_truths[:, 3] - relevant_truths[:, 1]
+    x_truths = relevant_truths[:, 0] + w_truths / 2
+    y_truths = relevant_truths[:, 1] + h_truths / 2
+
+    eps = np.finfo(anchors.dtype).eps  # type: ignore
+    w_anchors = np.maximum(w_anchors, eps)
+    h_anchors = np.maximum(h_anchors, eps)
+
+    tx = (x_truths - x_anchors) / w_anchors
+    ty = (y_truths - y_anchors) / h_anchors
+    tw = np.log(w_truths / w_anchors)
+    th = np.log(h_truths / h_anchors)
+
+    deltas = np.stack([tx, ty, tw, th], axis=1)
+
+    offsets = np.zeros((len(anchors), 4))
+    offsets[labels == 1] = deltas[best_anchors]
+    offsets = np.expand_dims(offsets, axis=0)
+
+    # find the loss
+    return frcnn_loss_function(
+        tf.convert_to_tensor(offsets, dtype=tf.float32), y_pred, ratio
+    )
+
+
+def iou(box1: tf.Tensor, box2: tf.Tensor) -> float:
+    """
+    intersection over union
+    """
+    cx1, cy1, w1, h1 = box1
+    cx2, cy2, w2, h2 = box2
+
+    x1 = max(cx1 - w1 / 2, cx2 - w2 / 2)
+    y1 = max(cy1 - h1 / 2, cy2 - h2 / 2)
+    x2 = min(cx1 + w1 / 2, cx2 + w2 / 2)
+    y2 = min(cy1 + h1 / 2, cy2 + h2 / 2)
+
+    intersection = max(0, x2 - x1) * max(0, y2 - y1)
+    union = w1 * h1 + w2 * h2 - intersection
+    return intersection / union
+
+
+def compute_labels(
+    ious: np.ndarray, anchors: tf.Tensor
+) -> tuple[np.ndarray, np.ndarray]:
+    # find best anchors
+    best_iou_indexes = np.argmax(ious, axis=1)
+    best_ious = ious[np.arange(len(anchors)), best_iou_indexes]
+    best_anchors = np.argmax(ious, axis=0)
+    best_gt_ious = ious[best_anchors, np.arange(ious.shape[1])]
+    best_anchors = np.where(ious == best_gt_ious)[0]
+
+    # assign labels to anchors
+    # 0. background, 1. foreground, -1. ignore
+    iou_threshold = 0.5
+    labels = np.zeros(len(anchors))
+    labels.fill(-1)
+    labels[best_ious < iou_threshold] = 0
+    labels[best_anchors] = 1
+    labels[best_ious >= iou_threshold] = 1
+
+    return best_anchors, labels
+
+
+def filter_labels(labels: np.ndarray, batch_size: int, ratio: int) -> np.ndarray:
+    num_positives = int(batch_size * (1 - ratio))
+    positive_indices = np.where(labels == 1)[0]
+
+    if len(positive_indices) > num_positives:
+        labels[
+            np.random.choice(
+                positive_indices,
+                len(positive_indices) - num_positives,
+                replace=False,
+            )
+        ] = -1
+    num_negatives = batch_size - num_positives
+    negative_indices = np.where(labels == 0)[0]
+    if len(negative_indices) > num_negatives:
+        labels[
+            np.random.choice(
+                negative_indices,
+                len(negative_indices) - num_negatives,
+                replace=False,
+            )
+        ] = -1
+
+    return labels
+
+
+def frcnn_loss_function(
+    y_true: tf.Tensor, y_pred: tf.Tensor, ratio: float
+) -> tf.Tensor:
     lambda_c = 1 / ratio
     lambda_l = 1
     lambda_s = ratio
 
     total_loss = 0
-    predicted_label = y_pred[:4]  # type: ignore
-    true_label = y_true[:4]  # type: ignore
+    predicted_label = y_pred[0]  # type: ignore
+    true_label = y_true[0]  # type: ignore
     total_loss += lambda_c * CategoricalCrossentropy()(true_label, predicted_label)
 
-    if predicted_label >= 1:
-        predicted_bbox = y_pred[4:8]  # type: ignore
-        true_bbox = y_true[4:8]  # type: ignore
-        total_loss += lambda_l * Huber(reduction="sum")(true_bbox, predicted_bbox)
-    else:
-        predicted_landmarks = y_pred[8:]  # type: ignore
-        true_landmarks = y_true[8:]  # type: ignore
+    for i in [1, 2]:
+        predicted_landmarks = y_pred[i]  # type: ignore
+        true_landmarks = y_true[i]  # type: ignore
         squared_diff = tf.square(predicted_landmarks - true_landmarks)
         distance_per_landmark = tf.reduce_sum(squared_diff, axis=-1)
         total_loss += lambda_s * tf.reduce_sum(distance_per_landmark, axis=-1)
+    for i in [2, 3, 4, 5, 6, 7, 8]:
+        predicted_bbox = y_pred[i]  # type: ignore
+        true_bbox = y_true[i]  # type: ignore
+        total_loss += lambda_l * Huber(reduction="sum")(true_bbox, predicted_bbox)
 
     return total_loss  # type: ignore
 
 
-@tf.function
-def recurrent_learning_module_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
+def rlm_loss_function(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
     cumulative_prediction = tf.cumsum(y_pred, axis=1)
     final_prediction = cumulative_prediction[:, -1, :]
     return tf.reduce_mean(tf.reduce_sum(tf.square(y_true - final_prediction), axis=-1))
+
+
+def step_decay(epoch: int, lr: float) -> float:
+    if epoch % 8 == 0 and epoch:
+        return lr * 0.8
+    return lr
+
+
+def train_model() -> None:
+    # get data TODO
+    x_train = ...
+    y_train = ...
+
+    path_to_weights = "/dcs/large/u2204489/"
+
+    # create model
+    eye_landmarks = EyeLandmarks(3, 10)
+    eye_landmarks.faster_rcnn.backbone.trainable = False
+
+    eye_landmarks.faster_rcnn.rpn.compile(
+        optimizer=SGD(learning_rate=0.02, momentum=0.9, weight_decay=0.0001),
+        loss=frcnn_loss,
+    )
+    eye_landmarks.faster_rcnn.rpn.fit(
+        x_train,
+        y_train,
+        batch_size=2,
+        epochs=8 * 10,
+        callbacks=[LearningRateScheduler(step_decay)],
+    )
+    eye_landmarks.faster_rcnn.rpn.save_weights(f"{path_to_weights}step1.keras")
+
+    eye_landmarks.faster_rcnn.rpn.trainable = False
+    eye_landmarks.faster_rcnn.roi_pooling.trainable = True
+    eye_landmarks.faster_rcnn.fc1.trainable = True
+    eye_landmarks.faster_rcnn.fc2.trainable = True
+
+    eye_landmarks.faster_rcnn.compile(
+        optimizer=SGD(learning_rate=0.02, momentum=0.9, weight_decay=0.0001),
+        loss=frcnn_loss,
+    )
+    eye_landmarks.faster_rcnn.fit(
+        x_train,
+        y_train,
+        batch_size=2,
+        epochs=8 * 10,
+        callbacks=[LearningRateScheduler(step_decay)],
+    )
+    eye_landmarks.faster_rcnn.save_weights(f"{path_to_weights}step2.keras")
+
+    eye_landmarks.faster_rcnn.rpn.trainable = True
+    eye_landmarks.faster_rcnn.roi_pooling.trainable = False
+    eye_landmarks.faster_rcnn.fc1.trainable = False
+    eye_landmarks.faster_rcnn.fc2.trainable = False
+
+    eye_landmarks.faster_rcnn.compile(
+        optimizer=SGD(learning_rate=0.02, momentum=0.9, weight_decay=0.0001),
+        loss=frcnn_loss,
+    )
+    eye_landmarks.faster_rcnn.fit(
+        x_train,
+        y_train,
+        batch_size=2,
+        epochs=8 * 10,
+        callbacks=[LearningRateScheduler(step_decay)],
+    )
+    eye_landmarks.faster_rcnn.save_weights(f"{path_to_weights}step3.keras")
+
+    eye_landmarks.faster_rcnn.roi_pooling.trainable = True
+    eye_landmarks.faster_rcnn.fc1.trainable = True
+    eye_landmarks.faster_rcnn.fc2.trainable = True
+
+    eye_landmarks.faster_rcnn.compile(
+        optimizer=SGD(learning_rate=0.02, momentum=0.9, weight_decay=0.0001),
+        loss=frcnn_loss,
+    )
+    eye_landmarks.faster_rcnn.fit(
+        x_train,
+        y_train,
+        batch_size=2,
+        epochs=8 * 10,
+        callbacks=[LearningRateScheduler(step_decay)],
+    )
+    eye_landmarks.faster_rcnn.save_weights(f"{path_to_weights}step4.keras")
+
+    eye_landmarks.faster_rcnn.trainable = False
+
+    # use faster_rcnn to generate starting landmarks for the RLM
+    predictions = eye_landmarks.faster_rcnn(x_train)
+    l_eye, r_eye, l_box, r_box, _ = predictions
+
+    eye_landmarks.recurrent_learning_module.compile(
+        optimizer=Adam(learning_rate=0.0001), loss=rlm_loss_function
+    )
+    eye_landmarks.recurrent_learning_module.fit(
+        zip([l_eye, l_box], [r_eye, r_box]),
+        y_train,
+        batch_size=2,
+        epochs=10,
+    )
+
+    eye_landmarks.save_weights(f"{path_to_weights}final.keras")
+    print("Training complete :)")
+
+
+if __name__ == "__main__":
+    train_model()
