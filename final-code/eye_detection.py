@@ -13,7 +13,9 @@
 # available at https://github.com/hxuaj/tf2-faster-rcnn/tree/main/model
 # thanks to hxuaj
 
+from pathlib import Path
 
+import cv2 as cv
 import numpy as np
 import tensorflow as tf
 from roi_pooling import ROIPoolingLayer
@@ -31,7 +33,11 @@ from tensorflow.keras.layers import (  # type: ignore
     RepeatVector,
     TimeDistributed,
 )
-from tensorflow.keras.losses import CategoricalCrossentropy, Huber  # type: ignore
+from tensorflow.keras.losses import (  # type: ignore
+    CategoricalCrossentropy,
+    Huber,
+    MeanSquaredError,
+)
 from tensorflow.keras.optimizers import SGD, Adam  # type: ignore
 
 
@@ -39,7 +45,6 @@ class RPN(Model):
     def __init__(self, ratio: float) -> None:
         super(RPN, self).__init__()
         self.ratio = ratio
-        self.initaliser = RandomNormal()
         self.num_points_per_anchor = 9
 
         self.conv1 = Conv2D(
@@ -47,28 +52,28 @@ class RPN(Model):
             (3, 3),
             activation="relu",
             padding="same",
-            kernel_initializer=self.initaliser,
+            kernel_initializer=RandomNormal(),
         )
         self.regressor = Conv2D(
             8 * self.num_points_per_anchor,
             (1, 1),
             activation="linear",
             padding="same",
-            kernel_initializer=self.initaliser,
+            kernel_initializer=RandomNormal(),
         )
         self.classifier = Conv2D(
             1 * self.num_points_per_anchor,
             (1, 1),
             activation="sigmoid",
             padding="same",
-            kernel_initializer=self.initaliser,
+            kernel_initializer=RandomNormal(),
         )
         # self.eye_landmark_classifier = Conv2D(
         #     6 * self.num_points_per_anchor,
         #     (1, 1),
         #     activation="linear",
         #     padding="same",
-        #     kernel_initializer=self.initalisers,
+        #     kernel_initializer=RandomNormal(),
         # )
 
         self.num_landmarks = 6
@@ -257,8 +262,8 @@ class FasterRCNN(Model):
         self.backbone = self.shared_convolutional_model()
         self.rpn = RPN(ratio)
         self.roi_pooling = ROIPoolingLayer(2, 2)
-        self.fc1 = Dense(512, activation="relu")
-        self.fc2 = Dense(256, activation="relu")
+        self.fc1 = Dense(512, activation="relu", kernel_initializer=RandomNormal())
+        self.fc2 = Dense(256, activation="relu", kernel_initializer=RandomNormal())
 
     def call(self, image: tf.Tensor) -> tf.Tensor:
         """
@@ -493,12 +498,21 @@ def frcnn_loss_function(
     true_label = y_true[0]  # type: ignore
     total_loss += lambda_c * CategoricalCrossentropy()(true_label, predicted_label)
 
-    for i in [1, 2]:
-        predicted_landmarks = y_pred[i]  # type: ignore
-        true_landmarks = y_true[i]  # type: ignore
-        squared_diff = tf.square(predicted_landmarks - true_landmarks)
-        distance_per_landmark = tf.reduce_sum(squared_diff, axis=-1)
-        total_loss += lambda_s * tf.reduce_sum(distance_per_landmark, axis=-1)
+    # for i in [1, 2]:
+    #     predicted_landmarks = y_pred[i]  # type: ignore
+    #     true_landmarks = y_true[i]  # type: ignore
+    #     squared_diff = tf.square(predicted_landmarks - true_landmarks)
+    #     distance_per_landmark = tf.reduce_sum(squared_diff, axis=-1)
+    #     total_loss += lambda_s * tf.reduce_sum(distance_per_landmark, axis=-1)
+
+    predicted_landmarks = y_pred[1]  # type: ignore
+    true_landmarks = y_true[1]  # type: ignore
+
+    landmark_loss = MeanSquaredError(reduction="sum")(
+        true_landmarks, predicted_landmarks
+    )
+    total_loss += lambda_s * landmark_loss * tf.cast(y_true[3], tf.float32)  # type: ignore
+
     for i in [2, 3, 4, 5, 6, 7, 8]:
         predicted_bbox = y_pred[i]  # type: ignore
         true_bbox = y_true[i]  # type: ignore
@@ -519,30 +533,109 @@ def step_decay(epoch: int, lr: float) -> float:
     return lr
 
 
-def train_model() -> None:
-    # get data TODO
-    x_train = ...
-    y_train = ...
+def load_dataset(path: str, file_type: str, fully_labeled: bool = True) -> tuple:
+    images = []
+    labels = []
+    for file in Path(path).glob("*.txt"):
+        images.append(cv.imread(str(file).replace("txt", file_type)))
+        labels.append(
+            {
+                "bbox": np.loadtxt(file, max_rows=6),
+                "landmarks": (
+                    np.loadtxt(file, skiprows=6) if fully_labeled else np.zeros_like(12)
+                ),
+                "has_landmarks": 1 if fully_labeled else 0,
+            }
+        )
+    return images, labels
 
-    path_to_weights = "/dcs/large/u2204489/"
+
+def load_datsets(path_to_large: str) -> tuple:
+    path_to_datasets = path_to_large + "eyes/"
+    x_train = []
+    y_train = []
+    # load 300W dataset
+    three_hundred_x, three_hundred_y = load_dataset(
+        path_to_datasets + "300W/", "png", True
+    )
+    x_train.extend(three_hundred_x)
+    y_train.extend(three_hundred_y)
+    # load AFW dataset
+    afw_x, afw_y = load_dataset(path_to_datasets + "AFW/", "jpg", True)
+    x_train.extend(afw_x)
+    y_train.extend(afw_y)
+    # load HELEN dataset
+    helen_x, helen_y = load_dataset(path_to_datasets + "HELEN/", "jpg", True)
+    x_train.extend(helen_x)
+    y_train.extend(helen_y)
+    # load LFPW testset
+    lfpw_x, lfpw_y = load_dataset(path_to_datasets + "LFPW/trainset", "jpg", True)
+    x_train.extend(lfpw_x)
+    y_train.extend(lfpw_y)
+
+    # load AFLW dataset (partial)
+    x_partial, y_partial = load_dataset(path_to_datasets + "AFLW/", "jpg", False)
+
+    return x_train, y_train, x_partial, y_partial
+
+
+def combine_datasets(
+    x_full: list, y_full: list, x_partial: list, y_partial: list, batch_size: int
+) -> tf.data.Dataset:
+    fully_landmarked = tf.data.Dataset.from_tensor_slices((x_full, y_full))
+    partially_landmarked = tf.data.Dataset.from_tensor_slices((x_partial, y_partial))
+
+    return (
+        fully_landmarked.concatenate(partially_landmarked)
+        .shuffle(len(x_full) + len(x_partial))
+        .batch(batch_size)
+        .prefetch(tf.data.AUTOTUNE)
+    )
+
+
+def get_backbone_rpn_model(eye_landmarks: EyeLandmarks) -> Model:
+    inputs = Input(shape=(None, None, 3))
+    features = eye_landmarks.faster_rcnn.backbone(inputs)
+    rpn = eye_landmarks.faster_rcnn.rpn(features, inputs)
+    return Model(inputs=inputs, outputs=rpn)
+
+
+def train_model() -> None:
+    path_to_large = "/dcs/large/u2204489/"
+    x_train, y_train, x_partial, y_partial = load_datsets(path_to_large)
+
+    batch_size = 2
+    combined_dataset = combine_datasets(
+        x_train, y_train, x_partial, y_partial, batch_size
+    )
 
     # create model
     eye_landmarks = EyeLandmarks(3, 10)
     eye_landmarks.faster_rcnn.backbone.trainable = False
 
-    eye_landmarks.faster_rcnn.rpn.compile(
+    # train FRCNN in 4step process as described by
+    # "Faster R-CNN: Towards Real-Time Object Detection with Region Proposal Networks"
+    # https://ieeexplore.ieee.org/abstract/document/7485869 (section 3.2)
+
+    # step 1 train soley RPN
+    eye_landmarks.roi_pooling.trainable = False
+    eye_landmarks.fc1.trainable = False
+    eye_landmarks.fc2.trainable = False
+
+    backbone_rpn_model = get_backbone_rpn_model(eye_landmarks)
+
+    backbone_rpn_model.compile(
         optimizer=SGD(learning_rate=0.02, momentum=0.9, weight_decay=0.0001),
         loss=frcnn_loss,
     )
-    eye_landmarks.faster_rcnn.rpn.fit(
-        x_train,
-        y_train,
-        batch_size=2,
+    backbone_rpn_model.fit(
+        combined_dataset,
         epochs=8 * 10,
         callbacks=[LearningRateScheduler(step_decay)],
     )
-    eye_landmarks.faster_rcnn.rpn.save_weights(f"{path_to_weights}step1.keras")
+    backbone_rpn_model.save_weights(f"{path_to_large}step1.keras")
 
+    # step 2, train fast-RCNN with fixed RPN
     eye_landmarks.faster_rcnn.rpn.trainable = False
     eye_landmarks.faster_rcnn.roi_pooling.trainable = True
     eye_landmarks.faster_rcnn.fc1.trainable = True
@@ -553,14 +646,13 @@ def train_model() -> None:
         loss=frcnn_loss,
     )
     eye_landmarks.faster_rcnn.fit(
-        x_train,
-        y_train,
-        batch_size=2,
+        combined_dataset,
         epochs=8 * 10,
         callbacks=[LearningRateScheduler(step_decay)],
     )
-    eye_landmarks.faster_rcnn.save_weights(f"{path_to_weights}step2.keras")
+    eye_landmarks.faster_rcnn.save_weights(f"{path_to_large}step2.keras")
 
+    # step 3, train RPN with fixed fast-RCNN
     eye_landmarks.faster_rcnn.rpn.trainable = True
     eye_landmarks.faster_rcnn.roi_pooling.trainable = False
     eye_landmarks.faster_rcnn.fc1.trainable = False
@@ -571,14 +663,13 @@ def train_model() -> None:
         loss=frcnn_loss,
     )
     eye_landmarks.faster_rcnn.fit(
-        x_train,
-        y_train,
-        batch_size=2,
+        combined_dataset,
         epochs=8 * 10,
         callbacks=[LearningRateScheduler(step_decay)],
     )
-    eye_landmarks.faster_rcnn.save_weights(f"{path_to_weights}step3.keras")
+    eye_landmarks.faster_rcnn.save_weights(f"{path_to_large}step3.keras")
 
+    # step 4, train everything together
     eye_landmarks.faster_rcnn.roi_pooling.trainable = True
     eye_landmarks.faster_rcnn.fc1.trainable = True
     eye_landmarks.faster_rcnn.fc2.trainable = True
@@ -588,13 +679,11 @@ def train_model() -> None:
         loss=frcnn_loss,
     )
     eye_landmarks.faster_rcnn.fit(
-        x_train,
-        y_train,
-        batch_size=2,
+        combined_dataset,
         epochs=8 * 10,
         callbacks=[LearningRateScheduler(step_decay)],
     )
-    eye_landmarks.faster_rcnn.save_weights(f"{path_to_weights}step4.keras")
+    eye_landmarks.faster_rcnn.save_weights(f"{path_to_large}step4.keras")
 
     eye_landmarks.faster_rcnn.trainable = False
 
@@ -608,11 +697,11 @@ def train_model() -> None:
     eye_landmarks.recurrent_learning_module.fit(
         zip([l_eye, l_box], [r_eye, r_box]),
         y_train,
-        batch_size=2,
+        batch_size=batch_size,
         epochs=10,
     )
 
-    eye_landmarks.save_weights(f"{path_to_weights}final.keras")
+    eye_landmarks.save_weights(f"{path_to_large}final.keras")
     print("Training complete :)")
 
 
