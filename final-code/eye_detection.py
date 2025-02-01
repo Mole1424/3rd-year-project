@@ -14,6 +14,7 @@
 # thanks to hxuaj
 
 from pathlib import Path
+from typing import Generator
 
 import cv2 as cv
 import numpy as np
@@ -361,6 +362,68 @@ class EyeLandmarks(Model):
         return tf.concat([rois, left_eye_landmarks, right_eye_landmarks], axis=0)  # type: ignore
 
 
+def dataset_generator(path: str, file_type: str, fully_labeled: bool) -> Generator:
+    for file in Path(path).glob("*.txt"):
+        image = cv.imread(str(file).replace("txt", file_type))
+        label = {
+            "bbox": np.loadtxt(file, max_rows=6),
+            "landmarks": (
+                np.loadtxt(file, skiprows=6) if fully_labeled else np.zeros_like((12,))
+            ),
+            "has_landmarks": 1 if fully_labeled else 0,
+        }
+        yield image, label
+
+
+def load_dataset(
+    path: str, file_type: str, fully_labeled: bool, batch_size: int
+) -> tf.data.Dataset:
+    dataset = tf.data.Dataset.from_generator(
+        lambda: dataset_generator(path, file_type, fully_labeled),
+        output_signature=(
+            tf.TensorSpec(shape=(None, None, 3), dtype=tf.uint8),  # type: ignore
+            {
+                "bbox": tf.TensorSpec(shape=(6, 4), dtype=tf.float32),  # type: ignore
+                "landmarks": tf.TensorSpec(shape=(12,), dtype=tf.float32),  # type: ignore
+                "has_landmarks": tf.TensorSpec(shape=(), dtype=tf.int32),  # type: ignore
+            },
+        ),
+    )
+    return dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
+
+
+def load_datsets(path_to_large: str, batch_size: int) -> tf.data.Dataset:
+    path_to_datasets = path_to_large + "eyes/"
+
+    datasets = [
+        load_dataset(path_to_datasets + "300w/", "png", True, batch_size),
+        load_dataset(path_to_datasets + "helen/", "jpg", True, batch_size),
+        load_dataset(path_to_datasets + "lfpw/trainset/", "png", True, batch_size),
+        load_dataset(path_to_datasets + "afw/", "jpg", True, batch_size),
+        load_dataset(path_to_datasets + "aflw/", "jpg", False, batch_size),
+    ]
+
+    return combine_datasets(datasets, batch_size)
+
+
+def combine_datasets(datasets: list, batch_size: int) -> tf.data.Dataset:
+    full_dataset = datasets[0]
+    for dataset in datasets[1:]:
+        full_dataset = full_dataset.concatenate(dataset)
+    return (
+        full_dataset.shuffle(full_dataset.cardinality().numpy())
+        .batch(batch_size)
+        .prefetch(tf.data.AUTOTUNE)
+    )
+
+
+def get_backbone_rpn_model(eye_landmarks: EyeLandmarks) -> Model:
+    inputs = Input(shape=(None, None, 3))
+    features = eye_landmarks.faster_rcnn.backbone(inputs)
+    rpn = eye_landmarks.faster_rcnn.rpn(features, inputs)
+    return Model(inputs=inputs, outputs=rpn)
+
+
 @tf.function
 def frcnn_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
     ratio = 3
@@ -538,91 +601,19 @@ def step_decay(epoch: int, lr: float) -> float:
     return lr
 
 
-def load_dataset(path: str, file_type: str, fully_labeled: bool) -> tuple:
-    images = []
-    labels = []
-    for file in Path(path).glob("*.txt"):
-        images.append(cv.imread(str(file).replace("txt", file_type)))
-        labels.append(
-            {
-                "bbox": np.loadtxt(file, max_rows=6),
-                "landmarks": (
-                    np.loadtxt(file, skiprows=6) if fully_labeled else np.zeros_like(12)
-                ),
-                "has_landmarks": 1 if fully_labeled else 0,
-            }
-        )
-    return images, labels
-
-
-def load_datsets(path_to_large: str) -> tuple:
-    path_to_datasets = path_to_large + "eyes/"
-    x_train = []
-    y_train = []
-    # load 300W dataset
-    ibug_x, ibug_y = load_dataset(path_to_datasets + "300w/", "png", True)
-    x_train.extend(ibug_x)
-    y_train.extend(ibug_y)
-    # load AFW dataset
-    afw_x, afw_y = load_dataset(path_to_datasets + "afw/", "jpg", True)
-    x_train.extend(afw_x)
-    y_train.extend(afw_y)
-    # load HELEN dataset
-    helen_x, helen_y = load_dataset(path_to_datasets + "helen/", "jpg", True)
-    x_train.extend(helen_x)
-    y_train.extend(helen_y)
-    # load LFPW testset
-    lfpw_x, lfpw_y = load_dataset(path_to_datasets + "lfpw/trainset", "png", True)
-    x_train.extend(lfpw_x)
-    y_train.extend(lfpw_y)
-
-    # load AFLW dataset (partial)
-    x_partial, y_partial = load_dataset(path_to_datasets + "aflw/", "jpg", False)
-
-    print(x_train)
-
-    return x_train, y_train, x_partial, y_partial
-
-
-def combine_datasets(
-    x_full: list, y_full: list, x_partial: list, y_partial: list, batch_size: int
-) -> tf.data.Dataset:
-    fully_landmarked = tf.data.Dataset.from_tensor_slices((x_full, y_full))
-    partially_landmarked = tf.data.Dataset.from_tensor_slices((x_partial, y_partial))
-
-    return (
-        fully_landmarked.concatenate(partially_landmarked)
-        .shuffle(len(x_full) + len(x_partial))
-        .batch(batch_size)
-        .prefetch(tf.data.AUTOTUNE)
-    )
-
-
-def get_backbone_rpn_model(eye_landmarks: EyeLandmarks) -> Model:
-    inputs = Input(shape=(None, None, 3))
-    features = eye_landmarks.faster_rcnn.backbone(inputs)
-    rpn = eye_landmarks.faster_rcnn.rpn(features, inputs)
-    return Model(inputs=inputs, outputs=rpn)
-
-
 def train_model() -> None:
     path_to_large = "/dcs/large/u2204489/"
 
+    batch_size = 2
+
     # check if the dataset already exists
     if Path(path_to_large + "eyedataset").exists():
-        combined_dataset = tf.data.Dataset.load(path_to_large + "eyedataset")
+        dataset = tf.data.Dataset.load(path_to_large + "eyedataset")
     else:
-        x_train, y_train, x_partial, y_partial = load_datsets(path_to_large)
-
-        batch_size = 2
-        combined_dataset = combine_datasets(
-            x_train, y_train, x_partial, y_partial, batch_size
-        )
+        dataset = load_datsets(path_to_large, batch_size)
 
         # save the dataset
-        tf.data.Dataset.save(
-            combined_dataset, path_to_large + "eyedataset", compression="GZIP"
-        )
+        tf.data.Dataset.save(dataset, path_to_large + "eyedataset", compression="GZIP")
 
     # create model
     eye_landmarks = EyeLandmarks(3, 10)
@@ -644,7 +635,7 @@ def train_model() -> None:
         loss=frcnn_loss,
     )
     backbone_rpn_model.fit(
-        combined_dataset,
+        dataset,
         epochs=8 * 10,
         callbacks=[LearningRateScheduler(step_decay)],
     )
@@ -661,7 +652,7 @@ def train_model() -> None:
         loss=frcnn_loss,
     )
     eye_landmarks.faster_rcnn.fit(
-        combined_dataset,
+        dataset,
         epochs=8 * 10,
         callbacks=[LearningRateScheduler(step_decay)],
     )
@@ -678,7 +669,7 @@ def train_model() -> None:
         loss=frcnn_loss,
     )
     eye_landmarks.faster_rcnn.fit(
-        combined_dataset,
+        dataset,
         epochs=8 * 10,
         callbacks=[LearningRateScheduler(step_decay)],
     )
@@ -694,7 +685,7 @@ def train_model() -> None:
         loss=frcnn_loss,
     )
     eye_landmarks.faster_rcnn.fit(
-        combined_dataset,
+        dataset,
         epochs=8 * 10,
         callbacks=[LearningRateScheduler(step_decay)],
     )
@@ -703,6 +694,12 @@ def train_model() -> None:
     eye_landmarks.faster_rcnn.trainable = False
 
     # use faster_rcnn to generate starting landmarks for the RLM
+    x_train = []
+    y_train = []
+    for x, y in dataset:  # type: ignore
+        x_train.append(x)
+        y_train.append(y)
+
     predictions = eye_landmarks.faster_rcnn(x_train)
     l_eye, r_eye, l_box, r_box, _ = predictions
 
