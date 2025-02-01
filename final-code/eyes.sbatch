@@ -2,11 +2,11 @@
 #
 #SBATCH --job-name=eye-landmarking
 #SBATCH --partition=gecko
-#SBATCH --cpus-per-task=12
+#SBATCH --cpus-per-task=1
 #SBATCH --gres=gpu:3
 #SBATCH --time=2-00:00:00 
+#SBATCH --mem=200G
 #
-#SBATCH --mail-type=END,FAIL
 #SBATCH --output=joboutput_%j.out
 #SBATCH --error=joboutput_%j.err
 

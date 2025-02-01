@@ -538,7 +538,7 @@ def step_decay(epoch: int, lr: float) -> float:
     return lr
 
 
-def load_dataset(path: str, file_type: str, fully_labeled: bool = True) -> tuple:
+def load_dataset(path: str, file_type: str, fully_labeled: bool) -> tuple:
     images = []
     labels = []
     for file in Path(path).glob("*.txt"):
@@ -560,26 +560,26 @@ def load_datsets(path_to_large: str) -> tuple:
     x_train = []
     y_train = []
     # load 300W dataset
-    three_hundred_x, three_hundred_y = load_dataset(
-        path_to_datasets + "300W/", "png", True
-    )
-    x_train.extend(three_hundred_x)
-    y_train.extend(three_hundred_y)
+    ibug_x, ibug_y = load_dataset(path_to_datasets + "300w/", "png", True)
+    x_train.extend(ibug_x)
+    y_train.extend(ibug_y)
     # load AFW dataset
-    afw_x, afw_y = load_dataset(path_to_datasets + "AFW/", "jpg", True)
+    afw_x, afw_y = load_dataset(path_to_datasets + "afw/", "jpg", True)
     x_train.extend(afw_x)
     y_train.extend(afw_y)
     # load HELEN dataset
-    helen_x, helen_y = load_dataset(path_to_datasets + "HELEN/", "jpg", True)
+    helen_x, helen_y = load_dataset(path_to_datasets + "helen/", "jpg", True)
     x_train.extend(helen_x)
     y_train.extend(helen_y)
     # load LFPW testset
-    lfpw_x, lfpw_y = load_dataset(path_to_datasets + "LFPW/trainset", "jpg", True)
+    lfpw_x, lfpw_y = load_dataset(path_to_datasets + "lfpw/trainset", "png", True)
     x_train.extend(lfpw_x)
     y_train.extend(lfpw_y)
 
     # load AFLW dataset (partial)
-    x_partial, y_partial = load_dataset(path_to_datasets + "AFLW/", "jpg", False)
+    x_partial, y_partial = load_dataset(path_to_datasets + "aflw/", "jpg", False)
+
+    print(x_train)
 
     return x_train, y_train, x_partial, y_partial
 
@@ -607,12 +607,22 @@ def get_backbone_rpn_model(eye_landmarks: EyeLandmarks) -> Model:
 
 def train_model() -> None:
     path_to_large = "/dcs/large/u2204489/"
-    x_train, y_train, x_partial, y_partial = load_datsets(path_to_large)
 
-    batch_size = 2
-    combined_dataset = combine_datasets(
-        x_train, y_train, x_partial, y_partial, batch_size
-    )
+    # check if the dataset already exists
+    if Path(path_to_large + "eyedataset").exists():
+        combined_dataset = tf.data.Dataset.load(path_to_large + "eyedataset")
+    else:
+        x_train, y_train, x_partial, y_partial = load_datsets(path_to_large)
+
+        batch_size = 2
+        combined_dataset = combine_datasets(
+            x_train, y_train, x_partial, y_partial, batch_size
+        )
+
+        # save the dataset
+        tf.data.Dataset.save(
+            combined_dataset, path_to_large + "eyedataset", compression="GZIP"
+        )
 
     # create model
     eye_landmarks = EyeLandmarks(3, 10)
