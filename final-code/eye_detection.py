@@ -68,13 +68,13 @@ class RPN(Model):
             padding="same",
             kernel_initializer=RandomNormal(),
         )
-        # self.eye_landmark_classifier = Conv2D(
-        #     6 * self.num_points_per_anchor,
-        #     (1, 1),
-        #     activation="linear",
-        #     padding="same",
-        #     kernel_initializer=RandomNormal(),
-        # )
+        self.eye_landmark_classifier = Conv2D(
+            6 * self.num_points_per_anchor,
+            (1, 1),
+            activation="linear",
+            padding="same",
+            kernel_initializer=RandomNormal(),
+        )
 
         self.num_landmarks = 6
 
@@ -120,7 +120,7 @@ class RPN(Model):
         x = self.conv1(features)
         anchor_deltas = self.regressor(x)
         objectivness_scores = self.classifier(x)
-        # eye_landmarks = self.eye_landmark_classifier(x)
+        eye_landmarks = self.eye_landmark_classifier(x)
 
         # convert to x, y, w, h
         w_anchors = anchors[:, 2] - anchors[:, 0]  # type: ignore
@@ -143,7 +143,7 @@ class RPN(Model):
             image,
         )
 
-        return tf.concat([rois, anchors], axis=0)  # type: ignore
+        return tf.concat([eye_landmarks, rois, anchors], axis=0)  # type: ignore
 
     def generate_anchors(
         self, features_shape: tuple[int, int], image_shape: tuple[int, int]
@@ -207,15 +207,6 @@ class RPN(Model):
         intersection = max(0, x2 - x1) * max(0, y2 - y1)
         union = w1 * h1 + w2 * h2 - intersection
         return intersection / union
-
-    def convert_landmakrs(
-        self, proposal: tf.Tensor, bounding_box: tf.Tensor
-    ) -> tf.Tensor:
-        g_x, g_y, g_w, g_h = bounding_box
-        for i in range(1, 12, 2):
-            proposal[i] = (proposal[i] - g_x) / g_w  # type: ignore
-            proposal[i + 1] = (proposal[i + 1] - g_y) / g_h  # type: ignore
-        return proposal
 
     def post_processing(  # noqa: PLR0913
         self,
@@ -415,6 +406,19 @@ def frcnn_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
     offsets[labels == 1] = deltas[best_anchors]
     offsets = np.expand_dims(offsets, axis=0)
 
+    converted_left_eye = convert_landmakrs(y_pred[0], y_pred[2])  # type: ignore
+    converted_right_eye = convert_landmakrs(y_pred[1], y_pred[3])  # type: ignore
+
+    updated_y_pred = []
+    for i in range(tf.shape(y_pred)[0]):  # type: ignore
+        if i == 0:
+            updated_y_pred.append(converted_left_eye)
+        elif i == 1:
+            updated_y_pred.append(converted_right_eye)
+        else:
+            updated_y_pred.append(y_pred[i])  # type: ignore
+    updated_y_pred = tf.stack(updated_y_pred)
+
     # find the loss
     return frcnn_loss_function(
         tf.convert_to_tensor(offsets, dtype=tf.float32), y_pred, ratio
@@ -486,6 +490,14 @@ def filter_labels(labels: np.ndarray, batch_size: int, ratio: int) -> np.ndarray
     return labels
 
 
+def convert_landmakrs(proposal: tf.Tensor, bounding_box: tf.Tensor) -> tf.Tensor:
+    g_x, g_y, g_w, g_h = bounding_box
+    for i in range(1, 12, 2):
+        proposal[i] = (proposal[i] - g_x) / g_w  # type: ignore
+        proposal[i + 1] = (proposal[i + 1] - g_y) / g_h  # type: ignore
+    return proposal
+
+
 def frcnn_loss_function(
     y_true: tf.Tensor, y_pred: tf.Tensor, ratio: float
 ) -> tf.Tensor:
@@ -498,13 +510,6 @@ def frcnn_loss_function(
     true_label = y_true[0]  # type: ignore
     total_loss += lambda_c * CategoricalCrossentropy()(true_label, predicted_label)
 
-    # for i in [1, 2]:
-    #     predicted_landmarks = y_pred[i]  # type: ignore
-    #     true_landmarks = y_true[i]  # type: ignore
-    #     squared_diff = tf.square(predicted_landmarks - true_landmarks)
-    #     distance_per_landmark = tf.reduce_sum(squared_diff, axis=-1)
-    #     total_loss += lambda_s * tf.reduce_sum(distance_per_landmark, axis=-1)
-
     predicted_landmarks = y_pred[1]  # type: ignore
     true_landmarks = y_true[1]  # type: ignore
 
@@ -513,7 +518,7 @@ def frcnn_loss_function(
     )
     total_loss += lambda_s * landmark_loss * tf.cast(y_true[3], tf.float32)  # type: ignore
 
-    for i in [2, 3, 4, 5, 6, 7, 8]:
+    for i in range(2, 9):
         predicted_bbox = y_pred[i]  # type: ignore
         true_bbox = y_true[i]  # type: ignore
         total_loss += lambda_l * Huber(reduction="sum")(true_bbox, predicted_bbox)

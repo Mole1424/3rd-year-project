@@ -278,7 +278,11 @@ def convert_dataset_coords() -> None:
 
 
 def convert_coords(path: str) -> None:
-    """converts bounding box of x,y,w,h to center_x, center_y, w, h"""
+    """
+    converts bounding box of x,y,w,h to center_x, center_y, w, h
+    converts eye points to relative to bounding box
+    x, y -> (x - x1) / w, (y - y1) / h
+    """
 
     files = list(Path(path).glob("*.txt"))
     for file in files:
@@ -288,13 +292,23 @@ def convert_coords(path: str) -> None:
         bounding_boxes = [list(map(float, line.split())) for line in lines[:6]]
         # eye points are the next 12 lines (if applicable)
         eye_points = [list(map(float, line.split())) for line in lines[6:]]
-        file_string = ""
-        for x, y, w, h in bounding_boxes:
-            file_string += f"{x + w / 2} {y + h / 2} {w} {h}\n"
-        for x, y in eye_points:
-            file_string += f"{x} {y}\n"
+        # convert bounding boxes
+        for i in range(6):
+            x, y, w, h = bounding_boxes[i]
+            cx, cy = x + w / 2, y + h / 2
+            bounding_boxes[i] = [cx, cy, w, h]
+        # convert eye points
+        for i in range(len(eye_points)):
+            x, y = eye_points[i]
+            x1, y1, w, h = bounding_boxes[0 if i < 6 else 1]  # noqa: PLR2004
+            x = (x - x1) / w
+            y = (y - y1) / h
+            eye_points[i] = [x, y]
+        # save to file
         with file.open("w") as f:
-            f.write(file_string.strip())
+            f.write("\n".join([f"{x} {y} {w} {h}" for x, y, w, h in bounding_boxes]))
+            f.write("\n")
+            f.write("\n".join([f"{x} {y}" for x, y in eye_points]))
 
 
 def cxcywh_to_xywh(initial_box: list[float]) -> list[float]:
