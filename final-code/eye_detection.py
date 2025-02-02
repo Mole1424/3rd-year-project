@@ -397,10 +397,11 @@ def combine_datasets(datasets: list, batch_size: int) -> tf.data.Dataset:
 def get_backbone_rpn_model(eye_landmarks: EyeLandmarks) -> Model:
     inputs = Input(shape=(None, None, 3))
     features = eye_landmarks.faster_rcnn.backbone(inputs)
-    rpn = eye_landmarks.faster_rcnn.rpn(features, inputs)
-    return Model(inputs=inputs, outputs=rpn)
+    rois, eye_landmarkers, anchors = eye_landmarks.faster_rcnn.rpn(features, inputs)
+    return Model(inputs=inputs, outputs=[rois, eye_landmarkers, anchors])
 
 
+@tf.function
 def frcnn_loss(
     y_true: tuple[tf.Tensor, tf.Tensor, tf.Tensor],
     y_pred: tuple[tf.Tensor, tf.Tensor, tf.Tensor],
@@ -416,7 +417,7 @@ def frcnn_loss(
     h_anchors = anchors[:, 3] - anchors[:, 1]  # type: ignore
 
     # find ious between anchors and ground truths
-    ious = np.zeros(tf.shape(anchors)[0], tf.shape(true_bboxs)[0], dtype=np.float32)
+    ious = np.zeros(tf.shape(anchors)[0], tf.shape(true_bboxs)[0], dtype=np.float32)  # type: ignore
     for i, anchor in enumerate(anchors):
         for j, truth in enumerate(true_bboxs):  # type: ignore
             ious[i, j] = iou(anchor, truth)
@@ -564,6 +565,22 @@ def step_decay(epoch: int, lr: float) -> float:
     return lr
 
 
+@tf.function
+def rpn_train_loop(
+    rpn_model: Model, dataset: tf.data.Dataset, optimizer: SGD, epochs: int
+) -> None:
+    for epoch in range(epochs):
+        print(f"Epoch {epoch + 1}/{epochs}")
+        for step, (x, y) in enumerate(dataset):
+            with tf.GradientTape() as tape:
+                predictions = rpn_model(x)
+                loss = frcnn_loss(y, predictions)
+            grads = tape.gradient(loss, rpn_model.trainable_weights)
+            optimizer.apply_gradients(zip(grads, rpn_model.trainable_weights))
+            print(f"Step {step + 1}, Loss: {loss.numpy()}")
+        optimizer.learning_rate = step_decay(epoch, optimizer.learning_rate)
+
+
 def train_model() -> None:
     path_to_large = "/dcs/large/u2204489/"
 
@@ -589,15 +606,13 @@ def train_model() -> None:
     eye_landmarks.faster_rcnn.fc2.trainable = False
 
     backbone_rpn_model = get_backbone_rpn_model(eye_landmarks)
+    print(backbone_rpn_model.output)
 
-    backbone_rpn_model.compile(
-        optimizer=SGD(learning_rate=0.02, momentum=0.9, weight_decay=0.0001),
-        loss=frcnn_loss,
-    )
-    backbone_rpn_model.fit(
+    rpn_train_loop(
+        backbone_rpn_model,
         dataset,
-        epochs=8 * 10,
-        callbacks=[LearningRateScheduler(step_decay)],
+        SGD(learning_rate=0.02, momentum=0.9, weight_decay=0.0001),
+        8 * 10,
     )
     backbone_rpn_model.save_weights(f"{path_to_large}step1.keras")
 
@@ -607,14 +622,11 @@ def train_model() -> None:
     eye_landmarks.faster_rcnn.fc1.trainable = True
     eye_landmarks.faster_rcnn.fc2.trainable = True
 
-    eye_landmarks.faster_rcnn.compile(
-        optimizer=SGD(learning_rate=0.02, momentum=0.9, weight_decay=0.0001),
-        loss=frcnn_loss,
-    )
-    eye_landmarks.faster_rcnn.fit(
+    rpn_train_loop(
+        backbone_rpn_model,
         dataset,
-        epochs=8 * 10,
-        callbacks=[LearningRateScheduler(step_decay)],
+        SGD(learning_rate=0.02, momentum=0.9, weight_decay=0.0001),
+        8 * 10,
     )
     eye_landmarks.faster_rcnn.save_weights(f"{path_to_large}step2.keras")
 
@@ -624,14 +636,11 @@ def train_model() -> None:
     eye_landmarks.faster_rcnn.fc1.trainable = False
     eye_landmarks.faster_rcnn.fc2.trainable = False
 
-    eye_landmarks.faster_rcnn.compile(
-        optimizer=SGD(learning_rate=0.02, momentum=0.9, weight_decay=0.0001),
-        loss=frcnn_loss,
-    )
-    eye_landmarks.faster_rcnn.fit(
+    rpn_train_loop(
+        backbone_rpn_model,
         dataset,
-        epochs=8 * 10,
-        callbacks=[LearningRateScheduler(step_decay)],
+        SGD(learning_rate=0.02, momentum=0.9, weight_decay=0.0001),
+        8 * 10,
     )
     eye_landmarks.faster_rcnn.save_weights(f"{path_to_large}step3.keras")
 
@@ -640,14 +649,11 @@ def train_model() -> None:
     eye_landmarks.faster_rcnn.fc1.trainable = True
     eye_landmarks.faster_rcnn.fc2.trainable = True
 
-    eye_landmarks.faster_rcnn.compile(
-        optimizer=SGD(learning_rate=0.02, momentum=0.9, weight_decay=0.0001),
-        loss=frcnn_loss,
-    )
-    eye_landmarks.faster_rcnn.fit(
+    rpn_train_loop(
+        backbone_rpn_model,
         dataset,
-        epochs=8 * 10,
-        callbacks=[LearningRateScheduler(step_decay)],
+        SGD(learning_rate=0.02, momentum=0.9, weight_decay=0.0001),
+        8 * 10,
     )
     eye_landmarks.faster_rcnn.save_weights(f"{path_to_large}step4.keras")
 
