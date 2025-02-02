@@ -34,7 +34,6 @@ from tensorflow.keras.layers import (  # type: ignore
     TimeDistributed,
 )
 from tensorflow.keras.losses import (  # type: ignore
-    CategoricalCrossentropy,
     Huber,
     MeanSquaredError,
 )
@@ -69,7 +68,7 @@ class RPN(Model):
             kernel_initializer=RandomNormal(),
         )
         self.eye_landmark_classifier = Conv2D(
-            6 * self.num_points_per_anchor,
+            24,  # 6 landmarks * 2 eyes * 2 pointss
             (1, 1),
             activation="linear",
             padding="same",
@@ -78,33 +77,19 @@ class RPN(Model):
 
         self.num_landmarks = 6
 
-    @tf.function
-    def call(self, features: tf.Tensor, image: tf.Tensor) -> tf.Tensor:
+    def call(
+        self, features: tf.Tensor, image: tf.Tensor
+    ) -> tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
         """
         generates region proposals and initial eye landmarks
 
         features: features from the backbone
         image: input image
-        ground_truths: ground truth eye landmarks in the form
-        - left eye landmarks (x1, y1, ..., x6, y6)
-        - right eye landmarks
-        - left eye bounding box (center_x, center_y, w, h)
-        - right eye bounding box
-        - left eye brow
-        - right eye brow
-        - nose
-        - mouth
 
-        output is a 2d tensor:
-        - 1st row is left eye landmarks (x1, y1, ..., x6, y6)
-        - 2nd row is right eye landmarks
-        - 3rd row is left eye bounding box (center_x, center_y, w, h)
-        - 4th row is right eye bounding box
-        - 5th row is left eye brow
-        - 6th row is right eye brow
-        - 7th row is nose
-        - 8th row is mouth
-        - 9th row is the anchor boxes
+        output is 3 tensors:
+        - region proposals (x, y, w, h)
+        - initial eye landmarks (x1, y1, ..., x6, y6) x2
+        - anchors (x1, y1, x2, y2)
         """
 
         # generate anchors
@@ -126,8 +111,10 @@ class RPN(Model):
         x_anchors = anchors[:, 0] + w_anchors / 2  # type: ignore
         y_anchors = anchors[:, 1] + h_anchors / 2  # type: ignore
 
-        anchor_deltas = tf.reshape(anchor_deltas, [-1, len(anchors), 4])
-        objectivness_scores = tf.reshape(objectivness_scores, [-1, len(anchors)])
+        anchor_deltas = tf.reshape(anchor_deltas, [-1, tf.shape(anchors)[0], 4])
+        objectivness_scores = tf.reshape(
+            objectivness_scores, [-1, tf.shape(anchors)[0]]
+        )
 
         # post processing
         rois = self.post_processing(
@@ -140,11 +127,7 @@ class RPN(Model):
             image,
         )
 
-        eye_landmarks = tf.reshape(eye_landmarks, [1, 54])
-        rois = tf.reshape(rois, [-1, 54])
-        anchors = tf.reshape(anchors, [-1, 54])
-
-        return tf.concat([eye_landmarks, rois, anchors], axis=0)  # type: ignore
+        return rois, eye_landmarks, anchors
 
     def generate_anchors(
         self, features_shape: tuple[int, int], image_shape: tuple[int, int]
@@ -194,8 +177,8 @@ class RPN(Model):
         inside_mask = (
             (anchors[:, 0] >= 0.0)
             & (anchors[:, 1] >= 0.0)
-            & (anchors[:, 2] <= float(image_width))
-            & (anchors[:, 3] <= float(image_height))
+            & (anchors[:, 2] <= tf.cast(image_width, tf.float32))
+            & (anchors[:, 3] <= tf.cast(image_height, tf.float32))
         )
 
         return tf.boolean_mask(anchors, inside_mask)
@@ -244,13 +227,28 @@ class RPN(Model):
         max_values = tf.reshape(max_values, [1, 1, 4])
         predicted_anchors = tf.clip_by_value(predicted_anchors, 0.0, max_values)
 
+        predicted_anchors = tf.reshape(predicted_anchors, [-1, 4])
+        objectivness_scores = tf.reshape(objectivness_scores, [-1])
+
         # non max suppression
         nms_indices = non_max_suppression(
-            tf.reshape(predicted_anchors, [-1, 4]),
-            tf.reshape(objectivness_scores, [-1]),
+            predicted_anchors,
+            objectivness_scores,
             max_output_size=self.num_landmarks,
         )
-        return tf.gather(predicted_anchors, nms_indices)
+
+        # get back to x, y, w, h
+        x1 = tf.gather(predicted_anchors[:, 0], nms_indices)
+        y1 = tf.gather(predicted_anchors[:, 1], nms_indices)
+        x2 = tf.gather(predicted_anchors[:, 2], nms_indices)
+        y2 = tf.gather(predicted_anchors[:, 3], nms_indices)
+
+        x = (x1 + x2) / 2
+        y = (y1 + y2) / 2
+        w = x2 - x1
+        h = y2 - y1
+
+        return tf.stack([x, y, w, h], axis=-1)
 
 
 class FasterRCNN(Model):
@@ -262,20 +260,14 @@ class FasterRCNN(Model):
         self.fc1 = Dense(512, activation="relu", kernel_initializer=RandomNormal())
         self.fc2 = Dense(256, activation="relu", kernel_initializer=RandomNormal())
 
-    def call(self, image: tf.Tensor) -> tf.Tensor:
+    def call(self, image: tf.Tensor) -> tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
         """
         takes in an image tensor
 
-        return a tensor of the following form:
-        - 1st row is left eye landmarks (x1, y1, ..., x6, y6)
-        - 2nd row is right eye landmarks
-        - 3rd row is left eye bounding box (center_x, center_y, w, h)
-        - 4th row is right eye bounding box
-        - 5th row is left eye brow
-        - 6th row is right eye brow
-        - 7th row is nose
-        - 8th row is mouth
-        - 9th row is the anchor boxes
+        return 3 tensors of the following form:
+        - region proposals (x, y, w, h)
+        - initial eye landmarks (x1, y1, ..., x6, y6) x2
+        - anchors (x1, y1, x2, y2)
         """
         features = self.backbone(image)
         rois = self.rpn(features)
@@ -335,72 +327,61 @@ class EyeLandmarks(Model):
 
     def call(self, image: tf.Tensor) -> tf.Tensor:
         """
-        return tensor of the following form:
-        - 1st row is left eye landmarks (x1, y1, ..., x6, y6)
-        - 2nd row is right eye landmarks
-        - 3rd row is left eye bounding box (center_x, center_y, w, h)
-        - 4th row is right eye bounding box
-        - 5th row is left eye brow
-        - 6th row is right eye brow
-        - 7th row is nose
-        - 8th row is mouth
-        - 9th row is the anchor boxes
-        - 10th row is the updated left eye landmarks
-        - 11th row is the updated right eye landmarks
+        return 3 tensors of the following form:
+        - initial eye landmarks (x1, y1, ..., x6, y6) x2
         """
-        rois = self.faster_rcnn(image)
+        rois, eyes, _ = self.faster_rcnn(image)
 
         # extract the eye landmarks and bounding boxes
-        left_eye_landmarks = rois[0]
-        right_eye_landmarks = rois[1]
+        left_eye_landmarks = eyes[:12]
+        right_eye_landmarks = eyes[12:]
 
         # fine tune the eye landmarks
         left_eye_landmarks = self.recurrent_learning_module(left_eye_landmarks)
         right_eye_landmarks = self.recurrent_learning_module(right_eye_landmarks)
 
         # append to the end
-        return tf.concat([rois, left_eye_landmarks, right_eye_landmarks], axis=0)  # type: ignore
+        return tf.concat([left_eye_landmarks, right_eye_landmarks], axis=0)  # type: ignore
 
 
 def dataset_generator(path: str, file_type: str, fully_labeled: bool) -> Generator:
     for file in Path(path).glob("*.txt"):
         image = cv.imread(str(file).replace("txt", file_type))
-        label = {
-            "bbox": np.loadtxt(file, max_rows=6),
-            "landmarks": (
-                np.loadtxt(file, skiprows=6) if fully_labeled else np.zeros_like((12,))
+        label = (
+            np.loadtxt(file, max_rows=6),
+            (
+                np.loadtxt(file, skiprows=6).flatten()
+                if fully_labeled
+                else np.zeros_like((24,))
             ),
-            "has_landmarks": 1 if fully_labeled else 0,
-        }
+            1 if fully_labeled else 0,
+        )
         yield image, label
 
 
-def load_dataset(
-    path: str, file_type: str, fully_labeled: bool, batch_size: int
-) -> tf.data.Dataset:
-    dataset = tf.data.Dataset.from_generator(
+def load_dataset(path: str, file_type: str, fully_labeled: bool) -> tf.data.Dataset:
+    return tf.data.Dataset.from_generator(
         lambda: dataset_generator(path, file_type, fully_labeled),
         output_signature=(
             tf.TensorSpec(shape=(None, None, 3), dtype=tf.uint8),  # type: ignore
-            {
-                "bbox": tf.TensorSpec(shape=(6, 4), dtype=tf.float32),  # type: ignore
-                "landmarks": tf.TensorSpec(shape=(12,), dtype=tf.float32),  # type: ignore
-                "has_landmarks": tf.TensorSpec(shape=(), dtype=tf.int32),  # type: ignore
-            },
+            (
+                tf.TensorSpec(shape=(6, 4), dtype=tf.float32),  # type: ignore
+                tf.TensorSpec(shape=(24,), dtype=tf.float32),  # type: ignore
+                tf.TensorSpec(shape=(), dtype=tf.int32),  # type: ignore
+            ),
         ),
     )
-    return dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
 
 def load_datsets(path_to_large: str, batch_size: int) -> tf.data.Dataset:
     path_to_datasets = path_to_large + "eyes/"
 
     datasets = [
-        load_dataset(path_to_datasets + "300w/", "png", True, batch_size),
-        load_dataset(path_to_datasets + "helen/", "jpg", True, batch_size),
-        load_dataset(path_to_datasets + "lfpw/trainset/", "png", True, batch_size),
-        load_dataset(path_to_datasets + "afw/", "jpg", True, batch_size),
-        load_dataset(path_to_datasets + "aflw/", "jpg", False, batch_size),
+        load_dataset(path_to_datasets + "300w/", "png", True),
+        load_dataset(path_to_datasets + "helen/", "jpg", True),
+        load_dataset(path_to_datasets + "lfpw/trainset/", "png", True),
+        load_dataset(path_to_datasets + "afw/", "jpg", True),
+        load_dataset(path_to_datasets + "aflw/", "jpg", False),
     ]
 
     return combine_datasets(datasets, batch_size)
@@ -410,11 +391,7 @@ def combine_datasets(datasets: list, batch_size: int) -> tf.data.Dataset:
     full_dataset = datasets[0]
     for dataset in datasets[1:]:
         full_dataset = full_dataset.concatenate(dataset)
-    return (
-        full_dataset.shuffle(full_dataset.cardinality().numpy())
-        .batch(batch_size)
-        .prefetch(tf.data.AUTOTUNE)
-    )
+    return full_dataset.shuffle(41550).batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
 
 def get_backbone_rpn_model(eye_landmarks: EyeLandmarks) -> Model:
@@ -424,22 +401,24 @@ def get_backbone_rpn_model(eye_landmarks: EyeLandmarks) -> Model:
     return Model(inputs=inputs, outputs=rpn)
 
 
-@tf.function
-def frcnn_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
+def frcnn_loss(
+    y_true: tuple[tf.Tensor, tf.Tensor, tf.Tensor],
+    y_pred: tuple[tf.Tensor, tf.Tensor, tf.Tensor],
+) -> tf.Tensor:
     ratio = 3
 
-    anchors = y_pred[8]  # type: ignore
-    x_anchors = anchors[:, 0] + anchors[:, 2] / 2
-    y_anchors = anchors[:, 1] + anchors[:, 3] / 2
-    w_anchors = anchors[:, 2] - anchors[:, 0]
-    h_anchors = anchors[:, 3] - anchors[:, 1]
+    rois, eye_landmarks, anchors = y_pred
+    true_bboxs, true_landmarks, _ = y_true
 
-    ground_truths = y_true[:8]  # type: ignore
+    x_anchors = anchors[:, 0] + anchors[:, 2] / 2  # type: ignore
+    y_anchors = anchors[:, 1] + anchors[:, 3] / 2  # type: ignore
+    w_anchors = anchors[:, 2] - anchors[:, 0]  # type: ignore
+    h_anchors = anchors[:, 3] - anchors[:, 1]  # type: ignore
 
     # find ious between anchors and ground truths
-    ious = np.zeros((len(anchors), len(ground_truths)), dtype=np.float32)
+    ious = np.zeros(tf.shape(anchors)[0], tf.shape(true_bboxs)[0], dtype=np.float32)
     for i, anchor in enumerate(anchors):
-        for j, truth in enumerate(ground_truths[2:]):  # type: ignore
+        for j, truth in enumerate(true_bboxs):  # type: ignore
             ious[i, j] = iou(anchor, truth)
 
     best_anchors, labels = compute_labels(ious, anchors)
@@ -448,11 +427,10 @@ def frcnn_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
     labels = filter_labels(labels, 256, ratio)
 
     # find deltas
-    relevant_truths = ground_truths[2:]  # type: ignore
-    w_truths = relevant_truths[:, 2] - relevant_truths[:, 0]
-    h_truths = relevant_truths[:, 3] - relevant_truths[:, 1]
-    x_truths = relevant_truths[:, 0] + w_truths / 2
-    y_truths = relevant_truths[:, 1] + h_truths / 2
+    w_truths = true_bboxs[:, 2] - true_bboxs[:, 0]  # type: ignore
+    h_truths = true_bboxs[:, 3] - true_bboxs[:, 1]  # type: ignore
+    x_truths = true_bboxs[:, 0] + w_truths / 2  # type: ignore
+    y_truths = true_bboxs[:, 1] + h_truths / 2  # type: ignore
 
     eps = np.finfo(anchors.dtype).eps  # type: ignore
     w_anchors = np.maximum(w_anchors, eps)
@@ -469,22 +447,14 @@ def frcnn_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
     offsets[labels == 1] = deltas[best_anchors]
     offsets = np.expand_dims(offsets, axis=0)
 
-    converted_left_eye = convert_landmakrs(y_pred[0], y_pred[2])  # type: ignore
-    converted_right_eye = convert_landmakrs(y_pred[1], y_pred[3])  # type: ignore
+    converted_left_eye = convert_landmarks(eye_landmarks[:6], rois[0])  # type: ignore
+    converted_right_eye = convert_landmarks(eye_landmarks[6:], rois[1])  # type: ignore
 
-    updated_y_pred = []
-    for i in range(tf.shape(y_pred)[0]):  # type: ignore
-        if i == 0:
-            updated_y_pred.append(converted_left_eye)
-        elif i == 1:
-            updated_y_pred.append(converted_right_eye)
-        else:
-            updated_y_pred.append(y_pred[i])  # type: ignore
-    updated_y_pred = tf.stack(updated_y_pred)
+    converted_landmarks = tf.concat([converted_left_eye, converted_right_eye], axis=0)
 
     # find the loss
     return frcnn_loss_function(
-        tf.convert_to_tensor(offsets, dtype=tf.float32), y_pred, ratio
+        (converted_landmarks, y_true[1], y_true[2]), y_pred[:2], ratio  # type: ignore
     )
 
 
@@ -553,7 +523,7 @@ def filter_labels(labels: np.ndarray, batch_size: int, ratio: int) -> np.ndarray
     return labels
 
 
-def convert_landmakrs(proposal: tf.Tensor, bounding_box: tf.Tensor) -> tf.Tensor:
+def convert_landmarks(proposal: tf.Tensor, bounding_box: tf.Tensor) -> tf.Tensor:
     g_x, g_y, g_w, g_h = bounding_box
     for i in range(1, 12, 2):
         proposal[i] = (proposal[i] - g_x) / g_w  # type: ignore
@@ -562,29 +532,22 @@ def convert_landmakrs(proposal: tf.Tensor, bounding_box: tf.Tensor) -> tf.Tensor
 
 
 def frcnn_loss_function(
-    y_true: tf.Tensor, y_pred: tf.Tensor, ratio: float
+    y_true: tuple[tf.Tensor, tf.Tensor, tf.Tensor],
+    y_pred: tuple[tf.Tensor, tf.Tensor],
+    ratio: int,
 ) -> tf.Tensor:
-    lambda_c = 1 / ratio
+    # lambda_c = 1 / ratio
     lambda_l = 1
     lambda_s = ratio
 
-    total_loss = 0
-    predicted_label = y_pred[0]  # type: ignore
-    true_label = y_true[0]  # type: ignore
-    total_loss += lambda_c * CategoricalCrossentropy()(true_label, predicted_label)
+    predicted_bboxs, predicted_landmarks = y_pred
+    true_bboxs, true_landmarks, has_landmarks = y_true
 
-    predicted_landmarks = y_pred[1]  # type: ignore
-    true_landmarks = y_true[1]  # type: ignore
+    total_loss = lambda_l * Huber()(true_bboxs, predicted_bboxs)
 
-    landmark_loss = MeanSquaredError(reduction="sum")(
-        true_landmarks, predicted_landmarks
-    )
-    total_loss += lambda_s * landmark_loss * tf.cast(y_true[3], tf.float32)  # type: ignore
-
-    for i in range(2, 9):
-        predicted_bbox = y_pred[i]  # type: ignore
-        true_bbox = y_true[i]  # type: ignore
-        total_loss += lambda_l * Huber(reduction="sum")(true_bbox, predicted_bbox)
+    true_landmarks = y_true[1]
+    mse_loss = lambda_s * MeanSquaredError()(true_landmarks, predicted_landmarks)
+    total_loss += mse_loss * has_landmarks
 
     return total_loss  # type: ignore
 
@@ -611,9 +574,6 @@ def train_model() -> None:
         dataset = tf.data.Dataset.load(path_to_large + "eyedataset")
     else:
         dataset = load_datsets(path_to_large, batch_size)
-
-        # save the dataset
-        tf.data.Dataset.save(dataset, path_to_large + "eyedataset", compression="GZIP")
 
     # create model
     eye_landmarks = EyeLandmarks(3, 10)
