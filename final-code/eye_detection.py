@@ -27,7 +27,6 @@ from tensorflow.keras.callbacks import LearningRateScheduler  # type: ignore
 from tensorflow.keras.initializers import RandomNormal  # type: ignore
 from tensorflow.keras.layers import (  # type: ignore
     LSTM,
-    Concatenate,
     Conv2D,
     Dense,
     Lambda,
@@ -80,11 +79,7 @@ class RPN(Model):
         self.num_landmarks = 6
 
     @tf.function
-    def call(
-        self,
-        features: tf.Tensor,
-        image: tf.Tensor,
-    ) -> tf.Tensor:
+    def call(self, features: tf.Tensor, image: tf.Tensor) -> tf.Tensor:
         """
         generates region proposals and initial eye landmarks
 
@@ -113,8 +108,10 @@ class RPN(Model):
         """
 
         # generate anchors
+        features_shape = tf.shape(features)
+        image_shape = tf.shape(image)
         anchors = self.generate_anchors(
-            (features.shape[1], features.shape[2]), (image.shape[1], image.shape[2])  # type: ignore
+            (features_shape[1], features_shape[2]), (image_shape[1], image_shape[2])  # type: ignore
         )
 
         # pass through the network
@@ -129,12 +126,11 @@ class RPN(Model):
         x_anchors = anchors[:, 0] + w_anchors / 2  # type: ignore
         y_anchors = anchors[:, 1] + h_anchors / 2  # type: ignore
 
-        anchor_deltas = anchor_deltas.reshape(-1, len(anchors), 4)
-        objectivness_scores = objectivness_scores.reshape(-1, len(anchors))
+        anchor_deltas = tf.reshape(anchor_deltas, [-1, len(anchors), 4])
+        objectivness_scores = tf.reshape(objectivness_scores, [-1, len(anchors)])
 
         # post processing
         rois = self.post_processing(
-            anchors,
             x_anchors,
             y_anchors,
             w_anchors,
@@ -143,6 +139,10 @@ class RPN(Model):
             objectivness_scores,
             image,
         )
+
+        eye_landmarks = tf.reshape(eye_landmarks, [1, 54])
+        rois = tf.reshape(rois, [-1, 54])
+        anchors = tf.reshape(anchors, [-1, 54])
 
         return tf.concat([eye_landmarks, rois, anchors], axis=0)  # type: ignore
 
@@ -153,48 +153,52 @@ class RPN(Model):
         features_height, features_width = features_shape
         image_height, image_width = image_shape
 
-        x_stride, y_stride = (
-            image_width / features_width,
-            image_height / features_height,
-        )
+        x_stride = tf.cast(image_width / features_width, tf.float32)
+        y_stride = tf.cast(image_height / features_height, tf.float32)
 
         # find centers of each anchor
-        x_centers = np.arange(x_stride / 2, image_width, x_stride)
-        y_centers = np.arange(y_stride / 2, image_height, y_stride)
-        centers = np.array(np.meshgrid(x_centers, y_centers, indexing="xy")).T.reshape(
-            -1, 2
+        x_centers = tf.range(x_stride / 2, image_width, x_stride, dtype=tf.float32)  # type: ignore
+        y_centers = tf.range(y_stride / 2, image_height, y_stride, dtype=tf.float32)  # type: ignore
+        x_centers, y_centers = tf.meshgrid(x_centers, y_centers, indexing="xy")
+        centers = tf.stack(
+            [tf.reshape(x_centers, [-1]), tf.reshape(y_centers, [-1])], axis=-1
         )
 
         # initial anchor params
-        anchor_ratios = [0.5, 1, 2]
-        anchor_scales = [8, 16, 32]
-        anchors = tf.zeros(
-            (
-                features_width
-                * features_height
-                * len(anchor_ratios)
-                * len(anchor_scales),
-                4,
-            )
-        )
+        anchor_ratios = tf.constant([0.5, 1, 2], dtype=tf.float32)
+        anchor_scales = tf.constant([8, 16, 32], dtype=tf.float32)
 
-        # generate anchors for all centers
-        for i, (x, y) in enumerate(centers):
-            for ratio in anchor_ratios:
-                for scale in anchor_scales:
-                    h = tf.sqrt(scale**2 / ratio) * y_stride
-                    w = h * ratio * x_stride / y_stride
-                    anchors[i] = [x - w / 2, y - h / 2, x + w / 2, y + h / 2]
+        # get height and width of each anchor
+        scales, ratios = tf.meshgrid(anchor_scales, anchor_ratios, indexing="xy")
+        scales = tf.reshape(scales, [-1])
+        ratios = tf.reshape(ratios, [-1])
+        heights = tf.reshape(tf.sqrt(scales**2 / ratios) * y_stride, [-1])
+        widths = tf.reshape(heights * ratios * x_stride / y_stride, [-1])
+
+        # compute all anchors
+        num_centers = tf.shape(centers)[0]  # type: ignore
+        num_anchors = tf.size(heights)
+
+        centers = tf.tile(tf.expand_dims(centers, axis=1), [1, num_anchors, 1])
+        heights = tf.tile(tf.expand_dims(heights, axis=0), [num_centers, 1])
+        widths = tf.tile(tf.expand_dims(widths, axis=0), [num_centers, 1])
+
+        x_min = centers[..., 0] - widths / 2
+        y_min = centers[..., 1] - heights / 2
+        x_max = centers[..., 0] + widths / 2
+        y_max = centers[..., 1] + heights / 2
+
+        anchors = tf.reshape(tf.stack([x_min, y_min, x_max, y_max], axis=-1), [-1, 4])
 
         # get anchors that are inside the image
-        inside_anchors_ids = anchors[
-            (anchors[:, 0] >= 0)
-            & (anchors[:, 1] >= 0)
-            & (anchors[:, 2] <= image_width)
-            & (anchors[:, 3] <= image_height)
-        ][0]
+        inside_mask = (
+            (anchors[:, 0] >= 0.0)
+            & (anchors[:, 1] >= 0.0)
+            & (anchors[:, 2] <= float(image_width))
+            & (anchors[:, 3] <= float(image_height))
+        )
 
-        return anchors[inside_anchors_ids]
+        return tf.boolean_mask(anchors, inside_mask)
 
     def iou(self, box1: tf.Tensor, box2: tf.Tensor) -> float:
         cx1, cy1, w1, h1 = box1
@@ -211,7 +215,6 @@ class RPN(Model):
 
     def post_processing(  # noqa: PLR0913
         self,
-        anchors: tf.Tensor,
         x_anchors: tf.Tensor,
         y_anchors: tf.Tensor,
         w_anchors: tf.Tensor,
@@ -221,28 +224,30 @@ class RPN(Model):
         image: tf.Tensor,
     ) -> tf.Tensor:
         # apply deltas
-        predicted_anchors = np.zeros((len(anchors), 4))
-        predicted_anchors[:, 0] = x_anchors + w_anchors * anchor_deltas[:, :, 0]  # type: ignore
-        predicted_anchors[:, 1] = y_anchors + h_anchors * anchor_deltas[:, :, 1]  # type: ignore
-        predicted_anchors[:, 2] = w_anchors * np.exp(anchor_deltas[:, :, 2])  # type: ignore
-        predicted_anchors[:, 3] = h_anchors * np.exp(anchor_deltas[:, :, 3])  # type: ignore
+        x1 = x_anchors + w_anchors * anchor_deltas[:, :, 0]  # type: ignore
+        y1 = y_anchors + h_anchors * anchor_deltas[:, :, 1]  # type: ignore
+        w = w_anchors * tf.exp(anchor_deltas[:, :, 2])  # type: ignore
+        h = h_anchors * tf.exp(anchor_deltas[:, :, 3])  # type: ignore
 
-        # convert proposals from (center_x, center_y, w, h) to (x1, y1, x2, y2)
-        predicted_anchors[:, 0] = predicted_anchors[:, 0] - predicted_anchors[:, 2] / 2
-        predicted_anchors[:, 1] = predicted_anchors[:, 1] - predicted_anchors[:, 3] / 2
-        predicted_anchors[:, 2] = predicted_anchors[:, 0] + predicted_anchors[:, 2]
-        predicted_anchors[:, 3] = predicted_anchors[:, 1] + predicted_anchors[:, 3]
+        # convert to x1, y1, x2, y2
+        x1 = x1 - w / 2
+        y1 = y1 - h / 2
+        x2 = x1 + w
+        y2 = y1 + h
 
-        # clip proposals to the image
-        predicted_anchors[:, 0] = np.clip(predicted_anchors[:, 0], 0, image.shape[1])  # type: ignore
-        predicted_anchors[:, 1] = np.clip(predicted_anchors[:, 1], 0, image.shape[0])  # type: ignore
-        predicted_anchors[:, 2] = np.clip(predicted_anchors[:, 2], 0, image.shape[1])  # type: ignore
-        predicted_anchors[:, 3] = np.clip(predicted_anchors[:, 3], 0, image.shape[0])  # type: ignore
+        # clip to image
+        predicted_anchors = tf.stack([x1, y1, x2, y2], axis=-1)
+        image_shape = tf.cast(tf.shape(image)[:2], tf.float32)  # type: ignore
+        max_values = tf.stack(
+            [image_shape[1], image_shape[0], image_shape[1], image_shape[0]]  # type: ignore
+        )
+        max_values = tf.reshape(max_values, [1, 1, 4])
+        predicted_anchors = tf.clip_by_value(predicted_anchors, 0.0, max_values)
 
         # non max suppression
         nms_indices = non_max_suppression(
-            predicted_anchors,
-            objectivness_scores,
+            tf.reshape(predicted_anchors, [-1, 4]),
+            tf.reshape(objectivness_scores, [-1]),
             max_output_size=self.num_landmarks,
         )
         return tf.gather(predicted_anchors, nms_indices)
@@ -297,13 +302,14 @@ def recurrent_learning_module(time_steps: int) -> Model:
     num_landmarks = 6
 
     initial_landmarks = Input(shape=(num_landmarks * 2,))
-    eye_reigonal_proposal = Input(shape=(None, None, 3))
 
-    x = Concatenate()([initial_landmarks, eye_reigonal_proposal])
-
-    x = Dense(256, activation="relu")(x)
+    x = Dense(256, activation="relu", kernel_initializer=RandomNormal())(
+        initial_landmarks
+    )
     x = RepeatVector(time_steps)(x)
-    x = LSTM(num_ltsm_units, return_sequences=True)(x)
+    x = LSTM(num_ltsm_units, return_sequences=True, kernel_initializer=RandomNormal())(
+        x
+    )
 
     x = TimeDistributed(Dense(num_landmarks * 2, activation="relu"))(x)
 
@@ -315,7 +321,7 @@ def recurrent_learning_module(time_steps: int) -> Model:
     x = Lambda(update_landmarks)([initial_landmarks, x])
 
     return Model(
-        inputs=[initial_landmarks, eye_reigonal_proposal],
+        inputs=initial_landmarks,
         outputs=x,
         name="recurrent_learning_module",
     )
@@ -347,16 +353,10 @@ class EyeLandmarks(Model):
         # extract the eye landmarks and bounding boxes
         left_eye_landmarks = rois[0]
         right_eye_landmarks = rois[1]
-        left_eye_box = rois[2]
-        right_eye_box = rois[3]
 
         # fine tune the eye landmarks
-        left_eye_landmarks = self.recurrent_learning_module(
-            left_eye_landmarks, left_eye_box
-        )
-        right_eye_landmarks = self.recurrent_learning_module(
-            right_eye_landmarks, right_eye_box
-        )
+        left_eye_landmarks = self.recurrent_learning_module(left_eye_landmarks)
+        right_eye_landmarks = self.recurrent_learning_module(right_eye_landmarks)
 
         # append to the end
         return tf.concat([rois, left_eye_landmarks, right_eye_landmarks], axis=0)  # type: ignore
@@ -624,9 +624,9 @@ def train_model() -> None:
     # https://ieeexplore.ieee.org/abstract/document/7485869 (section 3.2)
 
     # step 1 train soley RPN
-    eye_landmarks.roi_pooling.trainable = False
-    eye_landmarks.fc1.trainable = False
-    eye_landmarks.fc2.trainable = False
+    eye_landmarks.faster_rcnn.rpn.trainable = True
+    eye_landmarks.faster_rcnn.fc1.trainable = False
+    eye_landmarks.faster_rcnn.fc2.trainable = False
 
     backbone_rpn_model = get_backbone_rpn_model(eye_landmarks)
 
@@ -701,13 +701,14 @@ def train_model() -> None:
         y_train.append(y)
 
     predictions = eye_landmarks.faster_rcnn(x_train)
-    l_eye, r_eye, l_box, r_box, _ = predictions
+    l_eye, r_eye, _ = predictions
+    eyes = tf.concat([l_eye, r_eye], axis=0)
 
     eye_landmarks.recurrent_learning_module.compile(
         optimizer=Adam(learning_rate=0.0001), loss=rlm_loss_function
     )
     eye_landmarks.recurrent_learning_module.fit(
-        zip([l_eye, l_box], [r_eye, r_box]),
+        eyes,
         y_train,
         batch_size=batch_size,
         epochs=10,
