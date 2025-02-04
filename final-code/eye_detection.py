@@ -332,7 +332,7 @@ class EyeLandmarks(Model):
         return 3 tensors of the following form:
         - initial eye landmarks (x1, y1, ..., x6, y6) x2
         """
-        rois, eyes, _ = self.faster_rcnn(image)
+        _, eyes, _ = self.faster_rcnn(image)
 
         # extract the eye landmarks and bounding boxes
         left_eye_landmarks = eyes[:12]
@@ -349,6 +349,7 @@ class EyeLandmarks(Model):
 def dataset_generator(path: str, file_type: str, fully_labeled: bool) -> Generator:
     for file in Path(path).glob("*.txt"):
         image = cv.imread(str(file).replace("txt", file_type))
+        original_shape = image.shape
         label = (
             np.loadtxt(file, max_rows=6),
             (
@@ -358,7 +359,7 @@ def dataset_generator(path: str, file_type: str, fully_labeled: bool) -> Generat
             ),
             1 if fully_labeled else 0,
         )
-        yield image, label
+        yield image, label, original_shape
 
 
 def load_dataset(path: str, file_type: str, fully_labeled: bool) -> tf.data.Dataset:
@@ -369,8 +370,9 @@ def load_dataset(path: str, file_type: str, fully_labeled: bool) -> tf.data.Data
             (
                 tf.TensorSpec(shape=(6, 4), dtype=tf.float32),  # type: ignore
                 tf.TensorSpec(shape=(24,), dtype=tf.float32),  # type: ignore
-                tf.TensorSpec(shape=(), dtype=tf.float32),  # type: ignore
+                tf.TensorSpec(shape=(), dtype=tf.uint8),  # type: ignore
             ),
+            tf.TensorSpec(shape=(3,), dtype=tf.int32),  # type: ignore
         ),
     )
 
@@ -393,7 +395,10 @@ def combine_datasets(datasets: list, batch_size: int) -> tf.data.Dataset:
     full_dataset = datasets[0]
     for dataset in datasets[1:]:
         full_dataset = full_dataset.concatenate(dataset)
-    return full_dataset.shuffle(41550).batch(batch_size).prefetch(tf.data.AUTOTUNE)
+    full_dataset = full_dataset.shuffle(32946)
+    return full_dataset.padded_batch(
+        batch_size, padded_shapes=([None, None, 3], ([6, 4], [24], []), [3])
+    ).prefetch(tf.data.AUTOTUNE)
 
 
 def get_backbone_rpn_model(eye_landmarks: EyeLandmarks) -> Model:
@@ -577,7 +582,7 @@ def frcnn_loss_function(
     mse_loss = lambda_s * MeanSquaredError()(
         true_eye_landmarks, predicted_eye_landmarks
     )
-    total_loss += mse_loss * has_landmarks
+    total_loss += mse_loss * tf.cast(has_landmarks, tf.float32)
 
     return total_loss  # type: ignore
 
@@ -594,13 +599,22 @@ def step_decay(epoch: int, lr: float) -> float:
     return lr
 
 
+def remove_padding(images: tf.Tensor, shapes: tf.Tensor) -> tf.Tensor:
+    def crop_image(args: tuple[tf.Tensor, tf.Tensor]) -> tf.Tensor:
+        image, shape = args
+        return image[: shape[0], : shape[1], :]  # type: ignore
+
+    return tf.map_fn(crop_image, (images, shapes), fn_output_signature=tf.uint8)  # type: ignore
+
+
 @tf.function
 def rpn_train_loop(
     rpn_model: Model, dataset: tf.data.Dataset, optimizer: SGD, epochs: int
 ) -> None:
     for epoch in range(epochs):
         print(f"Epoch {epoch + 1}/{epochs}")
-        for step, (x, y) in enumerate(dataset):
+        for step, (x, y, original_shape) in enumerate(dataset):
+            x = remove_padding(x, original_shape)  # noqa: PLW2901
             with tf.GradientTape() as tape:
                 predictions = rpn_model(x)
                 loss = frcnn_loss(y, predictions)
