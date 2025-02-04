@@ -104,6 +104,9 @@ class RPN(Model):
         objectivness_scores = self.classifier(x)
         eye_landmarks = self.eye_landmark_classifier(x)
 
+        # reduce eye landmarks from (None, None, None, 24) -> (24)
+        eye_landmarks = tf.reshape(eye_landmarks, [-1, 24])
+
         # convert to x, y, w, h
         w_anchors = anchors[:, 2] - anchors[:, 0]  # type: ignore
         h_anchors = anchors[:, 3] - anchors[:, 1]  # type: ignore
@@ -366,7 +369,7 @@ def load_dataset(path: str, file_type: str, fully_labeled: bool) -> tf.data.Data
             (
                 tf.TensorSpec(shape=(6, 4), dtype=tf.float32),  # type: ignore
                 tf.TensorSpec(shape=(24,), dtype=tf.float32),  # type: ignore
-                tf.TensorSpec(shape=(), dtype=tf.int32),  # type: ignore
+                tf.TensorSpec(shape=(), dtype=tf.float32),  # type: ignore
             ),
         ),
     )
@@ -449,14 +452,12 @@ def frcnn_loss(
     offsets = tf.tensor_scatter_nd_update(offsets, positive_indices, update_values)
     offsets = tf.expand_dims(offsets, axis=0)
 
-    converted_left_eye = convert_landmarks(eye_landmarks[:6], rois[0])  # type: ignore
-    converted_right_eye = convert_landmarks(eye_landmarks[6:], rois[1])  # type: ignore
+    converted_left_eye = convert_eye_landmarks(eye_landmarks[:6], rois[0])  # type: ignore
+    converted_right_eye = convert_eye_landmarks(eye_landmarks[6:], rois[1])  # type: ignore
     converted_landmarks = tf.concat([converted_left_eye, converted_right_eye], axis=0)
 
     # find the loss
-    return frcnn_loss_function(
-        (converted_landmarks, y_true[1], y_true[2]), y_pred[:2], ratio  # type: ignore
-    )
+    return frcnn_loss_function(y_true, (offsets, converted_landmarks), ratio)
 
 
 def compute_ious(anchors: tf.Tensor, truths: tf.Tensor) -> tf.Tensor:
@@ -544,12 +545,22 @@ def filter_labels(labels: tf.Tensor, batch_size: int, ratio: int) -> tf.Tensor:
     return labels
 
 
-def convert_landmarks(proposal: tf.Tensor, bounding_box: tf.Tensor) -> tf.Tensor:
-    g_x, g_y, g_w, g_h = bounding_box
-    for i in range(1, 12, 2):
-        proposal[i] = (proposal[i] - g_x) / g_w  # type: ignore
-        proposal[i + 1] = (proposal[i + 1] - g_y) / g_h  # type: ignore
-    return proposal
+def convert_eye_landmarks(proposal: tf.Tensor, bounding_box: tf.Tensor) -> tf.Tensor:
+    indices_x = tf.range(1, 12, 2)
+    indices_y = tf.range(2, 11, 2)
+
+    proposal_x = tf.gather(proposal, indices_x)
+    proposal_y = tf.gather(proposal, indices_y)
+
+    proposal_x = (proposal_x - bounding_box[0]) / bounding_box[2]
+    proposal_y = (proposal_y - bounding_box[1]) / bounding_box[3]
+
+    proposal = tf.tensor_scatter_nd_update(
+        proposal, tf.expand_dims(indices_x, axis=1), proposal_x
+    )
+    return tf.tensor_scatter_nd_update(
+        proposal, tf.expand_dims(indices_y, axis=1), proposal_y
+    )
 
 
 def frcnn_loss_function(
@@ -561,13 +572,14 @@ def frcnn_loss_function(
     lambda_l = 1
     lambda_s = ratio
 
-    predicted_bboxs, predicted_landmarks = y_pred
-    true_bboxs, true_landmarks, has_landmarks = y_true
+    offsets, predicted_eye_landmarks = y_pred
+    true_bboxs, true_eye_landmarks, has_landmarks = y_true
 
-    total_loss = lambda_l * Huber()(true_bboxs, predicted_bboxs)
+    total_loss = lambda_l * Huber()(true_bboxs, offsets)
 
-    true_landmarks = y_true[1]
-    mse_loss = lambda_s * MeanSquaredError()(true_landmarks, predicted_landmarks)
+    mse_loss = lambda_s * MeanSquaredError()(
+        true_eye_landmarks, predicted_eye_landmarks
+    )
     total_loss += mse_loss * has_landmarks
 
     return total_loss  # type: ignore
@@ -597,7 +609,7 @@ def rpn_train_loop(
                 loss = frcnn_loss(y, predictions)
             grads = tape.gradient(loss, rpn_model.trainable_weights)
             optimizer.apply_gradients(zip(grads, rpn_model.trainable_weights))  # type: ignore
-            print(f"Step {step + 1}, Loss: {loss.numpy()}")  # type: ignore
+            print(f"Step {step + 1} done")  # type: ignore
         optimizer.learning_rate = step_decay(epoch, optimizer.learning_rate)
 
 
