@@ -23,7 +23,6 @@ from roi_pooling import ROIPoolingLayer
 from tensorflow.image import non_max_suppression  # type: ignore
 from tensorflow.keras import Input, Model  # type: ignore
 from tensorflow.keras.applications import VGG16  # type: ignore
-from tensorflow.keras.callbacks import LearningRateScheduler  # type: ignore
 from tensorflow.keras.initializers import RandomNormal  # type: ignore
 from tensorflow.keras.layers import (  # type: ignore
     LSTM,
@@ -111,9 +110,9 @@ class RPN(Model):
         x_anchors = anchors[:, 0] + w_anchors / 2  # type: ignore
         y_anchors = anchors[:, 1] + h_anchors / 2  # type: ignore
 
-        anchor_deltas = tf.reshape(anchor_deltas, [-1, tf.shape(anchors)[0], 4])
+        anchor_deltas = tf.reshape(anchor_deltas, [-1, tf.shape(anchors)[0], 4])  # type: ignore
         objectivness_scores = tf.reshape(
-            objectivness_scores, [-1, tf.shape(anchors)[0]]
+            objectivness_scores, [-1, tf.shape(anchors)[0]]  # type: ignore
         )
 
         # post processing
@@ -417,10 +416,7 @@ def frcnn_loss(
     h_anchors = anchors[:, 3] - anchors[:, 1]  # type: ignore
 
     # find ious between anchors and ground truths
-    ious = np.zeros(tf.shape(anchors)[0], tf.shape(true_bboxs)[0], dtype=np.float32)  # type: ignore
-    for i, anchor in enumerate(anchors):
-        for j, truth in enumerate(true_bboxs):  # type: ignore
-            ious[i, j] = iou(anchor, truth)
+    ious = compute_ious(anchors, true_bboxs)
 
     best_anchors, labels = compute_labels(ious, anchors)
 
@@ -433,24 +429,28 @@ def frcnn_loss(
     x_truths = true_bboxs[:, 0] + w_truths / 2  # type: ignore
     y_truths = true_bboxs[:, 1] + h_truths / 2  # type: ignore
 
-    eps = np.finfo(anchors.dtype).eps  # type: ignore
-    w_anchors = np.maximum(w_anchors, eps)
-    h_anchors = np.maximum(h_anchors, eps)
+    eps = tf.constant(1e-7, dtype=tf.float32)
+    w_anchors = tf.maximum(w_anchors, eps)
+    h_anchors = tf.maximum(h_anchors, eps)
 
     tx = (x_truths - x_anchors) / w_anchors
     ty = (y_truths - y_anchors) / h_anchors
-    tw = np.log(w_truths / w_anchors)
-    th = np.log(h_truths / h_anchors)
+    tw = tf.math.log(w_truths / w_anchors)
+    th = tf.math.log(h_truths / h_anchors)
 
-    deltas = np.stack([tx, ty, tw, th], axis=1)
+    deltas = tf.stack([tx, ty, tw, th], axis=1)
 
-    offsets = np.zeros((len(anchors), 4))
-    offsets[labels == 1] = deltas[best_anchors]
-    offsets = np.expand_dims(offsets, axis=0)
+    positive_indices = tf.where(tf.equal(labels, 1))
+    best_anchor_positives = tf.boolean_mask(best_anchors, tf.equal(labels, 1))
+    best_anchor_positives = tf.squeeze(best_anchor_positives, axis=-1)
+    update_values = tf.gather(deltas, best_anchor_positives)
+
+    offsets = tf.zeros((tf.shape(anchors)[0], 4), dtype=tf.float32)  # type: ignore
+    offsets = tf.tensor_scatter_nd_update(offsets, positive_indices, update_values)
+    offsets = tf.expand_dims(offsets, axis=0)
 
     converted_left_eye = convert_landmarks(eye_landmarks[:6], rois[0])  # type: ignore
     converted_right_eye = convert_landmarks(eye_landmarks[6:], rois[1])  # type: ignore
-
     converted_landmarks = tf.concat([converted_left_eye, converted_right_eye], axis=0)
 
     # find the loss
@@ -459,67 +459,87 @@ def frcnn_loss(
     )
 
 
-def iou(box1: tf.Tensor, box2: tf.Tensor) -> float:
+def compute_ious(anchors: tf.Tensor, truths: tf.Tensor) -> tf.Tensor:
     """
-    intersection over union
+    computes the ious between anchors and ground truths
+    boxes in form cx, cy, w, h
     """
-    cx1, cy1, w1, h1 = box1
-    cx2, cy2, w2, h2 = box2
 
-    x1 = max(cx1 - w1 / 2, cx2 - w2 / 2)
-    y1 = max(cy1 - h1 / 2, cy2 - h2 / 2)
-    x2 = min(cx1 + w1 / 2, cx2 + w2 / 2)
-    y2 = min(cy1 + h1 / 2, cy2 + h2 / 2)
+    x1 = tf.maximum(anchors[:, 0] - anchors[:, 2] / 2, truths[:, 0] - truths[:, 2] / 2)  # type: ignore
+    y1 = tf.maximum(anchors[:, 1] - anchors[:, 3] / 2, truths[:, 1] - truths[:, 3] / 2)  # type: ignore
+    x2 = tf.minimum(anchors[:, 0] + anchors[:, 2] / 2, truths[:, 0] + truths[:, 2] / 2)  # type: ignore
+    y2 = tf.minimum(anchors[:, 1] + anchors[:, 3] / 2, truths[:, 1] + truths[:, 3] / 2)  # type: ignore
 
-    intersection = max(0, x2 - x1) * max(0, y2 - y1)
-    union = w1 * h1 + w2 * h2 - intersection
+    intersection = tf.maximum(0.0, x2 - x1) * tf.maximum(0.0, y2 - y1)
+    union = anchors[:, 2] * anchors[:, 3] + truths[:, 2] * truths[:, 3] - intersection  # type: ignore
+
     return intersection / union
 
 
-def compute_labels(
-    ious: np.ndarray, anchors: tf.Tensor
-) -> tuple[np.ndarray, np.ndarray]:
+def compute_labels(ious: tf.Tensor, anchors: tf.Tensor) -> tuple[tf.Tensor, tf.Tensor]:
     # find best anchors
-    best_iou_indexes = np.argmax(ious, axis=1)
-    best_ious = ious[np.arange(len(anchors)), best_iou_indexes]
-    best_anchors = np.argmax(ious, axis=0)
-    best_gt_ious = ious[best_anchors, np.arange(ious.shape[1])]
-    best_anchors = np.where(ious == best_gt_ious)[0]
+    best_iou_indexes = tf.argmax(ious, axis=1)
+    best_ious = tf.gather(ious, best_iou_indexes, axis=1)
+    best_anchors = tf.argmax(ious, axis=0)
+    best_gt_ious = tf.gather(ious, best_anchors, axis=0)
+    best_anchors = tf.where(ious == best_gt_ious)[:, 0]
 
     # assign labels to anchors
     # 0. background, 1. foreground, -1. ignore
     iou_threshold = 0.5
-    labels = np.zeros(len(anchors))
-    labels.fill(-1)
-    labels[best_ious < iou_threshold] = 0
-    labels[best_anchors] = 1
-    labels[best_ious >= iou_threshold] = 1
+    labels = tf.fill([tf.shape(anchors)[0]], -1)  # type: ignore
+
+    # background indeces added to 0
+    background_indices = tf.where(best_ious < iou_threshold)
+    labels = tf.tensor_scatter_nd_update(
+        labels,
+        background_indices,
+        tf.zeros_like([tf.shape(background_indices)[0]], dtype=tf.int32),  # type: ignore
+    )
+    # foreground indices added to 1
+    foreground_indices = tf.expand_dims(best_anchors, axis=1)
+    labels = tf.tensor_scatter_nd_update(
+        labels,
+        foreground_indices,
+        tf.ones_like([tf.shape(foreground_indices)[0]], dtype=tf.int32),  # type: ignore
+    )
+    high_iou_indices = tf.where(best_ious >= iou_threshold)
+    labels = tf.tensor_scatter_nd_update(
+        labels,
+        high_iou_indices,
+        tf.ones_like([tf.shape(high_iou_indices)[0]], dtype=tf.int32),  # type: ignore
+    )
 
     return best_anchors, labels
 
 
-def filter_labels(labels: np.ndarray, batch_size: int, ratio: int) -> np.ndarray:
+def filter_labels(labels: tf.Tensor, batch_size: int, ratio: int) -> tf.Tensor:
+    """proposes a balanced (according to ratio) set of labels of size batch_size"""
     num_positives = int(batch_size * (1 - ratio))
-    positive_indices = np.where(labels == 1)[0]
+    positive_indices = tf.where(tf.equal(labels, 1))[:, 0]
+    num_current_positives = tf.shape(positive_indices)[0]  # type: ignore
 
-    if len(positive_indices) > num_positives:
-        labels[
-            np.random.choice(
-                positive_indices,
-                len(positive_indices) - num_positives,
-                replace=False,
-            )
-        ] = -1
+    # add more positives if necessary
+    positive_diff = num_current_positives - num_positives
+    if positive_diff > 0:
+        added_positives = tf.random.shuffle(positive_indices)[:positive_diff]
+        update_values = tf.fill([positive_diff], -1)
+        labels = tf.tensor_scatter_nd_update(
+            labels, tf.expand_dims(added_positives, axis=1), update_values
+        )
+
     num_negatives = batch_size - num_positives
-    negative_indices = np.where(labels == 0)[0]
-    if len(negative_indices) > num_negatives:
-        labels[
-            np.random.choice(
-                negative_indices,
-                len(negative_indices) - num_negatives,
-                replace=False,
-            )
-        ] = -1
+    negative_indices = tf.where(tf.equal(labels, 0))[:, 0]
+    num_current_negatives = tf.shape(negative_indices)[0]  # type: ignore
+
+    # add more negatives if necessary
+    negative_diff = num_current_negatives - num_negatives
+    if negative_diff > 0:
+        added_negatives = tf.random.shuffle(negative_indices)[:negative_diff]
+        update_neg_values = tf.fill([negative_diff], -1)
+        labels = tf.tensor_scatter_nd_update(
+            labels, tf.expand_dims(added_negatives, axis=1), update_neg_values
+        )
 
     return labels
 
@@ -576,8 +596,8 @@ def rpn_train_loop(
                 predictions = rpn_model(x)
                 loss = frcnn_loss(y, predictions)
             grads = tape.gradient(loss, rpn_model.trainable_weights)
-            optimizer.apply_gradients(zip(grads, rpn_model.trainable_weights))
-            print(f"Step {step + 1}, Loss: {loss.numpy()}")
+            optimizer.apply_gradients(zip(grads, rpn_model.trainable_weights))  # type: ignore
+            print(f"Step {step + 1}, Loss: {loss.numpy()}")  # type: ignore
         optimizer.learning_rate = step_decay(epoch, optimizer.learning_rate)
 
 
@@ -606,7 +626,6 @@ def train_model() -> None:
     eye_landmarks.faster_rcnn.fc2.trainable = False
 
     backbone_rpn_model = get_backbone_rpn_model(eye_landmarks)
-    print(backbone_rpn_model.output)
 
     rpn_train_loop(
         backbone_rpn_model,
