@@ -354,7 +354,7 @@ def dataset_generator(path: str, file_type: str, fully_labeled: bool) -> Generat
             (
                 np.loadtxt(file, skiprows=6).flatten()
                 if fully_labeled
-                else np.zeros_like((24,))
+                else np.zeros((24,))
             ),
             1 if fully_labeled else 0,
         )
@@ -457,7 +457,7 @@ def frcnn_loss(
     converted_landmarks = tf.concat([converted_left_eye, converted_right_eye], axis=0)
 
     # find the loss
-    return frcnn_loss_function(y_true, (offsets, converted_landmarks), ratio)
+    return frcnn_loss_function(y_true, (offsets, converted_landmarks), ratio)  # type: ignore
 
 
 def compute_ious(anchors: tf.Tensor, truths: tf.Tensor) -> tf.Tensor:
@@ -549,11 +549,8 @@ def convert_eye_landmarks(proposal: tf.Tensor, bounding_box: tf.Tensor) -> tf.Te
     indices_x = tf.range(1, 12, 2)
     indices_y = tf.range(2, 11, 2)
 
-    proposal_x = tf.gather(proposal, indices_x)
-    proposal_y = tf.gather(proposal, indices_y)
-
-    proposal_x = (proposal_x - bounding_box[0]) / bounding_box[2]
-    proposal_y = (proposal_y - bounding_box[1]) / bounding_box[3]
+    proposal_x = (tf.gather(proposal, indices_x) - bounding_box[0]) / bounding_box[2]  # type: ignore
+    proposal_y = (tf.gather(proposal, indices_y) - bounding_box[1]) / bounding_box[3]  # type: ignore
 
     proposal = tf.tensor_scatter_nd_update(
         proposal, tf.expand_dims(indices_x, axis=1), proposal_x
