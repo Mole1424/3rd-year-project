@@ -13,6 +13,7 @@
 # available at https://github.com/hxuaj/tf2-faster-rcnn/tree/main/model
 # thanks to hxuaj
 
+import sys
 from pathlib import Path
 from typing import Generator
 
@@ -48,7 +49,7 @@ class RPN(Model):
             512, (3, 3), activation="relu", padding="same", name="rpn_conv1"
         )
         self.regressor = Conv2D(
-            8 * self.num_points_per_anchor,
+            4 * self.num_points_per_anchor,
             (1, 1),
             activation="linear",
             padding="same",
@@ -81,7 +82,7 @@ class RPN(Model):
         image: input image
 
         output is 3 tensors:
-        - region proposals (x, y, w, h)
+        - region proposals (cx, cy, w, h)
         - initial eye landmarks (x1, y1, ..., x6, y6) x2
         - anchors (x1, y1, x2, y2)
         """
@@ -93,6 +94,8 @@ class RPN(Model):
             (features_shape[1], features_shape[2]), (image_shape[1], image_shape[2])  # type: ignore
         )
 
+        anchors = tf.tile(tf.expand_dims(anchors, axis=0), [tf.shape(image)[0], 1, 1])  # type: ignore
+
         # pass through the network
         x = self.conv1(features)
         anchor_deltas = self.regressor(x)
@@ -102,27 +105,25 @@ class RPN(Model):
         # reduce eye landmarks from (None, None, None, 24) -> (24)
         eye_landmarks = tf.reshape(eye_landmarks, [-1, 24])
 
-        # convert to x, y, w, h
-        w_anchors = anchors[:, 2] - anchors[:, 0]  # type: ignore
-        h_anchors = anchors[:, 3] - anchors[:, 1]  # type: ignore
-        x_anchors = anchors[:, 0] + w_anchors / 2  # type: ignore
-        y_anchors = anchors[:, 1] + h_anchors / 2  # type: ignore
-
-        anchor_deltas = tf.reshape(anchor_deltas, [-1, tf.shape(anchors)[0], 4])  # type: ignore
-        objectivness_scores = tf.reshape(
-            objectivness_scores, [-1, tf.shape(anchors)[0]]  # type: ignore
-        )
+        anchor_deltas = tf.reshape(anchor_deltas, [-1, 4])
+        objectivness_scores = tf.reshape(objectivness_scores, [-1, 4])
 
         # post processing
-        rois = self.post_processing(
-            x_anchors,
-            y_anchors,
-            w_anchors,
-            h_anchors,
-            anchor_deltas,
-            objectivness_scores,
-            image,
+        def post_processing_fn(
+            inputs: tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]
+        ) -> tf.Tensor:
+            anchors, anchor_deltas, objectivness_scores, image = inputs
+            return self.post_processing(
+                anchors, anchor_deltas, objectivness_scores, image
+            )
+
+        # compute rois for each image
+        rois = tf.map_fn(
+            post_processing_fn,
+            (anchors, anchor_deltas, objectivness_scores, image),
+            fn_output_signature=tf.float32,
         )
+        rois = tf.stack(rois, axis=0)
 
         return rois, eye_landmarks, anchors
 
@@ -180,48 +181,37 @@ class RPN(Model):
 
         return tf.boolean_mask(anchors, inside_mask)
 
-    def iou(self, box1: tf.Tensor, box2: tf.Tensor) -> float:
-        cx1, cy1, w1, h1 = box1
-        cx2, cy2, w2, h2 = box2
-
-        x1 = max(cx1 - w1 / 2, cx2 - w2 / 2)
-        y1 = max(cy1 - h1 / 2, cy2 - h2 / 2)
-        x2 = min(cx1 + w1 / 2, cx2 + w2 / 2)
-        y2 = min(cy1 + h1 / 2, cy2 + h2 / 2)
-
-        intersection = max(0, x2 - x1) * max(0, y2 - y1)
-        union = w1 * h1 + w2 * h2 - intersection
-        return intersection / union
-
-    def post_processing(  # noqa: PLR0913
+    def post_processing(
         self,
-        x_anchors: tf.Tensor,
-        y_anchors: tf.Tensor,
-        w_anchors: tf.Tensor,
-        h_anchors: tf.Tensor,
+        anchors: tf.Tensor,
         anchor_deltas: tf.Tensor,
         objectivness_scores: tf.Tensor,
         image: tf.Tensor,
     ) -> tf.Tensor:
-        # apply deltas
-        x1 = x_anchors + w_anchors * anchor_deltas[:, :, 0]  # type: ignore
-        y1 = y_anchors + h_anchors * anchor_deltas[:, :, 1]  # type: ignore
-        w = w_anchors * tf.exp(anchor_deltas[:, :, 2])  # type: ignore
-        h = h_anchors * tf.exp(anchor_deltas[:, :, 3])  # type: ignore
+        # ensure all inputs are of the same shape
+        anchors = tf.cond(
+            tf.equal(tf.rank(anchors), 1),
+            lambda: tf.expand_dims(anchors, 0),
+            lambda: anchors,
+        )  # type: ignore
+        anchor_deltas = tf.cond(
+            tf.equal(tf.rank(anchor_deltas), 1),
+            lambda: tf.expand_dims(anchor_deltas, 0),
+            lambda: anchor_deltas,
+        )  # type: ignore
 
-        # convert to x1, y1, x2, y2
-        x1 = x1 - w / 2
-        y1 = y1 - h / 2
-        x2 = x1 + w
-        y2 = y1 + h
-
+        # apply deltas to anchors
+        x1 = anchors[:, 0] + anchor_deltas[:, 0]  # type: ignore
+        y1 = anchors[:, 1] + anchor_deltas[:, 1]  # type: ignore
+        x2 = anchors[:, 2] + anchor_deltas[:, 2]  # type: ignore
+        y2 = anchors[:, 3] + anchor_deltas[:, 3]  # type: ignore
         # clip to image
         predicted_anchors = tf.stack([x1, y1, x2, y2], axis=-1)
         image_shape = tf.cast(tf.shape(image)[:2], tf.float32)  # type: ignore
         max_values = tf.stack(
             [image_shape[1], image_shape[0], image_shape[1], image_shape[0]]  # type: ignore
         )
-        max_values = tf.reshape(max_values, [1, 1, 4])
+        max_values = tf.reshape(max_values, [1, 4])
         predicted_anchors = tf.clip_by_value(predicted_anchors, 0.0, max_values)
 
         predicted_anchors = tf.reshape(predicted_anchors, [-1, 4])
@@ -240,10 +230,10 @@ class RPN(Model):
         x2 = tf.gather(predicted_anchors[:, 2], nms_indices)
         y2 = tf.gather(predicted_anchors[:, 3], nms_indices)
 
-        x = (x1 + x2) / 2
-        y = (y1 + y2) / 2
-        w = x2 - x1
-        h = y2 - y1
+        x = tf.divide((tf.add(x1, x2)), 2)
+        y = tf.divide((tf.add(y1, y2)), 2)
+        w = tf.subtract(x2, x1)
+        h = tf.subtract(y2, y1)
 
         return tf.stack([x, y, w, h], axis=-1)
 
@@ -368,9 +358,8 @@ def load_dataset(path: str, file_type: str, fully_labeled: bool) -> tf.data.Data
     )
 
 
-def load_datsets(path_to_large: str, batch_size: int) -> tf.data.Dataset:
+def load_datsets(path_to_large: str, batch_size: int, debug: bool) -> tf.data.Dataset:
     path_to_datasets = path_to_large + "eyes/"
-
     datasets = [
         load_dataset(path_to_datasets + "300w/", "png", True),
         load_dataset(path_to_datasets + "helen/", "jpg", True),
@@ -378,15 +367,14 @@ def load_datsets(path_to_large: str, batch_size: int) -> tf.data.Dataset:
         load_dataset(path_to_datasets + "afw/", "jpg", True),
         load_dataset(path_to_datasets + "aflw/", "jpg", False),
     ]
+    return combine_datasets(datasets, batch_size, debug)
 
-    return combine_datasets(datasets, batch_size)
 
-
-def combine_datasets(datasets: list, batch_size: int) -> tf.data.Dataset:
+def combine_datasets(datasets: list, batch_size: int, debug: bool) -> tf.data.Dataset:
     full_dataset = datasets[0]
     for dataset in datasets[1:]:
         full_dataset = full_dataset.concatenate(dataset)
-    full_dataset = full_dataset.shuffle(32946)
+    full_dataset = full_dataset.shuffle(32946) if not debug else full_dataset
     return full_dataset.padded_batch(
         batch_size, padded_shapes=([None, None, 3], ([6, 4], [24], []), [3])
     ).prefetch(tf.data.AUTOTUNE)
@@ -417,14 +405,20 @@ def frcnn_loss(
     ratio = 3
 
     rois, eye_landmarks, anchors = y_pred
-    true_bboxs, true_landmarks, _ = y_true
-
-    x_anchors = anchors[:, 0] + anchors[:, 2] / 2  # type: ignore
-    y_anchors = anchors[:, 1] + anchors[:, 3] / 2  # type: ignore
-    w_anchors = anchors[:, 2] - anchors[:, 0]  # type: ignore
-    h_anchors = anchors[:, 3] - anchors[:, 1]  # type: ignore
+    true_bboxs, _, _ = y_true
 
     # find ious between anchors and ground truths
+    # convert anchors from x1, y1, x2, y2 to cx, cy, w, h
+    anchors = tf.stack(
+        [
+            (anchors[:, 0] + anchors[:, 2]) / 2,  # type: ignore
+            (anchors[:, 1] + anchors[:, 3]) / 2,  # type: ignore
+            anchors[:, 2] - anchors[:, 0],  # type: ignore
+            anchors[:, 3] - anchors[:, 1],  # type: ignore
+        ],
+        axis=1,
+    )
+
     ious = compute_ious(anchors, true_bboxs)
 
     best_anchors, labels = compute_labels(ious, anchors)
@@ -437,6 +431,11 @@ def frcnn_loss(
     h_truths = true_bboxs[:, 3] - true_bboxs[:, 1]  # type: ignore
     x_truths = true_bboxs[:, 0] + w_truths / 2  # type: ignore
     y_truths = true_bboxs[:, 1] + h_truths / 2  # type: ignore
+
+    x_anchors = anchors[:, 0] + anchors[:, 2] / 2  # type: ignore
+    y_anchors = anchors[:, 1] + anchors[:, 3] / 2  # type: ignore
+    w_anchors = anchors[:, 2] - anchors[:, 0]  # type: ignore
+    h_anchors = anchors[:, 3] - anchors[:, 1]  # type: ignore
 
     eps = tf.constant(1e-7, dtype=tf.float32)
     w_anchors = tf.maximum(w_anchors, eps)
@@ -458,8 +457,8 @@ def frcnn_loss(
     offsets = tf.tensor_scatter_nd_update(offsets, positive_indices, update_values)
     offsets = tf.expand_dims(offsets, axis=0)
 
-    converted_left_eye = convert_eye_landmarks(eye_landmarks[:6], rois[0])  # type: ignore
-    converted_right_eye = convert_eye_landmarks(eye_landmarks[6:], rois[1])  # type: ignore
+    converted_left_eye = convert_eye_landmarks(eye_landmarks[0, :12], rois[0])  # type: ignore
+    converted_right_eye = convert_eye_landmarks(eye_landmarks[0, 12:], rois[1])  # type: ignore
     converted_landmarks = tf.concat([converted_left_eye, converted_right_eye], axis=0)
 
     # find the loss
@@ -471,7 +470,6 @@ def compute_ious(anchors: tf.Tensor, truths: tf.Tensor) -> tf.Tensor:
     computes the ious between anchors and ground truths
     boxes in form cx, cy, w, h
     """
-
     x1 = tf.maximum(anchors[:, 0] - anchors[:, 2] / 2, truths[:, 0] - truths[:, 2] / 2)  # type: ignore
     y1 = tf.maximum(anchors[:, 1] - anchors[:, 3] / 2, truths[:, 1] - truths[:, 3] / 2)  # type: ignore
     x2 = tf.minimum(anchors[:, 0] + anchors[:, 2] / 2, truths[:, 0] + truths[:, 2] / 2)  # type: ignore
@@ -552,8 +550,8 @@ def filter_labels(labels: tf.Tensor, batch_size: int, ratio: int) -> tf.Tensor:
 
 
 def convert_eye_landmarks(proposal: tf.Tensor, bounding_box: tf.Tensor) -> tf.Tensor:
-    indices_x = tf.range(1, 12, 2)
-    indices_y = tf.range(2, 11, 2)
+    indices_x = tf.range(0, 12, 2)
+    indices_y = tf.range(1, 12, 2)
 
     proposal_x = (tf.gather(proposal, indices_x) - bounding_box[0]) / bounding_box[2]  # type: ignore
     proposal_y = (tf.gather(proposal, indices_y) - bounding_box[1]) / bounding_box[3]  # type: ignore
@@ -615,7 +613,7 @@ def rpn_train_loop(
         optimizer.learning_rate = step_decay(epoch, optimizer.learning_rate)
 
 
-def train_model() -> None:
+def train_model(debug: bool) -> None:
     path_to_large = "/dcs/large/u2204489/"
 
     batch_size = 2
@@ -625,7 +623,7 @@ def train_model() -> None:
         dataset = tf.data.Dataset.load(path_to_large + "eyedataset")
         dataset.save(path_to_large + "eyedataset")
     else:
-        dataset = load_datsets(path_to_large, batch_size)
+        dataset = load_datsets(path_to_large, batch_size, debug)
 
     # create model
     eye_landmarks = EyeLandmarks(3, 10)
@@ -648,6 +646,7 @@ def train_model() -> None:
         SGD(learning_rate=0.02, momentum=0.9, weight_decay=0.0001),
         8 * 10,
     )
+    print("Step 1 complete")
     backbone_rpn_model.save_weights(f"{path_to_large}step1.keras")
 
     # step 2, train fast-RCNN with fixed RPN
@@ -662,6 +661,7 @@ def train_model() -> None:
         SGD(learning_rate=0.02, momentum=0.9, weight_decay=0.0001),
         8 * 10,
     )
+    print("Step 2 complete")
     eye_landmarks.faster_rcnn.save_weights(f"{path_to_large}step2.keras")
 
     # step 3, train RPN with fixed fast-RCNN
@@ -689,6 +689,7 @@ def train_model() -> None:
         SGD(learning_rate=0.02, momentum=0.9, weight_decay=0.0001),
         8 * 10,
     )
+    print("Step 4 complete")
     eye_landmarks.faster_rcnn.save_weights(f"{path_to_large}step4.keras")
 
     eye_landmarks.faster_rcnn.trainable = False
@@ -719,4 +720,4 @@ def train_model() -> None:
 
 
 if __name__ == "__main__":
-    train_model()
+    train_model(sys.argv[1] == "debug")
