@@ -23,7 +23,6 @@ from roi_pooling import ROIPoolingLayer
 from tensorflow.image import non_max_suppression  # type: ignore
 from tensorflow.keras import Input, Model  # type: ignore
 from tensorflow.keras.applications import VGG16  # type: ignore
-from tensorflow.keras.initializers import RandomNormal  # type: ignore
 from tensorflow.keras.layers import (  # type: ignore
     LSTM,
     Conv2D,
@@ -46,32 +45,28 @@ class RPN(Model):
         self.num_points_per_anchor = 9
 
         self.conv1 = Conv2D(
-            512,
-            (3, 3),
-            activation="relu",
-            padding="same",
-            kernel_initializer=RandomNormal(),
+            512, (3, 3), activation="relu", padding="same", name="rpn_conv1"
         )
         self.regressor = Conv2D(
             8 * self.num_points_per_anchor,
             (1, 1),
             activation="linear",
             padding="same",
-            kernel_initializer=RandomNormal(),
+            name="rpn_regressor",
         )
         self.classifier = Conv2D(
             1 * self.num_points_per_anchor,
             (1, 1),
             activation="sigmoid",
             padding="same",
-            kernel_initializer=RandomNormal(),
+            name="rpn_classifier",
         )
         self.eye_landmark_classifier = Conv2D(
             24,  # 6 landmarks * 2 eyes * 2 pointss
             (1, 1),
             activation="linear",
             padding="same",
-            kernel_initializer=RandomNormal(),
+            name="rpn_eye_landmark_classifier",
         )
 
         self.num_landmarks = 6
@@ -258,9 +253,9 @@ class FasterRCNN(Model):
         super(FasterRCNN, self).__init__()
         self.backbone = self.shared_convolutional_model()
         self.rpn = RPN(ratio)
-        self.roi_pooling = ROIPoolingLayer(2, 2)
-        self.fc1 = Dense(512, activation="relu", kernel_initializer=RandomNormal())
-        self.fc2 = Dense(256, activation="relu", kernel_initializer=RandomNormal())
+        self.roi_pooling = ROIPoolingLayer(2, 2, name="roi_pooling")  # type: ignore
+        self.fc1 = Dense(512, activation="relu", name="frcnn_fc1")
+        self.fc2 = Dense(256, activation="relu", name="frcnn_fc2")
 
     def call(self, image: tf.Tensor) -> tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
         """
@@ -297,22 +292,18 @@ def recurrent_learning_module(time_steps: int) -> Model:
 
     initial_landmarks = Input(shape=(num_landmarks * 2,))
 
-    x = Dense(256, activation="relu", kernel_initializer=RandomNormal())(
-        initial_landmarks
-    )
-    x = RepeatVector(time_steps)(x)
-    x = LSTM(num_ltsm_units, return_sequences=True, kernel_initializer=RandomNormal())(
-        x
-    )
+    x = Dense(256, activation="relu", name="rlm_fc1")(initial_landmarks)
+    x = RepeatVector(time_steps, name="rlm_repeat_vector")(x)
+    x = LSTM(num_ltsm_units, return_sequences=True, name="rlm_lstm")(x)
 
-    x = TimeDistributed(Dense(num_landmarks * 2, activation="relu"))(x)
+    x = TimeDistributed(Dense(num_landmarks * 2, activation="relu", name="rlm_time"))(x)
 
     def update_landmarks(inputs: tf.Tensor) -> tf.Tensor:
         initial, deltas = inputs
         updated = tf.cumsum(deltas, axis=1) + tf.expand_dims(initial, axis=1)
         return updated[:, -1, :]
 
-    x = Lambda(update_landmarks)([initial_landmarks, x])
+    x = Lambda(update_landmarks, name="rlm_lambda")([initial_landmarks, x])
 
     return Model(
         inputs=initial_landmarks,
@@ -401,11 +392,21 @@ def combine_datasets(datasets: list, batch_size: int) -> tf.data.Dataset:
     ).prefetch(tf.data.AUTOTUNE)
 
 
+def remove_padding(image: tf.Tensor, shape: tf.Tensor) -> tf.Tensor:
+    return image[: shape[0], : shape[1], :]  # type: ignore
+
+
 def get_backbone_rpn_model(eye_landmarks: EyeLandmarks) -> Model:
-    inputs = Input(shape=(None, None, 3))
-    features = eye_landmarks.faster_rcnn.backbone(inputs)
-    rois, eye_landmarkers, anchors = eye_landmarks.faster_rcnn.rpn(features, inputs)
-    return Model(inputs=inputs, outputs=[rois, eye_landmarkers, anchors])
+    image = Input(shape=(None, None, 3))
+    original_shape = Input(shape=(3,), dtype=tf.int32)
+    image = Lambda(
+        remove_padding, output_shape=(None, None, 3), name="backbone_lambda"
+    )([image, original_shape])
+    features = eye_landmarks.faster_rcnn.backbone(image)
+    rois, eye_landmarkers, anchors = eye_landmarks.faster_rcnn.rpn(features, image)
+    return Model(
+        inputs=[image, original_shape], outputs=[rois, eye_landmarkers, anchors]
+    )
 
 
 @tf.function
@@ -599,28 +600,18 @@ def step_decay(epoch: int, lr: float) -> float:
     return lr
 
 
-def remove_padding(images: tf.Tensor, shapes: tf.Tensor) -> tf.Tensor:
-    def crop_image(args: tuple[tf.Tensor, tf.Tensor]) -> tf.Tensor:
-        image, shape = args
-        return image[: shape[0], : shape[1], :]  # type: ignore
-
-    return tf.map_fn(crop_image, (images, shapes), fn_output_signature=tf.uint8)  # type: ignore
-
-
 @tf.function
 def rpn_train_loop(
     rpn_model: Model, dataset: tf.data.Dataset, optimizer: SGD, epochs: int
 ) -> None:
     for epoch in range(epochs):
         print(f"Epoch {epoch + 1}/{epochs}")
-        for step, (x, y, original_shape) in enumerate(dataset):
-            x = remove_padding(x, original_shape)  # noqa: PLW2901
+        for _, (x, y, original_shape) in enumerate(dataset):
             with tf.GradientTape() as tape:
-                predictions = rpn_model(x)
+                predictions = rpn_model([x, original_shape])
                 loss = frcnn_loss(y, predictions)
             grads = tape.gradient(loss, rpn_model.trainable_weights)
             optimizer.apply_gradients(zip(grads, rpn_model.trainable_weights))  # type: ignore
-            print(f"Step {step + 1} done")  # type: ignore
         optimizer.learning_rate = step_decay(epoch, optimizer.learning_rate)
 
 
@@ -632,6 +623,7 @@ def train_model() -> None:
     # check if the dataset already exists
     if Path(path_to_large + "eyedataset").exists():
         dataset = tf.data.Dataset.load(path_to_large + "eyedataset")
+        dataset.save(path_to_large + "eyedataset")
     else:
         dataset = load_datsets(path_to_large, batch_size)
 
