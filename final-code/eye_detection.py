@@ -402,67 +402,84 @@ def frcnn_loss(
     y_true: tuple[tf.Tensor, tf.Tensor, tf.Tensor],
     y_pred: tuple[tf.Tensor, tf.Tensor, tf.Tensor],
 ) -> tf.Tensor:
-    ratio = 3
-
-    rois, eye_landmarks, anchors = y_pred
-    true_bboxs, _, _ = y_true
-
-    # find ious between anchors and ground truths
-    # convert anchors from x1, y1, x2, y2 to cx, cy, w, h
-    anchors = tf.stack(
-        [
-            (anchors[:, 0] + anchors[:, 2]) / 2,  # type: ignore
-            (anchors[:, 1] + anchors[:, 3]) / 2,  # type: ignore
-            anchors[:, 2] - anchors[:, 0],  # type: ignore
-            anchors[:, 3] - anchors[:, 1],  # type: ignore
+    def frcnn_loss_per_sample(
+        input: tuple[
+            tuple[tf.Tensor, tf.Tensor, tf.Tensor],
+            tuple[tf.Tensor, tf.Tensor, tf.Tensor],
         ],
-        axis=1,
+    ) -> tf.Tensor:
+        ratio = 3
+
+        y_true, y_pred = input
+        rois, eye_landmarks, anchors = y_pred
+        true_bboxs, _, _ = y_true
+
+        # find ious between anchors and ground truths
+        # convert anchors from x1, y1, x2, y2 to cx, cy, w, h
+        anchors = tf.stack(
+            [
+                (anchors[:, 0] + anchors[:, 2]) / 2,  # type: ignore
+                (anchors[:, 1] + anchors[:, 3]) / 2,  # type: ignore
+                anchors[:, 2] - anchors[:, 0],  # type: ignore
+                anchors[:, 3] - anchors[:, 1],  # type: ignore
+            ],
+            axis=1,
+        )
+
+        ious = compute_ious(anchors, true_bboxs)
+
+        _, labels = compute_labels(ious, anchors)
+
+        # subsample anchors
+        labels = filter_labels(labels, 256, ratio)
+
+        matched_truths_indexes = tf.argmax(ious, axis=1)
+        matched_truths = tf.gather(true_bboxs, matched_truths_indexes)
+
+        # find deltas
+        w_truths = matched_truths[:, 2] - matched_truths[:, 0]  # type: ignore
+        h_truths = matched_truths[:, 3] - matched_truths[:, 1]  # type: ignore
+        x_truths = matched_truths[:, 0] + w_truths / 2  # type: ignore
+        y_truths = matched_truths[:, 1] + h_truths / 2  # type: ignore
+
+        x_anchors = anchors[:, 0]  # type: ignore
+        y_anchors = anchors[:, 1]  # type: ignore
+        w_anchors = anchors[:, 2]  # type: ignore
+        h_anchors = anchors[:, 3]  # type: ignore
+
+        eps = tf.constant(1e-7, dtype=tf.float32)
+        w_anchors = tf.maximum(w_anchors, eps)
+        h_anchors = tf.maximum(h_anchors, eps)
+
+        tx = (x_truths - x_anchors) / w_anchors
+        ty = (y_truths - y_anchors) / h_anchors
+        tw = tf.math.log(w_truths / w_anchors)
+        th = tf.math.log(h_truths / h_anchors)
+
+        deltas = tf.stack([tx, ty, tw, th], axis=1)
+
+        positive_indices = tf.where(tf.equal(labels, 1))
+        update_values = tf.gather(deltas, positive_indices[:, 0])
+
+        offsets = tf.zeros((tf.shape(anchors)[0], 4), dtype=tf.float32)  # type: ignore
+        offsets = tf.tensor_scatter_nd_update(offsets, positive_indices, update_values)
+
+        converted_left_eye = convert_eye_landmarks(eye_landmarks[:12], rois[0])  # type: ignore
+        converted_right_eye = convert_eye_landmarks(eye_landmarks[12:], rois[1])  # type: ignore
+        converted_landmarks = tf.concat(
+            [converted_left_eye, converted_right_eye], axis=0
+        )
+
+        # find the loss
+        return frcnn_loss_function(y_true, (offsets, converted_landmarks), ratio)  # type: ignore
+
+    return tf.reduce_mean(
+        tf.map_fn(
+            frcnn_loss_per_sample,
+            (y_true, y_pred),
+            fn_output_signature=tf.float32,
+        )
     )
-
-    ious = compute_ious(anchors, true_bboxs)
-
-    best_anchors, labels = compute_labels(ious, anchors)
-
-    # subsample anchors
-    labels = filter_labels(labels, 256, ratio)
-
-    # find deltas
-    w_truths = true_bboxs[:, 2] - true_bboxs[:, 0]  # type: ignore
-    h_truths = true_bboxs[:, 3] - true_bboxs[:, 1]  # type: ignore
-    x_truths = true_bboxs[:, 0] + w_truths / 2  # type: ignore
-    y_truths = true_bboxs[:, 1] + h_truths / 2  # type: ignore
-
-    x_anchors = anchors[:, 0] + anchors[:, 2] / 2  # type: ignore
-    y_anchors = anchors[:, 1] + anchors[:, 3] / 2  # type: ignore
-    w_anchors = anchors[:, 2] - anchors[:, 0]  # type: ignore
-    h_anchors = anchors[:, 3] - anchors[:, 1]  # type: ignore
-
-    eps = tf.constant(1e-7, dtype=tf.float32)
-    w_anchors = tf.maximum(w_anchors, eps)
-    h_anchors = tf.maximum(h_anchors, eps)
-
-    tx = (x_truths - x_anchors) / w_anchors
-    ty = (y_truths - y_anchors) / h_anchors
-    tw = tf.math.log(w_truths / w_anchors)
-    th = tf.math.log(h_truths / h_anchors)
-
-    deltas = tf.stack([tx, ty, tw, th], axis=1)
-
-    positive_indices = tf.where(tf.equal(labels, 1))
-    best_anchor_positives = tf.boolean_mask(best_anchors, tf.equal(labels, 1))
-    best_anchor_positives = tf.squeeze(best_anchor_positives, axis=-1)
-    update_values = tf.gather(deltas, best_anchor_positives)
-
-    offsets = tf.zeros((tf.shape(anchors)[0], 4), dtype=tf.float32)  # type: ignore
-    offsets = tf.tensor_scatter_nd_update(offsets, positive_indices, update_values)
-    offsets = tf.expand_dims(offsets, axis=0)
-
-    converted_left_eye = convert_eye_landmarks(eye_landmarks[0, :12], rois[0])  # type: ignore
-    converted_right_eye = convert_eye_landmarks(eye_landmarks[0, 12:], rois[1])  # type: ignore
-    converted_landmarks = tf.concat([converted_left_eye, converted_right_eye], axis=0)
-
-    # find the loss
-    return frcnn_loss_function(y_true, (offsets, converted_landmarks), ratio)  # type: ignore
 
 
 def compute_ious(anchors: tf.Tensor, truths: tf.Tensor) -> tf.Tensor:
@@ -470,49 +487,68 @@ def compute_ious(anchors: tf.Tensor, truths: tf.Tensor) -> tf.Tensor:
     computes the ious between anchors and ground truths
     boxes in form cx, cy, w, h
     """
-    x1 = tf.maximum(anchors[:, 0] - anchors[:, 2] / 2, truths[:, 0] - truths[:, 2] / 2)  # type: ignore
-    y1 = tf.maximum(anchors[:, 1] - anchors[:, 3] / 2, truths[:, 1] - truths[:, 3] / 2)  # type: ignore
-    x2 = tf.minimum(anchors[:, 0] + anchors[:, 2] / 2, truths[:, 0] + truths[:, 2] / 2)  # type: ignore
-    y2 = tf.minimum(anchors[:, 1] + anchors[:, 3] / 2, truths[:, 1] + truths[:, 3] / 2)  # type: ignore
+    if truths.shape.ndims == 1:
+        truths = tf.expand_dims(truths, axis=0)
+
+    # convert to x1, y1, x2, y2
+    anchors_x1 = anchors[:, 0] - anchors[:, 2] / 2  # type: ignore
+    anchors_y1 = anchors[:, 1] - anchors[:, 3] / 2  # type: ignore
+    anchors_x2 = anchors[:, 0] + anchors[:, 2] / 2  # type: ignore
+    anchors_y2 = anchors[:, 1] + anchors[:, 3] / 2  # type: ignore
+
+    truths_x1 = truths[:, 0] - truths[:, 2] / 2  # type: ignore
+    truths_y1 = truths[:, 1] - truths[:, 3] / 2  # type: ignore
+    truths_x2 = truths[:, 0] + truths[:, 2] / 2  # type: ignore
+    truths_y2 = truths[:, 1] + truths[:, 3] / 2  # type: ignore
+
+    # compute intersection
+    x1 = tf.maximum(tf.expand_dims(anchors_x1, axis=1), truths_x1)
+    y1 = tf.maximum(tf.expand_dims(anchors_y1, axis=1), truths_y1)
+    x2 = tf.minimum(tf.expand_dims(anchors_x2, axis=1), truths_x2)
+    y2 = tf.minimum(tf.expand_dims(anchors_y2, axis=1), truths_y2)
 
     intersection = tf.maximum(0.0, x2 - x1) * tf.maximum(0.0, y2 - y1)
-    union = anchors[:, 2] * anchors[:, 3] + truths[:, 2] * truths[:, 3] - intersection  # type: ignore
+    area_anchors = (anchors_x2 - anchors_x1) * (anchors_y2 - anchors_y1)
+    area_truths = (truths_x2 - truths_x1) * (truths_y2 - truths_y1)
+    union = tf.expand_dims(area_anchors, axis=1) + area_truths - intersection
 
     return intersection / union
 
 
 def compute_labels(ious: tf.Tensor, anchors: tf.Tensor) -> tuple[tf.Tensor, tf.Tensor]:
-    # find best anchors
+    # For each anchor (row), get the index of the best-matching ground truth.
     best_iou_indexes = tf.argmax(ious, axis=1)
-    best_ious = tf.gather(ious, best_iou_indexes, axis=1)
-    best_anchors = tf.argmax(ious, axis=0)
-    best_gt_ious = tf.gather(ious, best_anchors, axis=0)
-    best_anchors = tf.where(ious == best_gt_ious)[:, 0]
+    row_indices = tf.range(tf.shape(ious)[0], dtype=tf.int64)  # type: ignore
+    indices = tf.stack([row_indices, best_iou_indexes], axis=1)
+    best_ious = tf.gather_nd(ious, indices)
+    best_anchor_indexes = tf.argmax(ious, axis=0)
 
-    # assign labels to anchors
-    # 0. background, 1. foreground, -1. ignore
-    iou_threshold = 0.5
+    best_anchors = tf.reshape(
+        tf.where(tf.equal(ious, tf.reduce_max(ious, axis=0))), [-1]
+    )
+
     labels = tf.fill([tf.shape(anchors)[0]], -1)  # type: ignore
 
-    # background indeces added to 0
+    iou_threshold = 0.5
     background_indices = tf.where(best_ious < iou_threshold)
     labels = tf.tensor_scatter_nd_update(
         labels,
         background_indices,
-        tf.zeros_like([tf.shape(background_indices)[0]], dtype=tf.int32),  # type: ignore
+        tf.zeros([tf.shape(background_indices)[0]], dtype=tf.int32),  # type: ignore
     )
-    # foreground indices added to 1
-    foreground_indices = tf.expand_dims(best_anchors, axis=1)
+
+    foreground_indices = tf.expand_dims(best_anchor_indexes, axis=1)
     labels = tf.tensor_scatter_nd_update(
         labels,
         foreground_indices,
-        tf.ones_like([tf.shape(foreground_indices)[0]], dtype=tf.int32),  # type: ignore
+        tf.ones([tf.shape(foreground_indices)[0]], dtype=tf.int32),  # type: ignore
     )
+
     high_iou_indices = tf.where(best_ious >= iou_threshold)
     labels = tf.tensor_scatter_nd_update(
         labels,
         high_iou_indices,
-        tf.ones_like([tf.shape(high_iou_indices)[0]], dtype=tf.int32),  # type: ignore
+        tf.ones([tf.shape(high_iou_indices)[0]], dtype=tf.int32),  # type: ignore
     )
 
     return best_anchors, labels
@@ -520,7 +556,7 @@ def compute_labels(ious: tf.Tensor, anchors: tf.Tensor) -> tuple[tf.Tensor, tf.T
 
 def filter_labels(labels: tf.Tensor, batch_size: int, ratio: int) -> tf.Tensor:
     """proposes a balanced (according to ratio) set of labels of size batch_size"""
-    num_positives = int(batch_size * (1 - ratio))
+    num_positives = batch_size // (1 + ratio)
     positive_indices = tf.where(tf.equal(labels, 1))[:, 0]
     num_current_positives = tf.shape(positive_indices)[0]  # type: ignore
 
