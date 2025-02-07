@@ -74,7 +74,7 @@ class RPN(Model):
 
     def call(
         self, features: tf.Tensor, image: tf.Tensor
-    ) -> tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+    ) -> tuple[tf.Tensor, tf.Tensor]:
         """
         generates region proposals and initial eye landmarks
 
@@ -86,15 +86,16 @@ class RPN(Model):
         - initial eye landmarks (x1, y1, ..., x6, y6) x2
         - anchors (x1, y1, x2, y2)
         """
+        batch_size = tf.shape(image)[0]  # type: ignore
 
         # generate anchors
         features_shape = tf.shape(features)
         image_shape = tf.shape(image)
-        anchors = self.generate_anchors(
+        anchors, mask = self.generate_anchors(
             (features_shape[1], features_shape[2]), (image_shape[1], image_shape[2])  # type: ignore
         )
 
-        anchors = tf.tile(tf.expand_dims(anchors, axis=0), [tf.shape(image)[0], 1, 1])  # type: ignore
+        anchors = tf.tile(tf.expand_dims(anchors, axis=0), [batch_size, 1, 1])  # type: ignore
 
         # pass through the network
         x = self.conv1(features)
@@ -105,14 +106,16 @@ class RPN(Model):
         # reduce eye landmarks from (None, None, None, 24) -> (24)
         eye_landmarks = tf.reshape(eye_landmarks, [-1, 24])
 
-        anchor_deltas = tf.reshape(anchor_deltas, [-1, 4])
-        objectivness_scores = tf.reshape(objectivness_scores, [-1, 4])
+        anchor_deltas = tf.reshape(anchor_deltas, [batch_size, -1, 4])
+        objectivness_scores = tf.reshape(objectivness_scores, [batch_size, -1, 1])
 
         # post processing
         def post_processing_fn(
             inputs: tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]
         ) -> tf.Tensor:
             anchors, anchor_deltas, objectivness_scores, image = inputs
+            anchor_deltas = tf.boolean_mask(anchor_deltas, mask)
+            objectivness_scores = tf.boolean_mask(objectivness_scores, mask)
             return self.post_processing(
                 anchors, anchor_deltas, objectivness_scores, image
             )
@@ -125,11 +128,11 @@ class RPN(Model):
         )
         rois = tf.stack(rois, axis=0)
 
-        return rois, eye_landmarks, anchors
+        return rois, eye_landmarks
 
     def generate_anchors(
         self, features_shape: tuple[int, int], image_shape: tuple[int, int]
-    ) -> tf.Tensor:
+    ) -> tuple[tf.Tensor, tf.Tensor]:
         """generate anchors for the image"""
         features_height, features_width = features_shape
         image_height, image_width = image_shape
@@ -179,7 +182,7 @@ class RPN(Model):
             & (anchors[:, 3] <= tf.cast(image_height, tf.float32))
         )
 
-        return tf.boolean_mask(anchors, inside_mask)
+        return tf.boolean_mask(anchors, inside_mask), inside_mask
 
     def post_processing(
         self,
@@ -188,23 +191,12 @@ class RPN(Model):
         objectivness_scores: tf.Tensor,
         image: tf.Tensor,
     ) -> tf.Tensor:
-        # ensure all inputs are of the same shape
-        anchors = tf.cond(
-            tf.equal(tf.rank(anchors), 1),
-            lambda: tf.expand_dims(anchors, 0),
-            lambda: anchors,
-        )  # type: ignore
-        anchor_deltas = tf.cond(
-            tf.equal(tf.rank(anchor_deltas), 1),
-            lambda: tf.expand_dims(anchor_deltas, 0),
-            lambda: anchor_deltas,
-        )  # type: ignore
-
         # apply deltas to anchors
         x1 = anchors[:, 0] + anchor_deltas[:, 0]  # type: ignore
         y1 = anchors[:, 1] + anchor_deltas[:, 1]  # type: ignore
         x2 = anchors[:, 2] + anchor_deltas[:, 2]  # type: ignore
         y2 = anchors[:, 3] + anchor_deltas[:, 3]  # type: ignore
+
         # clip to image
         predicted_anchors = tf.stack([x1, y1, x2, y2], axis=-1)
         image_shape = tf.cast(tf.shape(image)[:2], tf.float32)  # type: ignore
@@ -230,12 +222,7 @@ class RPN(Model):
         x2 = tf.gather(predicted_anchors[:, 2], nms_indices)
         y2 = tf.gather(predicted_anchors[:, 3], nms_indices)
 
-        x = tf.divide((tf.add(x1, x2)), 2)
-        y = tf.divide((tf.add(y1, y2)), 2)
-        w = tf.subtract(x2, x1)
-        h = tf.subtract(y2, y1)
-
-        return tf.stack([x, y, w, h], axis=-1)
+        return tf.stack([(x1 + x2) / 2, (y1 + y2) / 2, x2 - x1, y2 - y1], axis=-1)
 
 
 class FasterRCNN(Model):
@@ -247,7 +234,7 @@ class FasterRCNN(Model):
         self.fc1 = Dense(512, activation="relu", name="frcnn_fc1")
         self.fc2 = Dense(256, activation="relu", name="frcnn_fc2")
 
-    def call(self, image: tf.Tensor) -> tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+    def call(self, image: tf.Tensor) -> tuple[tf.Tensor, tf.Tensor]:
         """
         takes in an image tensor
 
@@ -313,7 +300,7 @@ class EyeLandmarks(Model):
         return 3 tensors of the following form:
         - initial eye landmarks (x1, y1, ..., x6, y6) x2
         """
-        _, eyes, _ = self.faster_rcnn(image)
+        _, eyes = self.faster_rcnn(image)
 
         # extract the eye landmarks and bounding boxes
         left_eye_landmarks = eyes[:12]
@@ -391,87 +378,32 @@ def get_backbone_rpn_model(eye_landmarks: EyeLandmarks) -> Model:
         remove_padding, output_shape=(None, None, 3), name="backbone_lambda"
     )([image, original_shape])
     features = eye_landmarks.faster_rcnn.backbone(image)
-    rois, eye_landmarkers, anchors = eye_landmarks.faster_rcnn.rpn(features, image)
-    return Model(
-        inputs=[image, original_shape], outputs=[rois, eye_landmarkers, anchors]
-    )
+    rois, eye_landmarkers = eye_landmarks.faster_rcnn.rpn(features, image)
+    return Model(inputs=[image, original_shape], outputs=[rois, eye_landmarkers])
 
 
 @tf.function
 def frcnn_loss(
     y_true: tuple[tf.Tensor, tf.Tensor, tf.Tensor],
-    y_pred: tuple[tf.Tensor, tf.Tensor, tf.Tensor],
+    y_pred: tuple[tf.Tensor, tf.Tensor],
 ) -> tf.Tensor:
     def frcnn_loss_per_sample(
         input: tuple[
             tuple[tf.Tensor, tf.Tensor, tf.Tensor],
-            tuple[tf.Tensor, tf.Tensor, tf.Tensor],
+            tuple[tf.Tensor, tf.Tensor],
         ],
     ) -> tf.Tensor:
         ratio = 3
 
         y_true, y_pred = input
-        rois, eye_landmarks, anchors = y_pred
-        true_bboxs, _, _ = y_true
+        rois, eye_landmarks = y_pred
+        true_bboxs, true_eye_landmarks, has_landmarks = y_true
 
-        # find ious between anchors and ground truths
-        # convert anchors from x1, y1, x2, y2 to cx, cy, w, h
-        anchors = tf.stack(
-            [
-                (anchors[:, 0] + anchors[:, 2]) / 2,  # type: ignore
-                (anchors[:, 1] + anchors[:, 3]) / 2,  # type: ignore
-                anchors[:, 2] - anchors[:, 0],  # type: ignore
-                anchors[:, 3] - anchors[:, 1],  # type: ignore
-            ],
-            axis=1,
-        )
+        bbox_loss = Huber()(true_bboxs, rois)
+        eye_loss = MeanSquaredError()(true_eye_landmarks, eye_landmarks)
+        eye_loss = ratio * eye_loss * tf.cast(has_landmarks, tf.float32)
 
-        ious = compute_ious(anchors, true_bboxs)
-
-        _, labels = compute_labels(ious, anchors)
-
-        # subsample anchors
-        labels = filter_labels(labels, 256, ratio)
-
-        matched_truths_indexes = tf.argmax(ious, axis=1)
-        matched_truths = tf.gather(true_bboxs, matched_truths_indexes)
-
-        # find deltas
-        w_truths = matched_truths[:, 2] - matched_truths[:, 0]  # type: ignore
-        h_truths = matched_truths[:, 3] - matched_truths[:, 1]  # type: ignore
-        x_truths = matched_truths[:, 0] + w_truths / 2  # type: ignore
-        y_truths = matched_truths[:, 1] + h_truths / 2  # type: ignore
-
-        x_anchors = anchors[:, 0]  # type: ignore
-        y_anchors = anchors[:, 1]  # type: ignore
-        w_anchors = anchors[:, 2]  # type: ignore
-        h_anchors = anchors[:, 3]  # type: ignore
-
-        eps = tf.constant(1e-7, dtype=tf.float32)
-        w_anchors = tf.maximum(w_anchors, eps)
-        h_anchors = tf.maximum(h_anchors, eps)
-
-        tx = (x_truths - x_anchors) / w_anchors
-        ty = (y_truths - y_anchors) / h_anchors
-        tw = tf.math.log(w_truths / w_anchors)
-        th = tf.math.log(h_truths / h_anchors)
-
-        deltas = tf.stack([tx, ty, tw, th], axis=1)
-
-        positive_indices = tf.where(tf.equal(labels, 1))
-        update_values = tf.gather(deltas, positive_indices[:, 0])
-
-        offsets = tf.zeros((tf.shape(anchors)[0], 4), dtype=tf.float32)  # type: ignore
-        offsets = tf.tensor_scatter_nd_update(offsets, positive_indices, update_values)
-
-        converted_left_eye = convert_eye_landmarks(eye_landmarks[:12], rois[0])  # type: ignore
-        converted_right_eye = convert_eye_landmarks(eye_landmarks[12:], rois[1])  # type: ignore
-        converted_landmarks = tf.concat(
-            [converted_left_eye, converted_right_eye], axis=0
-        )
-
-        # find the loss
-        return frcnn_loss_function(y_true, (offsets, converted_landmarks), ratio)  # type: ignore
+        return bbox_loss + eye_loss
 
     return tf.reduce_mean(
         tf.map_fn(
@@ -482,150 +414,32 @@ def frcnn_loss(
     )
 
 
-def compute_ious(anchors: tf.Tensor, truths: tf.Tensor) -> tf.Tensor:
+def compute_ious(boxes1: tf.Tensor, boxes2: tf.Tensor) -> tf.Tensor:
     """
-    computes the ious between anchors and ground truths
     boxes in form cx, cy, w, h
     """
-    if truths.shape.ndims == 1:
-        truths = tf.expand_dims(truths, axis=0)
+    boxes1 = tf.cast(boxes1, tf.float32)  # type: ignore
+    boxes2 = tf.cast(boxes2, tf.float32)  # type: ignore
 
-    # convert to x1, y1, x2, y2
-    anchors_x1 = anchors[:, 0] - anchors[:, 2] / 2  # type: ignore
-    anchors_y1 = anchors[:, 1] - anchors[:, 3] / 2  # type: ignore
-    anchors_x2 = anchors[:, 0] + anchors[:, 2] / 2  # type: ignore
-    anchors_y2 = anchors[:, 1] + anchors[:, 3] / 2  # type: ignore
+    x1 = tf.maximum(boxes1[:, 0] - boxes1[:, 2] / 2, boxes2[:, 0] - boxes2[:, 2] / 2)  # type: ignore
+    y1 = tf.maximum(boxes1[:, 1] - boxes1[:, 3] / 2, boxes2[:, 1] - boxes2[:, 3] / 2)  # type: ignore
+    x2 = tf.minimum(boxes1[:, 0] + boxes1[:, 2] / 2, boxes2[:, 0] + boxes2[:, 2] / 2)  # type: ignore
+    y2 = tf.minimum(boxes1[:, 1] + boxes1[:, 3] / 2, boxes2[:, 1] + boxes2[:, 3] / 2)  # type: ignore
 
-    truths_x1 = truths[:, 0] - truths[:, 2] / 2  # type: ignore
-    truths_y1 = truths[:, 1] - truths[:, 3] / 2  # type: ignore
-    truths_x2 = truths[:, 0] + truths[:, 2] / 2  # type: ignore
-    truths_y2 = truths[:, 1] + truths[:, 3] / 2  # type: ignore
+    intersection = tf.maximum(x2 - x1, 0) * tf.maximum(y2 - y1, 0)
 
-    # compute intersection
-    x1 = tf.maximum(tf.expand_dims(anchors_x1, axis=1), truths_x1)
-    y1 = tf.maximum(tf.expand_dims(anchors_y1, axis=1), truths_y1)
-    x2 = tf.minimum(tf.expand_dims(anchors_x2, axis=1), truths_x2)
-    y2 = tf.minimum(tf.expand_dims(anchors_y2, axis=1), truths_y2)
+    area1 = boxes1[:, 2] * boxes1[:, 3]  # type: ignore
+    area2 = boxes2[:, 2] * boxes2[:, 3]  # type: ignore
 
-    intersection = tf.maximum(0.0, x2 - x1) * tf.maximum(0.0, y2 - y1)
-    area_anchors = (anchors_x2 - anchors_x1) * (anchors_y2 - anchors_y1)
-    area_truths = (truths_x2 - truths_x1) * (truths_y2 - truths_y1)
-    union = tf.expand_dims(area_anchors, axis=1) + area_truths - intersection
+    union = area1 + area2 - intersection + 1e-7
 
     return intersection / union
 
 
-def compute_labels(ious: tf.Tensor, anchors: tf.Tensor) -> tuple[tf.Tensor, tf.Tensor]:
-    # For each anchor (row), get the index of the best-matching ground truth.
-    best_iou_indexes = tf.argmax(ious, axis=1)
-    row_indices = tf.range(tf.shape(ious)[0], dtype=tf.int64)  # type: ignore
-    indices = tf.stack([row_indices, best_iou_indexes], axis=1)
-    best_ious = tf.gather_nd(ious, indices)
-    best_anchor_indexes = tf.argmax(ious, axis=0)
-
-    best_anchors = tf.reshape(
-        tf.where(tf.equal(ious, tf.reduce_max(ious, axis=0))), [-1]
-    )
-
-    labels = tf.fill([tf.shape(anchors)[0]], -1)  # type: ignore
-
-    iou_threshold = 0.5
-    background_indices = tf.where(best_ious < iou_threshold)
-    labels = tf.tensor_scatter_nd_update(
-        labels,
-        background_indices,
-        tf.zeros([tf.shape(background_indices)[0]], dtype=tf.int32),  # type: ignore
-    )
-
-    foreground_indices = tf.expand_dims(best_anchor_indexes, axis=1)
-    labels = tf.tensor_scatter_nd_update(
-        labels,
-        foreground_indices,
-        tf.ones([tf.shape(foreground_indices)[0]], dtype=tf.int32),  # type: ignore
-    )
-
-    high_iou_indices = tf.where(best_ious >= iou_threshold)
-    labels = tf.tensor_scatter_nd_update(
-        labels,
-        high_iou_indices,
-        tf.ones([tf.shape(high_iou_indices)[0]], dtype=tf.int32),  # type: ignore
-    )
-
-    return best_anchors, labels
-
-
-def filter_labels(labels: tf.Tensor, batch_size: int, ratio: int) -> tf.Tensor:
-    """proposes a balanced (according to ratio) set of labels of size batch_size"""
-    num_positives = batch_size // (1 + ratio)
-    positive_indices = tf.where(tf.equal(labels, 1))[:, 0]
-    num_current_positives = tf.shape(positive_indices)[0]  # type: ignore
-
-    # add more positives if necessary
-    positive_diff = num_current_positives - num_positives
-    if positive_diff > 0:
-        added_positives = tf.random.shuffle(positive_indices)[:positive_diff]
-        update_values = tf.fill([positive_diff], -1)
-        labels = tf.tensor_scatter_nd_update(
-            labels, tf.expand_dims(added_positives, axis=1), update_values
-        )
-
-    num_negatives = batch_size - num_positives
-    negative_indices = tf.where(tf.equal(labels, 0))[:, 0]
-    num_current_negatives = tf.shape(negative_indices)[0]  # type: ignore
-
-    # add more negatives if necessary
-    negative_diff = num_current_negatives - num_negatives
-    if negative_diff > 0:
-        added_negatives = tf.random.shuffle(negative_indices)[:negative_diff]
-        update_neg_values = tf.fill([negative_diff], -1)
-        labels = tf.tensor_scatter_nd_update(
-            labels, tf.expand_dims(added_negatives, axis=1), update_neg_values
-        )
-
-    return labels
-
-
-def convert_eye_landmarks(proposal: tf.Tensor, bounding_box: tf.Tensor) -> tf.Tensor:
-    indices_x = tf.range(0, 12, 2)
-    indices_y = tf.range(1, 12, 2)
-
-    proposal_x = (tf.gather(proposal, indices_x) - bounding_box[0]) / bounding_box[2]  # type: ignore
-    proposal_y = (tf.gather(proposal, indices_y) - bounding_box[1]) / bounding_box[3]  # type: ignore
-
-    proposal = tf.tensor_scatter_nd_update(
-        proposal, tf.expand_dims(indices_x, axis=1), proposal_x
-    )
-    return tf.tensor_scatter_nd_update(
-        proposal, tf.expand_dims(indices_y, axis=1), proposal_y
-    )
-
-
-def frcnn_loss_function(
-    y_true: tuple[tf.Tensor, tf.Tensor, tf.Tensor],
-    y_pred: tuple[tf.Tensor, tf.Tensor],
-    ratio: int,
-) -> tf.Tensor:
-    # lambda_c = 1 / ratio
-    lambda_l = 1
-    lambda_s = ratio
-
-    offsets, predicted_eye_landmarks = y_pred
-    true_bboxs, true_eye_landmarks, has_landmarks = y_true
-
-    total_loss = lambda_l * Huber()(true_bboxs, offsets)
-
-    mse_loss = lambda_s * MeanSquaredError()(
-        true_eye_landmarks, predicted_eye_landmarks
-    )
-    total_loss += mse_loss * tf.cast(has_landmarks, tf.float32)
-
-    return total_loss  # type: ignore
-
-
 def rlm_loss_function(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
-    cumulative_prediction = tf.cumsum(y_pred, axis=1)
-    final_prediction = cumulative_prediction[:, -1, :]
-    return tf.reduce_mean(tf.reduce_sum(tf.square(y_true - final_prediction), axis=-1))
+    return tf.reduce_mean(
+        tf.reduce_sum(tf.square(y_true - tf.cumsum(y_pred, axis=1)[:, -1, :]), axis=-1)
+    )
 
 
 def step_decay(epoch: int, lr: float) -> float:
