@@ -45,9 +45,11 @@ class RPN(Model):
         self.ratio = ratio
         self.num_points_per_anchor = 9
 
+        # pre-convolutional layer for pre-processing
         self.conv1 = Conv2D(
             512, (3, 3), activation="relu", padding="same", name="rpn_conv1"
         )
+        # reigon location identifier
         self.regressor = Conv2D(
             4 * self.num_points_per_anchor,
             (1, 1),
@@ -55,6 +57,7 @@ class RPN(Model):
             padding="same",
             name="rpn_regressor",
         )
+        # objectivness score
         self.classifier = Conv2D(
             1 * self.num_points_per_anchor,
             (1, 1),
@@ -62,6 +65,7 @@ class RPN(Model):
             padding="same",
             name="rpn_classifier",
         )
+        # eye landmark location identifier
         self.eye_landmark_classifier = Conv2D(
             24,  # 6 landmarks * 2 eyes * 2 pointss
             (1, 1),
@@ -81,10 +85,9 @@ class RPN(Model):
         features: features from the backbone
         image: input image
 
-        output is 3 tensors:
+        output is 2 tensors:
         - region proposals (cx, cy, w, h)
         - initial eye landmarks (x1, y1, ..., x6, y6) x2
-        - anchors (x1, y1, x2, y2)
         """
         batch_size = tf.shape(image)[0]  # type: ignore
 
@@ -106,6 +109,7 @@ class RPN(Model):
         # reduce eye landmarks from (None, None, None, 24) -> (24)
         eye_landmarks = tf.reshape(eye_landmarks, [-1, 24])
 
+        # reshape for post processing
         anchor_deltas = tf.reshape(anchor_deltas, [batch_size, -1, 4])
         objectivness_scores = tf.reshape(objectivness_scores, [batch_size, -1, 1])
 
@@ -114,13 +118,14 @@ class RPN(Model):
             inputs: tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]
         ) -> tf.Tensor:
             anchors, anchor_deltas, objectivness_scores, image = inputs
+            # get rid of anchors and scores not inside the image
             anchor_deltas = tf.boolean_mask(anchor_deltas, mask)
             objectivness_scores = tf.boolean_mask(objectivness_scores, mask)
             return self.post_processing(
                 anchors, anchor_deltas, objectivness_scores, image
             )
 
-        # compute rois for each image
+        # apply post processing to each image in the batch
         rois = tf.map_fn(
             post_processing_fn,
             (anchors, anchor_deltas, objectivness_scores, image),
@@ -133,10 +138,17 @@ class RPN(Model):
     def generate_anchors(
         self, features_shape: tuple[int, int], image_shape: tuple[int, int]
     ) -> tuple[tf.Tensor, tf.Tensor]:
-        """generate anchors for the image"""
+        """
+        generate anchors for the image
+
+        output is 2 tensors:
+        - anchors (cx, cy, w, h)
+        - mask for anchors that are inside the image
+        """
         features_height, features_width = features_shape
         image_height, image_width = image_shape
 
+        # find strides to work out anchor centers
         x_stride = tf.cast(image_width / features_width, tf.float32)
         y_stride = tf.cast(image_height / features_height, tf.float32)
 
@@ -163,14 +175,16 @@ class RPN(Model):
         num_centers = tf.shape(centers)[0]  # type: ignore
         num_anchors = tf.size(heights)
 
+        # tile centers and dimensions
         centers = tf.tile(tf.expand_dims(centers, axis=1), [1, num_anchors, 1])
         heights = tf.tile(tf.expand_dims(heights, axis=0), [num_centers, 1])
         widths = tf.tile(tf.expand_dims(widths, axis=0), [num_centers, 1])
 
-        x_min = centers[..., 0] - widths / 2
-        y_min = centers[..., 1] - heights / 2
-        x_max = centers[..., 0] + widths / 2
-        y_max = centers[..., 1] + heights / 2
+        # reformat to x1, y1, x2, y2
+        x_min = centers[:, :, 0] - widths / 2
+        y_min = centers[:, :, 1] - heights / 2
+        x_max = centers[:, :, 0] + widths / 2
+        y_max = centers[:, :, 1] + heights / 2
 
         anchors = tf.reshape(tf.stack([x_min, y_min, x_max, y_max], axis=-1), [-1, 4])
 
@@ -191,6 +205,10 @@ class RPN(Model):
         objectivness_scores: tf.Tensor,
         image: tf.Tensor,
     ) -> tf.Tensor:
+        """
+        post processing for region proposals
+        gets the best 7 via non max suppression and converts to cx, cy, w, h
+        """
         # apply deltas to anchors
         x1 = anchors[:, 0] + anchor_deltas[:, 0]  # type: ignore
         y1 = anchors[:, 1] + anchor_deltas[:, 1]  # type: ignore
@@ -206,6 +224,7 @@ class RPN(Model):
         max_values = tf.reshape(max_values, [1, 4])
         predicted_anchors = tf.clip_by_value(predicted_anchors, 0.0, max_values)
 
+        # reshape for nms
         predicted_anchors = tf.reshape(predicted_anchors, [-1, 4])
         objectivness_scores = tf.reshape(objectivness_scores, [-1])
 
@@ -216,18 +235,20 @@ class RPN(Model):
             max_output_size=self.num_landmarks,
         )
 
-        # get back to x, y, w, h
+        # get best anchors
         x1 = tf.gather(predicted_anchors[:, 0], nms_indices)
         y1 = tf.gather(predicted_anchors[:, 1], nms_indices)
         x2 = tf.gather(predicted_anchors[:, 2], nms_indices)
         y2 = tf.gather(predicted_anchors[:, 3], nms_indices)
 
+        # reshape for to cx, cy, w, h
         return tf.stack([(x1 + x2) / 2, (y1 + y2) / 2, x2 - x1, y2 - y1], axis=-1)
 
 
 class FasterRCNN(Model):
     def __init__(self, ratio: float) -> None:
         super(FasterRCNN, self).__init__()
+        # layers as per Bin Huang et al.
         self.backbone = self.shared_convolutional_model()
         self.rpn = RPN(ratio)
         self.roi_pooling = ROIPoolingLayer(2, 2, name="roi_pooling")  # type: ignore
@@ -238,10 +259,9 @@ class FasterRCNN(Model):
         """
         takes in an image tensor
 
-        return 3 tensors of the following form:
+        return 2 tensors of the following form:
         - region proposals (x, y, w, h)
         - initial eye landmarks (x1, y1, ..., x6, y6) x2
-        - anchors (x1, y1, x2, y2)
         """
         features = self.backbone(image)
         rois = self.rpn(features)
@@ -269,6 +289,7 @@ def recurrent_learning_module(time_steps: int) -> Model:
 
     initial_landmarks = Input(shape=(num_landmarks * 2,))
 
+    # again layers as per Bin Huang et al.
     x = Dense(256, activation="relu", name="rlm_fc1")(initial_landmarks)
     x = RepeatVector(time_steps, name="rlm_repeat_vector")(x)
     x = LSTM(num_ltsm_units, return_sequences=True, name="rlm_lstm")(x)
@@ -315,9 +336,10 @@ class EyeLandmarks(Model):
 
 
 def dataset_generator(path: str, file_type: str, fully_labeled: bool) -> Generator:
+    """generator for the dataset"""
     for file in Path(path).glob("*.txt"):
         image = cv.imread(str(file).replace("txt", file_type))
-        image = cv.resize(image, (256, 256))
+        image = cv.resize(image, (512, 512))
         label = (
             np.loadtxt(file, max_rows=6),
             (
@@ -360,11 +382,13 @@ def combine_datasets(datasets: list, batch_size: int, debug: bool) -> tf.data.Da
     full_dataset = datasets[0]
     for dataset in datasets[1:]:
         full_dataset = full_dataset.concatenate(dataset)
+    # 32946 is the total number of images in the aflw dataset
     full_dataset = full_dataset.shuffle(32946) if not debug else full_dataset
     return full_dataset.cache().batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
 
 def get_backbone_rpn_model(eye_landmarks: EyeLandmarks) -> Model:
+    # combine RPN with the backbone
     image = Input(shape=(None, None, 3))
     features = eye_landmarks.faster_rcnn.backbone(image)
     rois, eye_landmarkers = eye_landmarks.faster_rcnn.rpn(features, image)
@@ -376,24 +400,33 @@ def frcnn_loss(
     y_true: tuple[tf.Tensor, tf.Tensor, tf.Tensor],
     y_pred: tuple[tf.Tensor, tf.Tensor],
 ) -> tf.Tensor:
+    """
+    loss function for the faster rcnn
+    """
+
     def frcnn_loss_per_sample(
         input: tuple[
             tuple[tf.Tensor, tf.Tensor, tf.Tensor],
             tuple[tf.Tensor, tf.Tensor],
         ],
     ) -> tf.Tensor:
+        # how much to weight the eye landmarks
         ratio = 3
 
         y_true, y_pred = input
         rois, eye_landmarks = y_pred
         true_bboxs, true_eye_landmarks, has_landmarks = y_true
 
+        # smooth L1 loss for bounding boxes
         bbox_loss = Huber()(true_bboxs, rois)
+
+        # MSE loss (euclidean distance) for eye landmarks
         eye_loss = MeanSquaredError()(true_eye_landmarks, eye_landmarks)
         eye_loss = ratio * eye_loss * tf.cast(has_landmarks, tf.float32)
 
         return bbox_loss + eye_loss
 
+    # map loff function over each sample
     return tf.reduce_mean(
         tf.map_fn(
             frcnn_loss_per_sample,
@@ -401,28 +434,6 @@ def frcnn_loss(
             fn_output_signature=tf.float32,
         )
     )
-
-
-def compute_ious(boxes1: tf.Tensor, boxes2: tf.Tensor) -> tf.Tensor:
-    """
-    boxes in form cx, cy, w, h
-    """
-    boxes1 = tf.cast(boxes1, tf.float32)  # type: ignore
-    boxes2 = tf.cast(boxes2, tf.float32)  # type: ignore
-
-    x1 = tf.maximum(boxes1[:, 0] - boxes1[:, 2] / 2, boxes2[:, 0] - boxes2[:, 2] / 2)  # type: ignore
-    y1 = tf.maximum(boxes1[:, 1] - boxes1[:, 3] / 2, boxes2[:, 1] - boxes2[:, 3] / 2)  # type: ignore
-    x2 = tf.minimum(boxes1[:, 0] + boxes1[:, 2] / 2, boxes2[:, 0] + boxes2[:, 2] / 2)  # type: ignore
-    y2 = tf.minimum(boxes1[:, 1] + boxes1[:, 3] / 2, boxes2[:, 1] + boxes2[:, 3] / 2)  # type: ignore
-
-    intersection = tf.maximum(x2 - x1, 0) * tf.maximum(y2 - y1, 0)
-
-    area1 = boxes1[:, 2] * boxes1[:, 3]  # type: ignore
-    area2 = boxes2[:, 2] * boxes2[:, 3]  # type: ignore
-
-    union = area1 + area2 - intersection + 1e-7
-
-    return intersection / union
 
 
 def rlm_loss_function(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
@@ -441,9 +452,15 @@ def step_decay(epoch: int, lr: float) -> float:
 def rpn_train_loop(
     rpn_model: Model, dataset: tf.data.Dataset, optimizer: SGD, epochs: int
 ) -> None:
+    """
+    custom training loop for the RPN
+    (because tensorflow doesnt allow passing tuples of tensors)
+    """
+    # loop talen from tensorflow guide
+    # https://www.tensorflow.org/guide/keras/writing_a_training_loop_from_scratch
     for epoch in range(epochs):
         print(f"Epoch {epoch + 1}/{epochs}")
-        for _, (x, y) in enumerate(dataset):
+        for _, (x, y) in enumerate(dataset):  # for some reason doesnt like for loop
             with tf.GradientTape() as tape:
                 predictions = rpn_model(x)
                 loss = frcnn_loss(y, predictions)
@@ -455,10 +472,11 @@ def rpn_train_loop(
 def train_model(debug: bool) -> None:
     path_to_large = "/dcs/large/u2204489/"
 
+    # attempt to limit gpu memory usage
     for gpu in tf.config.list_physical_devices("GPU"):
         tf.config.experimental.set_memory_growth(gpu, True)
 
-    batch_size = 2
+    batch_size = 2  # same batch size as in the paper
 
     dataset = load_datsets(path_to_large, batch_size, debug)
 

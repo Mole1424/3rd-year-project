@@ -1,11 +1,10 @@
 #!/bin/bash
 #
 #SBATCH --job-name=eye-landmarking
-#SBATCH --partition=gecko
+#SBATCH --partition=gecko,falcon
 #SBATCH --cpus-per-task=1
 #SBATCH --gres=gpu:1
-#SBATCH --time=2-00:00:00 
-#SBATCH --mem=160000
+#SBATCH --time=2-00:00:00
 #
 #SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --output=joboutput_%j.out
