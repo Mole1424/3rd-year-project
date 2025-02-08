@@ -317,7 +317,7 @@ class EyeLandmarks(Model):
 def dataset_generator(path: str, file_type: str, fully_labeled: bool) -> Generator:
     for file in Path(path).glob("*.txt"):
         image = cv.imread(str(file).replace("txt", file_type))
-        original_shape = image.shape
+        image = cv.resize(image, (256, 256))
         label = (
             np.loadtxt(file, max_rows=6),
             (
@@ -327,7 +327,7 @@ def dataset_generator(path: str, file_type: str, fully_labeled: bool) -> Generat
             ),
             1 if fully_labeled else 0,
         )
-        yield image, label, original_shape
+        yield image, label
 
 
 def load_dataset(path: str, file_type: str, fully_labeled: bool) -> tf.data.Dataset:
@@ -340,7 +340,6 @@ def load_dataset(path: str, file_type: str, fully_labeled: bool) -> tf.data.Data
                 tf.TensorSpec(shape=(24,), dtype=tf.float32),  # type: ignore
                 tf.TensorSpec(shape=(), dtype=tf.uint8),  # type: ignore
             ),
-            tf.TensorSpec(shape=(3,), dtype=tf.int32),  # type: ignore
         ),
     )
 
@@ -362,24 +361,14 @@ def combine_datasets(datasets: list, batch_size: int, debug: bool) -> tf.data.Da
     for dataset in datasets[1:]:
         full_dataset = full_dataset.concatenate(dataset)
     full_dataset = full_dataset.shuffle(32946) if not debug else full_dataset
-    return full_dataset.padded_batch(
-        batch_size, padded_shapes=([None, None, 3], ([6, 4], [24], []), [3])
-    ).prefetch(tf.data.AUTOTUNE)
-
-
-def remove_padding(image: tf.Tensor, shape: tf.Tensor) -> tf.Tensor:
-    return image[: shape[0], : shape[1], :]  # type: ignore
+    return full_dataset.cache().batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
 
 def get_backbone_rpn_model(eye_landmarks: EyeLandmarks) -> Model:
     image = Input(shape=(None, None, 3))
-    original_shape = Input(shape=(3,), dtype=tf.int32)
-    image = Lambda(
-        remove_padding, output_shape=(None, None, 3), name="backbone_lambda"
-    )([image, original_shape])
     features = eye_landmarks.faster_rcnn.backbone(image)
     rois, eye_landmarkers = eye_landmarks.faster_rcnn.rpn(features, image)
-    return Model(inputs=[image, original_shape], outputs=[rois, eye_landmarkers])
+    return Model(inputs=image, outputs=[rois, eye_landmarkers])
 
 
 @tf.function
@@ -454,9 +443,9 @@ def rpn_train_loop(
 ) -> None:
     for epoch in range(epochs):
         print(f"Epoch {epoch + 1}/{epochs}")
-        for _, (x, y, original_shape) in enumerate(dataset):
+        for _, (x, y) in enumerate(dataset):
             with tf.GradientTape() as tape:
-                predictions = rpn_model([x, original_shape])
+                predictions = rpn_model(x)
                 loss = frcnn_loss(y, predictions)
             grads = tape.gradient(loss, rpn_model.trainable_weights)
             optimizer.apply_gradients(zip(grads, rpn_model.trainable_weights))  # type: ignore
@@ -466,14 +455,12 @@ def rpn_train_loop(
 def train_model(debug: bool) -> None:
     path_to_large = "/dcs/large/u2204489/"
 
+    for gpu in tf.config.list_physical_devices("GPU"):
+        tf.config.experimental.set_memory_growth(gpu, True)
+
     batch_size = 2
 
-    # check if the dataset already exists
-    if Path(path_to_large + "eyedataset").exists():
-        dataset = tf.data.Dataset.load(path_to_large + "eyedataset")
-        dataset.save(path_to_large + "eyedataset")
-    else:
-        dataset = load_datsets(path_to_large, batch_size, debug)
+    dataset = load_datsets(path_to_large, batch_size, debug)
 
     # create model
     eye_landmarks = EyeLandmarks(3, 10)

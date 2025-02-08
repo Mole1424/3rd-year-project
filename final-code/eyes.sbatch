@@ -7,6 +7,7 @@
 #SBATCH --time=2-00:00:00 
 #SBATCH --mem=160000
 #
+#SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --output=joboutput_%j.out
 #SBATCH --error=joboutput_%j.err
 
@@ -15,4 +16,4 @@ source /etc/profile.d/conda.sh
 
 module load CUDA
 source ../venv/bin/activate
-python3.12 eye_detection.py debug
+python3.12 eye_detection.py train
