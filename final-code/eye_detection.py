@@ -32,10 +32,7 @@ from tensorflow.keras.layers import (  # type: ignore
     RepeatVector,
     TimeDistributed,
 )
-from tensorflow.keras.losses import (  # type: ignore
-    Huber,
-    MeanSquaredError,
-)
+from tensorflow.keras.losses import Huber, MeanSquaredError  # type: ignore
 from tensorflow.keras.optimizers import SGD, Adam  # type: ignore
 
 
@@ -78,7 +75,7 @@ class RPN(Model):
 
     def call(
         self, features: tf.Tensor, image: tf.Tensor
-    ) -> tuple[tf.Tensor, tf.Tensor]:
+    ) -> tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
         """
         generates region proposals and initial eye landmarks
 
@@ -88,6 +85,7 @@ class RPN(Model):
         output is 2 tensors:
         - region proposals (cx, cy, w, h)
         - initial eye landmarks (x1, y1, ..., x6, y6) x2
+        - offsets (for loss calculation)
         """
         batch_size = tf.shape(image)[0]  # type: ignore
 
@@ -98,42 +96,46 @@ class RPN(Model):
             (features_shape[1], features_shape[2]), (image_shape[1], image_shape[2])  # type: ignore
         )
 
-        anchors = tf.tile(tf.expand_dims(anchors, axis=0), [batch_size, 1, 1])  # type: ignore
+        anchors = tf.tile(tf.expand_dims(anchors, axis=0), [batch_size, 1, 1])
 
         # pass through the network
         x = self.conv1(features)
-        anchor_deltas = self.regressor(x)
+        predicted_offsets = self.regressor(x)
         objectivness_scores = self.classifier(x)
         eye_landmarks = self.eye_landmark_classifier(x)
 
-        # reduce eye landmarks from (None, None, None, 24) -> (24)
+        # reduce eye landmarks from (None, None, None, 24) -> (None, 24)
         eye_landmarks = tf.reshape(eye_landmarks, [-1, 24])
 
         # reshape for post processing
-        anchor_deltas = tf.reshape(anchor_deltas, [batch_size, -1, 4])
+        predicted_offsets = tf.reshape(predicted_offsets, [batch_size, -1, 4])
         objectivness_scores = tf.reshape(objectivness_scores, [batch_size, -1, 1])
 
         # post processing
         def post_processing_fn(
             inputs: tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]
-        ) -> tf.Tensor:
+        ) -> tuple[tf.Tensor, tf.Tensor]:
             anchors, anchor_deltas, objectivness_scores, image = inputs
-            # get rid of anchors and scores not inside the image
+            # get rid of useless anchors
             anchor_deltas = tf.boolean_mask(anchor_deltas, mask)
             objectivness_scores = tf.boolean_mask(objectivness_scores, mask)
             return self.post_processing(
-                anchors, anchor_deltas, objectivness_scores, image
+                anchors,
+                anchor_deltas,
+                objectivness_scores,
+                image,
             )
 
         # apply post processing to each image in the batch
-        rois = tf.map_fn(
+        rois, original_predictions = tf.map_fn(
             post_processing_fn,
-            (anchors, anchor_deltas, objectivness_scores, image),
-            fn_output_signature=tf.float32,
-        )
+            (anchors, predicted_offsets, objectivness_scores, image),
+            fn_output_signature=(tf.float32, tf.float32),
+        )  # type: ignore
         rois = tf.stack(rois, axis=0)
+        original_predictions = tf.stack(original_predictions, axis=0)
 
-        return rois, eye_landmarks
+        return rois, eye_landmarks, original_predictions
 
     def generate_anchors(
         self, features_shape: tuple[int, int], image_shape: tuple[int, int]
@@ -142,7 +144,7 @@ class RPN(Model):
         generate anchors for the image
 
         output is 2 tensors:
-        - anchors (cx, cy, w, h)
+        - anchors (x1, y1, x2, y2)
         - mask for anchors that are inside the image
         """
         features_height, features_width = features_shape
@@ -204,16 +206,27 @@ class RPN(Model):
         anchor_deltas: tf.Tensor,
         objectivness_scores: tf.Tensor,
         image: tf.Tensor,
-    ) -> tf.Tensor:
+    ) -> tuple[tf.Tensor, tf.Tensor]:
         """
         post processing for region proposals
         gets the best 7 via non max suppression and converts to cx, cy, w, h
         """
-        # apply deltas to anchors
-        x1 = anchors[:, 0] + anchor_deltas[:, 0]  # type: ignore
-        y1 = anchors[:, 1] + anchor_deltas[:, 1]  # type: ignore
-        x2 = anchors[:, 2] + anchor_deltas[:, 2]  # type: ignore
-        y2 = anchors[:, 3] + anchor_deltas[:, 3]  # type: ignore
+        # convert anchor from (x1, y1, x2, y2) to (cx, cy, w, h)
+        cx = (anchors[:, 0] + anchors[:, 2]) / 2  # type: ignore
+        cy = (anchors[:, 1] + anchors[:, 3]) / 2  # type: ignore
+        w = anchors[:, 2] - anchors[:, 0]  # type: ignore
+        h = anchors[:, 3] - anchors[:, 1]  # type: ignore
+
+        # apply deltas
+        cx = anchor_deltas[:, 0] * w + cx  # type: ignore
+        cy = anchor_deltas[:, 1] * h + cy  # type: ignore
+        w = tf.exp(anchor_deltas[:, 2]) * w  # type: ignore
+        h = tf.exp(anchor_deltas[:, 3]) * h  # type: ignore
+
+        x1 = cx - w / 2
+        y1 = cy - h / 2
+        x2 = cx + w / 2
+        y2 = cy + h / 2
 
         # clip to image
         predicted_anchors = tf.stack([x1, y1, x2, y2], axis=-1)
@@ -241,8 +254,18 @@ class RPN(Model):
         x2 = tf.gather(predicted_anchors[:, 2], nms_indices)
         y2 = tf.gather(predicted_anchors[:, 3], nms_indices)
 
+        rois = tf.stack([(x1 + x2) / 2, (y1 + y2) / 2, x2 - x1, y2 - y1], axis=-1)
+
+        # get anchor offsets
+        deltas_x = tf.gather(anchor_deltas[:, 0], nms_indices)  # type: ignore
+        deltas_y = tf.gather(anchor_deltas[:, 1], nms_indices)  # type: ignore
+        deltas_w = tf.gather(anchor_deltas[:, 2], nms_indices)  # type: ignore
+        deltas_h = tf.gather(anchor_deltas[:, 3], nms_indices)  # type: ignore
+
+        offsets = tf.stack([deltas_x, deltas_y, deltas_w, deltas_h], axis=-1)
+
         # reshape for to cx, cy, w, h
-        return tf.stack([(x1 + x2) / 2, (y1 + y2) / 2, x2 - x1, y2 - y1], axis=-1)
+        return rois, offsets
 
 
 class FasterRCNN(Model):
@@ -251,7 +274,7 @@ class FasterRCNN(Model):
         # layers as per Bin Huang et al.
         self.backbone = self.shared_convolutional_model()
         self.rpn = RPN(ratio)
-        self.roi_pooling = ROIPoolingLayer(2, 2, name="roi_pooling")  # type: ignore
+        self.roi_pooling = ROIPoolingLayer(2, 2)
         self.fc1 = Dense(512, activation="relu", name="frcnn_fc1")
         self.fc2 = Dense(256, activation="relu", name="frcnn_fc2")
 
@@ -264,14 +287,13 @@ class FasterRCNN(Model):
         - initial eye landmarks (x1, y1, ..., x6, y6) x2
         """
         features = self.backbone(image)
-        rois = self.rpn(features)
-        pooled = self.roi_pooling([features, rois])  # type: ignore
+        rois, eye_landmarks, _ = self.rpn(features)
+        pooled = self.roi_pooling([features, rois])
         x = self.fc1(pooled)
-        return self.fc2(x)
+        return self.fc2(x), eye_landmarks
 
     def shared_convolutional_model(self) -> Model:
         """shared convolutional area to act as the backbone"""
-        # VGG16 without the top and final max pooling layer
         vgg16 = VGG16(include_top=False, input_shape=(None, None, 3))
         custom_vgg = vgg16.get_layer("block5_conv3").output
         return Model(
@@ -391,14 +413,14 @@ def get_backbone_rpn_model(eye_landmarks: EyeLandmarks) -> Model:
     # combine RPN with the backbone
     image = Input(shape=(None, None, 3))
     features = eye_landmarks.faster_rcnn.backbone(image)
-    rois, eye_landmarkers = eye_landmarks.faster_rcnn.rpn(features, image)
-    return Model(inputs=image, outputs=[rois, eye_landmarkers])
+    rois, eye_landmarkers, offsets = eye_landmarks.faster_rcnn.rpn(features, image)
+    return Model(inputs=image, outputs=[rois, eye_landmarkers, offsets])
 
 
 @tf.function
 def frcnn_loss(
     y_true: tuple[tf.Tensor, tf.Tensor, tf.Tensor],
-    y_pred: tuple[tf.Tensor, tf.Tensor],
+    y_pred: tuple[tf.Tensor, tf.Tensor, tf.Tensor],
 ) -> tf.Tensor:
     """
     loss function for the faster rcnn
@@ -407,18 +429,29 @@ def frcnn_loss(
     def frcnn_loss_per_sample(
         input: tuple[
             tuple[tf.Tensor, tf.Tensor, tf.Tensor],
-            tuple[tf.Tensor, tf.Tensor],
+            tuple[tf.Tensor, tf.Tensor, tf.Tensor],
         ],
     ) -> tf.Tensor:
         # how much to weight the eye landmarks
         ratio = 3
 
         y_true, y_pred = input
-        rois, eye_landmarks = y_pred
+        rois, eye_landmarks, original_prediction = y_pred
         true_bboxs, true_eye_landmarks, has_landmarks = y_true
 
+        eps = tf.constant(np.finfo(rois.dtype.as_numpy_dtype).eps)  # type: ignore
+        h = tf.maximum(rois[:, 2], eps)  # type: ignore
+        w = tf.maximum(rois[:, 3], eps)  # type: ignore
+
+        dx = (true_bboxs[:, 0] - rois[:, 0]) / w  # type: ignore
+        dy = (true_bboxs[:, 1] - rois[:, 1]) / h  # type: ignore
+        dw = tf.math.log(true_bboxs[:, 2] / w)  # type: ignore
+        dh = tf.math.log(true_bboxs[:, 3] / h)  # type: ignore
+
+        offsets = tf.stack([dx, dy, dw, dh], axis=-1)
+
         # smooth L1 loss for bounding boxes
-        bbox_loss = Huber()(true_bboxs, rois)
+        bbox_loss = Huber()(original_prediction, offsets)
 
         # MSE loss (euclidean distance) for eye landmarks
         eye_loss = MeanSquaredError()(true_eye_landmarks, eye_landmarks)
@@ -429,9 +462,7 @@ def frcnn_loss(
     # map loff function over each sample
     return tf.reduce_mean(
         tf.map_fn(
-            frcnn_loss_per_sample,
-            (y_true, y_pred),
-            fn_output_signature=tf.float32,
+            frcnn_loss_per_sample, (y_true, y_pred), fn_output_signature=tf.float32
         )
     )
 
@@ -460,7 +491,7 @@ def rpn_train_loop(
     # https://www.tensorflow.org/guide/keras/writing_a_training_loop_from_scratch
     for epoch in range(epochs):
         print(f"Epoch {epoch + 1}/{epochs}")
-        for _, (x, y) in enumerate(dataset):  # for some reason doesnt like for loop
+        for _, (x, y) in enumerate(dataset):
             with tf.GradientTape() as tape:
                 predictions = rpn_model(x)
                 loss = frcnn_loss(y, predictions)
@@ -502,7 +533,7 @@ def train_model(debug: bool) -> None:
         8 * 10,
     )
     print("Step 1 complete")
-    backbone_rpn_model.save_weights(f"{path_to_large}step1.keras")
+    backbone_rpn_model.save_weights(f"{path_to_large}eyesstep1.weights.h5")
 
     # step 2, train fast-RCNN with fixed RPN
     eye_landmarks.faster_rcnn.rpn.trainable = False
@@ -517,7 +548,7 @@ def train_model(debug: bool) -> None:
         8 * 10,
     )
     print("Step 2 complete")
-    eye_landmarks.faster_rcnn.save_weights(f"{path_to_large}step2.keras")
+    eye_landmarks.faster_rcnn.save_weights(f"{path_to_large}eyesstep2.weights.h5")
 
     # step 3, train RPN with fixed fast-RCNN
     eye_landmarks.faster_rcnn.rpn.trainable = True
@@ -531,7 +562,7 @@ def train_model(debug: bool) -> None:
         SGD(learning_rate=0.02, momentum=0.9, weight_decay=0.0001),
         8 * 10,
     )
-    eye_landmarks.faster_rcnn.save_weights(f"{path_to_large}step3.keras")
+    eye_landmarks.faster_rcnn.save_weights(f"{path_to_large}eyesstep3.weights.h5")
 
     # step 4, train everything together
     eye_landmarks.faster_rcnn.roi_pooling.trainable = True
@@ -545,7 +576,7 @@ def train_model(debug: bool) -> None:
         8 * 10,
     )
     print("Step 4 complete")
-    eye_landmarks.faster_rcnn.save_weights(f"{path_to_large}step4.keras")
+    eye_landmarks.faster_rcnn.save_weights(f"{path_to_large}eyesstep4.weights.h5")
 
     eye_landmarks.faster_rcnn.trainable = False
 
@@ -570,7 +601,7 @@ def train_model(debug: bool) -> None:
         epochs=10,
     )
 
-    eye_landmarks.save_weights(f"{path_to_large}final.keras")
+    eye_landmarks.save_weights(f"{path_to_large}eyesfinal.weights.h5")
     print("Training complete :)")
 
 
