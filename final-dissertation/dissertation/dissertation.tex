@@ -1,0 +1,116 @@
+% report template from https://www.overleaf.com/latex/templates/university-of-warwick-es327-cs351-report-template/nndyfbkvfvtm
+% and inspied by Edmund Goodman
+
+\documentclass[a4paper,fleqn,twoside,12pt]{report}
+
+\usepackage[]{geometry}
+\usepackage[latin1]{inputenc}
+\usepackage[UKenglish]{babel}
+\usepackage[UKenglish]{isodate}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{graphicx}
+\usepackage{chngpage}
+\usepackage{calc}
+\PassOptionsToPackage{hyphens}{url}
+\usepackage{hyperref}
+\usepackage[nameinlink]{cleveref}
+\usepackage{fancyhdr}
+\usepackage{titletoc}
+\usepackage[explicit]{titlesec}
+\usepackage{natbib}
+\usepackage[dvipsnames]{xcolor}
+\usepackage[sc]{mathpazo}
+\linespread{1.05}
+\usepackage[T1]{fontenc}
+\usepackage{minted}
+\usepackage{graphicx}
+
+%%%%%%%%%%%%%%%%%%%%
+
+\hypersetup{
+	colorlinks=true,
+	linkcolor=black,
+	urlcolor=black,
+	citecolor=black
+}
+
+\setlength{\parindent}{0mm}
+\setlength{\parskip}{\medskipamount}
+\renewcommand\baselinestretch{1.2}
+
+\cleanlookdateon
+
+\makeatletter
+\newcommand{\@assignment}[0]{Assignment}
+\newcommand{\assignment}[1]{\renewcommand{\@assignment}{#1}}
+\newcommand{\@supervisor}[0]{}
+\newcommand{\supervisor}[1]{\renewcommand{\@supervisor}{#1}}
+\newcommand{\@yearofstudy}[0]{}
+\newcommand{\yearofstudy}[1]{\renewcommand{\@yearofstudy}{#1}}
+\makeatletter
+
+\author{Joel Coulon}
+\title{Evaluating the Resiliency of Blink-Based DeepFake Detection Against\\Adversarial Noise}
+\supervisor{Long Tran-Thanh}
+\yearofstudy{3\textsuperscript{rd}}
+
+%%%%%%%%%%%%%%%%%%%%
+
+\pagestyle{plain}
+\renewcommand{\headrulewidth}{0.0pt}
+
+\makeatletter
+\fancypagestyle{plain}{
+	\fancyhf{}
+	\fancyhead[LE]{\thepage}
+	\fancyhead[RE]{\textit{\@author}}
+	\fancyhead[RO]{\thepage}
+	\fancyhead[LO]{\textit{\@title}}
+}
+\makeatother
+
+%%%%%%%%%%%%%%%%%%%%
+
+\begin{document}
+
+\input{../titlepage/titlepage.tex}
+
+\pagestyle{plain}
+
+\pagenumbering{gobble}
+\begin{abstract}
+    Your abstract goes here. This should be about 2-3 paragraphs summarising the motivation for your project and the main outcomes (software, results, etc.) of your project. 
+\end{abstract}
+
+\renewcommand{\abstractname}{Acknowledgements}
+\begin{abstract}
+Hi Mum! {\tiny are you proud of me now?}
+\end{abstract}
+
+\pagenumbering{roman}
+\tableofcontents
+\listoffigures
+\addcontentsline{toc}{chapter}{List of Figures}
+\listoftables
+\addcontentsline{toc}{chapter}{List of Tables}
+\listoflistings
+\addcontentsline{toc}{chapter}{List of Listings}
+\newpage
+
+\pagenumbering{arabic}
+\input{1introduction.tex}
+\input{2background.tex}
+\input{3design.tex}
+\input{4evaluation.tex}
+\input{5conclusions.tex}
+
+\bibliographystyle{ieeetran}
+\bibliography{bibliography.bib}
+
+\appendix
+\input{6appendix.tex}
+
+\end{document}
