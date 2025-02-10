@@ -1,19 +1,19 @@
 ## Proof of Concept
 - [X] Add RESNET50 model to proof of concept
-- [ ] Start write up for main diss
+- [X] Start write up for main diss
 - [X] Make demos (live view, noise visualisation, etc.)
 
 ## Main model
 - [X] Research and implement custom model for eye landmark detection (cropping on eye, then some kind of pre-trained model?)
   - [X] Model is from https://www.sciencedirect.com/science/article/pii/S0031320319303772
   - [X] Create and annotate dataset (email authors?)
-  - [ ] Train model
+  - [X] Train model
   - [ ] Test model
 - [ ] Implement EAR analysis
-  - Could do a 1d CNN
-  - split each blink into a feature vector (length of down, length of up, period closed, period between blinks, etc.)
-  - non-ML-based analysis (thresholds, entropy, etc.)
-  - or a combination of the above
+  - [ ] 1D CNN
+  - [ ] LSTM layers (bidirectional?)
+  - [ ] Split blinks into feature vector then train
+  - find best one and use for final model
 
 ## Noise
 - [ ] Code own versions of all the noise functions
