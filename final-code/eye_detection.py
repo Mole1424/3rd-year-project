@@ -278,7 +278,7 @@ class FasterRCNN(Model):
         self.fc1 = Dense(512, activation="relu", name="frcnn_fc1")
         self.fc2 = Dense(256, activation="relu", name="frcnn_fc2")
 
-    def call(self, image: tf.Tensor) -> tuple[tf.Tensor, tf.Tensor]:
+    def call(self, image: tf.Tensor) -> tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
         """
         takes in an image tensor
 
@@ -287,10 +287,10 @@ class FasterRCNN(Model):
         - initial eye landmarks (x1, y1, ..., x6, y6) x2
         """
         features = self.backbone(image)
-        rois, eye_landmarks, _ = self.rpn(features)
+        rois, eye_landmarks, original_prediction = self.rpn(features, image)
         pooled = self.roi_pooling([features, rois])
         x = self.fc1(pooled)
-        return self.fc2(x), eye_landmarks
+        return self.fc2(x), eye_landmarks, original_prediction
 
     def shared_convolutional_model(self) -> Model:
         """shared convolutional area to act as the backbone"""
@@ -343,7 +343,7 @@ class EyeLandmarks(Model):
         return 3 tensors of the following form:
         - initial eye landmarks (x1, y1, ..., x6, y6) x2
         """
-        _, eyes = self.faster_rcnn(image)
+        _, eyes, _ = self.faster_rcnn(image)
 
         # extract the eye landmarks and bounding boxes
         left_eye_landmarks = eyes[:12]
@@ -500,7 +500,7 @@ def rpn_train_loop(
         optimizer.learning_rate = step_decay(epoch, optimizer.learning_rate)
 
 
-def train_model(debug: bool) -> None:
+def train_model(debug: bool) -> None:  # noqa: PLR0915
     path_to_large = "/dcs/large/u2204489/"
 
     # attempt to limit gpu memory usage
@@ -526,14 +526,18 @@ def train_model(debug: bool) -> None:
 
     backbone_rpn_model = get_backbone_rpn_model(eye_landmarks)
 
-    rpn_train_loop(
-        backbone_rpn_model,
-        dataset,
-        SGD(learning_rate=0.02, momentum=0.9, weight_decay=0.0001),
-        8 * 10,
-    )
+    step1_weights = f"{path_to_large}eyesstep1.weights.h5"
+    if Path(step1_weights).exists():
+        eye_landmarks.faster_rcnn.rpn.load_weights(step1_weights)
+    else:
+        rpn_train_loop(
+            backbone_rpn_model,
+            dataset,
+            SGD(learning_rate=0.02, momentum=0.9, weight_decay=0.0001),
+            8 * 10,
+        )
+        eye_landmarks.faster_rcnn.rpn.save_weights(step1_weights)
     print("Step 1 complete")
-    backbone_rpn_model.save_weights(f"{path_to_large}eyesstep1.weights.h5")
 
     # step 2, train fast-RCNN with fixed RPN
     eye_landmarks.faster_rcnn.rpn.trainable = False
@@ -541,14 +545,18 @@ def train_model(debug: bool) -> None:
     eye_landmarks.faster_rcnn.fc1.trainable = True
     eye_landmarks.faster_rcnn.fc2.trainable = True
 
-    rpn_train_loop(
-        backbone_rpn_model,
-        dataset,
-        SGD(learning_rate=0.02, momentum=0.9, weight_decay=0.0001),
-        8 * 10,
-    )
+    step2_weights = f"{path_to_large}eyesstep2.weights.h5"
+    if Path(step2_weights).exists():
+        eye_landmarks.faster_rcnn.load_weights(step2_weights)
+    else:
+        rpn_train_loop(
+            eye_landmarks.faster_rcnn,
+            dataset,
+            SGD(learning_rate=0.02, momentum=0.9, weight_decay=0.0001),
+            8 * 10,
+        )
+        eye_landmarks.faster_rcnn.save_weights(step2_weights)
     print("Step 2 complete")
-    eye_landmarks.faster_rcnn.save_weights(f"{path_to_large}eyesstep2.weights.h5")
 
     # step 3, train RPN with fixed fast-RCNN
     eye_landmarks.faster_rcnn.rpn.trainable = True
@@ -556,52 +564,65 @@ def train_model(debug: bool) -> None:
     eye_landmarks.faster_rcnn.fc1.trainable = False
     eye_landmarks.faster_rcnn.fc2.trainable = False
 
-    rpn_train_loop(
-        backbone_rpn_model,
-        dataset,
-        SGD(learning_rate=0.02, momentum=0.9, weight_decay=0.0001),
-        8 * 10,
-    )
-    eye_landmarks.faster_rcnn.save_weights(f"{path_to_large}eyesstep3.weights.h5")
+    step3_weights = f"{path_to_large}eyesstep3.weights.h5"
+    if Path(step3_weights).exists():
+        eye_landmarks.faster_rcnn.load_weights(step3_weights)
+    else:
+        rpn_train_loop(
+            eye_landmarks.faster_rcnn,
+            dataset,
+            SGD(learning_rate=0.02, momentum=0.9, weight_decay=0.0001),
+            8 * 10,
+        )
+        eye_landmarks.faster_rcnn.save_weights(step3_weights)
+    print("Step 3 complete")
 
     # step 4, train everything together
     eye_landmarks.faster_rcnn.roi_pooling.trainable = True
     eye_landmarks.faster_rcnn.fc1.trainable = True
     eye_landmarks.faster_rcnn.fc2.trainable = True
 
-    rpn_train_loop(
-        backbone_rpn_model,
-        dataset,
-        SGD(learning_rate=0.02, momentum=0.9, weight_decay=0.0001),
-        8 * 10,
-    )
+    step4_weights = f"{path_to_large}eyesstep4.weights.h5"
+    if Path(step4_weights).exists():
+        eye_landmarks.faster_rcnn.load_weights(step4_weights)
+    else:
+        rpn_train_loop(
+            eye_landmarks.faster_rcnn,
+            dataset,
+            SGD(learning_rate=0.02, momentum=0.9, weight_decay=0.0001),
+            8 * 10,
+        )
+        eye_landmarks.faster_rcnn.save_weights(step4_weights)
     print("Step 4 complete")
-    eye_landmarks.faster_rcnn.save_weights(f"{path_to_large}eyesstep4.weights.h5")
 
     eye_landmarks.faster_rcnn.trainable = False
 
-    # use faster_rcnn to generate starting landmarks for the RLM
-    x_train = []
-    y_train = []
-    for x, y in dataset:  # type: ignore
-        x_train.append(x)
-        y_train.append(y)
+    rlm_weights = f"{path_to_large}eyesrlm.weights.h5"
+    if Path(rlm_weights).exists():
+        eye_landmarks.recurrent_learning_module.load_weights(rlm_weights)
+    else:
+        # use faster_rcnn to generate starting landmarks for the RLM
+        x_train = []
+        y_train = []
+        for x, y in dataset:  # type: ignore
+            x_train.append(x)
+            y_train.append(y)
 
-    predictions = eye_landmarks.faster_rcnn(x_train)
-    l_eye, r_eye, _ = predictions
-    eyes = tf.concat([l_eye, r_eye], axis=0)
+        predictions = eye_landmarks.faster_rcnn(x_train)
+        l_eye, r_eye, _ = predictions
+        eyes = tf.concat([l_eye, r_eye], axis=0)
 
-    eye_landmarks.recurrent_learning_module.compile(
-        optimizer=Adam(learning_rate=0.0001), loss=rlm_loss_function
-    )
-    eye_landmarks.recurrent_learning_module.fit(
-        eyes,
-        y_train,
-        batch_size=batch_size,
-        epochs=10,
-    )
+        eye_landmarks.recurrent_learning_module.compile(
+            optimizer=Adam(learning_rate=0.0001), loss=rlm_loss_function
+        )
+        eye_landmarks.recurrent_learning_module.fit(
+            eyes,
+            y_train,
+            batch_size=batch_size,
+            epochs=10,
+        )
 
-    eye_landmarks.save_weights(f"{path_to_large}eyesfinal.weights.h5")
+        eye_landmarks.save_weights(rlm_weights)
     print("Training complete :)")
 
 
