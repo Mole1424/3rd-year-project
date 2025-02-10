@@ -317,6 +317,38 @@ def cxcywh_to_xywh(initial_box: list[float]) -> list[float]:
     return [cx - w / 2, cy - h / 2, w, h]
 
 
+def resize_datasets() -> None:
+    """resize coords to 512x512"""
+    resize_dataset(f"{path_to_eyes}/300w/", "png")
+    resize_dataset(f"{path_to_eyes}/aflw/", "jpg")
+    resize_dataset(f"{path_to_eyes}/afw/", "jpg")
+    resize_dataset(f"{path_to_eyes}/helen/", "jpg")
+    resize_dataset(f"{path_to_eyes}/lfpw/testset/", "png")
+    resize_dataset(f"{path_to_eyes}/lfpw/trainset/", "png")
+    print("done :)")
+
+
+def resize_dataset(path: str, type: str) -> None:
+    for file in list(Path(path).glob("*.txt")):
+        print("Processing file:", file)
+        with file.open() as f:
+            lines = f.read().split("\n")
+        # get original image size
+        img = cv.imread(f"{file.with_suffix(f".{type}")}")
+        orig_h, orig_w, _ = img.shape
+        # resize bounding boxes
+        for i in range(6):
+            x, y, w, h = map(float, lines[i].split())
+            x = x * 512 / orig_w
+            y = y * 512 / orig_h
+            w = w * 512 / orig_w
+            h = h * 512 / orig_h
+            lines[i] = f"{x} {y} {w} {h}"
+        # save to file and append eye points
+        with file.open("w") as f:
+            f.write("\n".join(lines))
+
+
 if __name__ == "__main__":
     arg = None
     try:
@@ -337,6 +369,8 @@ if __name__ == "__main__":
         reflect_datasets()
     elif arg == "convert":
         convert_dataset_coords()
+    elif arg == "resize":
+        resize_datasets()
     else:
         print("invalid argument")
         sys.exit(1)

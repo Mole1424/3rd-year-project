@@ -18,8 +18,8 @@
 ## Noise
 - [ ] Code own versions of all the noise functions
   - [ ] CW-L2
-  - [ ] FGSM
   - [ ] FakeRetouch
+  - [ ] FGSM?
 
 ## Testing
 - [ ] Email SCRTP to ask for more space
