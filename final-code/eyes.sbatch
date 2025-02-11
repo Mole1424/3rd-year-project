@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 #SBATCH --job-name=eye-landmarking
-#SBATCH --partition=gecko,falcon
+#SBATCH --partition=gecko
 #SBATCH --cpus-per-task=1
 #SBATCH --gres=gpu:1
 #SBATCH --time=2-00:00:00

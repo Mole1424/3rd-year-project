@@ -57,7 +57,7 @@ class ROIPoolingLayer(Layer):
                 x[0], x[1], self.pooled_height, self.pooled_width  # type: ignore
             )
 
-        return tf.map_fn(curried_pool_rois, x, dtype=tf.float32)  # type: ignore
+        return tf.map_fn(curried_pool_rois, x, fn_output_signature=tf.float32)  # type: ignore
 
     @staticmethod
     def _pool_rois(
@@ -70,7 +70,7 @@ class ROIPoolingLayer(Layer):
                 feature_map, roi, pooled_height, pooled_width
             )
 
-        return tf.map_fn(curried_pool_roi, rois, dtype=tf.float32)  # type: ignore
+        return tf.map_fn(curried_pool_roi, rois, fn_output_signature=tf.float32)  # type: ignore
 
     @staticmethod
     def _pool_roi(
@@ -79,8 +79,8 @@ class ROIPoolingLayer(Layer):
         """Applies ROI pooling to a single image and a single region of interest"""
 
         # Compute the region of interest
-        feature_map_height = int(feature_map.shape[0])  # type: ignore
-        feature_map_width = int(feature_map.shape[1])  # type: ignore
+        feature_map_height = int(tf.shape(feature_map)[0])  # type: ignore
+        feature_map_width = int(tf.shape(feature_map)[1])  # type: ignore
 
         h_start = tf.cast(feature_map_height * roi[0], "int32")  # type: ignore
         w_start = tf.cast(feature_map_width * roi[1], "int32")  # type: ignore

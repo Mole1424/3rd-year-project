@@ -28,6 +28,7 @@ from tensorflow.keras.layers import (  # type: ignore
     LSTM,
     Conv2D,
     Dense,
+    Flatten,
     Lambda,
     RepeatVector,
     TimeDistributed,
@@ -275,8 +276,10 @@ class FasterRCNN(Model):
         self.backbone = self.shared_convolutional_model()
         self.rpn = RPN(ratio)
         self.roi_pooling = ROIPoolingLayer(2, 2)
+        self.flatten = Flatten()
         self.fc1 = Dense(512, activation="relu", name="frcnn_fc1")
         self.fc2 = Dense(256, activation="relu", name="frcnn_fc2")
+        self.fc3 = Dense(4, activation="linear", name="frcnn_fc3")
 
     def call(self, image: tf.Tensor) -> tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
         """
@@ -288,9 +291,13 @@ class FasterRCNN(Model):
         """
         features = self.backbone(image)
         rois, eye_landmarks, original_prediction = self.rpn(features, image)
-        pooled = self.roi_pooling([features, rois])
-        x = self.fc1(pooled)
-        return self.fc2(x), eye_landmarks, original_prediction
+        converted_rois = self.convert_rois(rois)
+        pooled = self.roi_pooling([features, converted_rois])
+        x = self.flatten(pooled)
+        x = self.fc1(x)
+        x = self.fc2(x)
+        x = self.fc3(x)
+        return tf.expand_dims(x, axis=0), eye_landmarks, original_prediction
 
     def shared_convolutional_model(self) -> Model:
         """shared convolutional area to act as the backbone"""
@@ -299,6 +306,16 @@ class FasterRCNN(Model):
         return Model(
             inputs=vgg16.input, outputs=custom_vgg, name="shared_convolutional_model"
         )
+
+    def convert_rois(self, rois: tf.Tensor) -> tf.Tensor:
+        """
+        convert rois from (cx, cy, w, h) to (x1, y1, x2, y2)
+        """
+        x1 = rois[:, 0] - rois[:, 2] / 2  # type: ignore
+        y1 = rois[:, 1] - rois[:, 3] / 2  # type: ignore
+        x2 = rois[:, 0] + rois[:, 2] / 2  # type: ignore
+        y2 = rois[:, 1] + rois[:, 3] / 2  # type: ignore
+        return tf.cast(tf.stack([x1, y1, x2, y2], axis=-1), tf.int32)  # type: ignore
 
 
 def recurrent_learning_module(time_steps: int) -> Model:
