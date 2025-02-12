@@ -76,7 +76,7 @@ class RPN(Model):
 
     def call(
         self, features: tf.Tensor, image: tf.Tensor
-    ) -> tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+    ) -> tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
         """
         generates region proposals and initial eye landmarks
 
@@ -86,6 +86,7 @@ class RPN(Model):
         output is 2 tensors:
         - region proposals (cx, cy, w, h)
         - initial eye landmarks (x1, y1, ..., x6, y6) x2
+        - anchors (for loss calculation)
         - offsets (for loss calculation)
         """
         batch_size = tf.shape(image)[0]  # type: ignore
@@ -117,7 +118,6 @@ class RPN(Model):
             inputs: tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]
         ) -> tuple[tf.Tensor, tf.Tensor]:
             anchors, anchor_deltas, objectivness_scores, image = inputs
-            # get rid of useless anchors
             anchor_deltas = tf.boolean_mask(anchor_deltas, mask)
             objectivness_scores = tf.boolean_mask(objectivness_scores, mask)
             return self.post_processing(
@@ -136,7 +136,7 @@ class RPN(Model):
         rois = tf.stack(rois, axis=0)
         original_predictions = tf.stack(original_predictions, axis=0)
 
-        return rois, eye_landmarks, original_predictions
+        return rois, eye_landmarks, original_predictions, anchors
 
     def generate_anchors(
         self, features_shape: tuple[int, int], image_shape: tuple[int, int]
@@ -246,7 +246,7 @@ class RPN(Model):
         nms_indices = non_max_suppression(
             predicted_anchors,
             objectivness_scores,
-            max_output_size=self.num_landmarks,
+            max_output_size=256,
         )
 
         # get best anchors
@@ -255,6 +255,7 @@ class RPN(Model):
         x2 = tf.gather(predicted_anchors[:, 2], nms_indices)
         y2 = tf.gather(predicted_anchors[:, 3], nms_indices)
 
+        # reshape for to cx, cy, w, h
         rois = tf.stack([(x1 + x2) / 2, (y1 + y2) / 2, x2 - x1, y2 - y1], axis=-1)
 
         # get anchor offsets
@@ -265,7 +266,6 @@ class RPN(Model):
 
         offsets = tf.stack([deltas_x, deltas_y, deltas_w, deltas_h], axis=-1)
 
-        # reshape for to cx, cy, w, h
         return rois, offsets
 
 
@@ -281,7 +281,9 @@ class FasterRCNN(Model):
         self.fc2 = Dense(256, activation="relu", name="frcnn_fc2")
         self.fc3 = Dense(4, activation="linear", name="frcnn_fc3")
 
-    def call(self, image: tf.Tensor) -> tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+    def call(
+        self, image: tf.Tensor
+    ) -> tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
         """
         takes in an image tensor
 
@@ -290,14 +292,14 @@ class FasterRCNN(Model):
         - initial eye landmarks (x1, y1, ..., x6, y6) x2
         """
         features = self.backbone(image)
-        rois, eye_landmarks, original_prediction = self.rpn(features, image)
+        rois, eye_landmarks, anchors, original_prediction = self.rpn(features, image)
         converted_rois = self.convert_rois(rois)
         pooled = self.roi_pooling([features, converted_rois])
         x = self.flatten(pooled)
         x = self.fc1(x)
         x = self.fc2(x)
         x = self.fc3(x)
-        return tf.expand_dims(x, axis=0), eye_landmarks, original_prediction
+        return tf.expand_dims(x, axis=0), eye_landmarks, anchors, original_prediction
 
     def shared_convolutional_model(self) -> Model:
         """shared convolutional area to act as the backbone"""
@@ -360,7 +362,7 @@ class EyeLandmarks(Model):
         return 3 tensors of the following form:
         - initial eye landmarks (x1, y1, ..., x6, y6) x2
         """
-        _, eyes, _ = self.faster_rcnn(image)
+        _, eyes, _, _ = self.faster_rcnn(image)
 
         # extract the eye landmarks and bounding boxes
         left_eye_landmarks = eyes[:12]
@@ -430,14 +432,36 @@ def get_backbone_rpn_model(eye_landmarks: EyeLandmarks) -> Model:
     # combine RPN with the backbone
     image = Input(shape=(None, None, 3))
     features = eye_landmarks.faster_rcnn.backbone(image)
-    rois, eye_landmarkers, offsets = eye_landmarks.faster_rcnn.rpn(features, image)
-    return Model(inputs=image, outputs=[rois, eye_landmarkers, offsets])
+    rois, eye_landmarkers, anchors, offsets = eye_landmarks.faster_rcnn.rpn(
+        features, image
+    )
+    return Model(inputs=image, outputs=[rois, eye_landmarkers, anchors, offsets])
+
+
+def compute_ious(boxes1: tf.Tensor, boxes2: tf.Tensor) -> tf.Tensor:
+    """
+    compute the intersection over union of two sets of boxes
+    """
+    boxes1 = tf.expand_dims(boxes1, axis=1)
+    boxes2 = tf.expand_dims(boxes2, axis=0)
+
+    x1 = tf.maximum(boxes1[..., 0], boxes2[..., 0])  # type: ignore
+    y1 = tf.maximum(boxes1[..., 1], boxes2[..., 1])  # type: ignore
+    x2 = tf.minimum(boxes1[..., 2], boxes2[..., 2])  # type: ignore
+    y2 = tf.minimum(boxes1[..., 3], boxes2[..., 3])  # type: ignore
+
+    intersection = tf.maximum(x2 - x1, 0) * tf.maximum(y2 - y1, 0)
+    area1 = (boxes1[..., 2] - boxes1[..., 0]) * (boxes1[..., 3] - boxes1[..., 1])  # type: ignore
+    area2 = (boxes2[..., 2] - boxes2[..., 0]) * (boxes2[..., 3] - boxes2[..., 1])  # type: ignore
+
+    union = area1 + area2 - intersection
+    return intersection / union
 
 
 @tf.function
 def frcnn_loss(
     y_true: tuple[tf.Tensor, tf.Tensor, tf.Tensor],
-    y_pred: tuple[tf.Tensor, tf.Tensor, tf.Tensor],
+    y_pred: tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor],
 ) -> tf.Tensor:
     """
     loss function for the faster rcnn
@@ -446,15 +470,65 @@ def frcnn_loss(
     def frcnn_loss_per_sample(
         input: tuple[
             tuple[tf.Tensor, tf.Tensor, tf.Tensor],
-            tuple[tf.Tensor, tf.Tensor, tf.Tensor],
+            tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor],
         ],
     ) -> tf.Tensor:
         # how much to weight the eye landmarks
-        ratio = 3
+        ratio = 3.0
 
         y_true, y_pred = input
-        rois, eye_landmarks, original_prediction = y_pred
+        rois, eye_landmarks, anchors, original_prediction = y_pred
         true_bboxs, true_eye_landmarks, has_landmarks = y_true
+
+        # compute ious
+        ious = compute_ious(rois, true_bboxs)
+        argmax_ious = tf.argmax(ious, axis=1)
+        max_ious = tf.reduce_max(ious, axis=1)
+        truth_argmax_indices = tf.argmax(ious, axis=0)
+
+        # assign labels
+        labels = tf.fill([tf.shape(anchors)[0]], -1)  # type: ignore
+        iou_threshold = 0.5
+        background_indices = tf.where(max_ious < iou_threshold)
+        labels = tf.tensor_scatter_nd_update(
+            labels, background_indices, tf.zeros([tf.shape(background_indices)[0]], dtype=tf.int32)  # type: ignore
+        )
+        foreground_indices = tf.expand_dims(truth_argmax_indices, axis=1)
+        labels = tf.tensor_scatter_nd_update(
+            labels, foreground_indices, tf.ones([tf.shape(truth_argmax_indices)[0]], dtype=tf.int32)  # type: ignore
+        )
+        high_iou_indices = tf.where(max_ious > iou_threshold)
+        labels = tf.tensor_scatter_nd_update(
+            labels, high_iou_indices, tf.ones([tf.shape(high_iou_indices)[0]], dtype=tf.int32)  # type: ignore
+        )
+
+        # subsample to get 128 positives and 128 negatives
+        num_positives, num_negatives = 128, 128
+
+        positive_indices = tf.where(labels == 1)
+        num_positive = tf.shape(positive_indices)[0]  # type: ignore
+        if num_positive > num_positives:
+            disable_indices = tf.random.shuffle(positive_indices)[
+                : (num_positive - num_positives)
+            ]
+            labels = tf.tensor_scatter_nd_update(
+                labels, disable_indices, tf.fill([tf.shape(disable_indices)[0]], -1)  # type: ignore
+            )
+        negative_indices = tf.where(labels == 0)
+        num_negative = tf.shape(negative_indices)[0]  # type: ignore
+        if num_negative > num_negatives:
+            disable_indices = tf.random.shuffle(negative_indices)[
+                : (num_negative - num_negatives)
+            ]
+            labels = tf.tensor_scatter_nd_update(
+                labels, disable_indices, tf.fill([tf.shape(disable_indices)[0]], -1)  # type: ignore
+            )
+
+        positive_anchor_indices = tf.where(labels == 1)[:, 0]
+        rois = tf.gather(rois, positive_anchor_indices)
+        true_bboxs = tf.gather(
+            true_bboxs, tf.gather(argmax_ious, positive_anchor_indices)
+        )
 
         eps = tf.constant(np.finfo(rois.dtype.as_numpy_dtype).eps)  # type: ignore
         h = tf.maximum(rois[:, 2], eps)  # type: ignore
@@ -464,11 +538,11 @@ def frcnn_loss(
         dy = (true_bboxs[:, 1] - rois[:, 1]) / h  # type: ignore
         dw = tf.math.log(true_bboxs[:, 2] / w)  # type: ignore
         dh = tf.math.log(true_bboxs[:, 3] / h)  # type: ignore
-
         offsets = tf.stack([dx, dy, dw, dh], axis=-1)
-
         # smooth L1 loss for bounding boxes
-        bbox_loss = Huber()(original_prediction, offsets)
+        bbox_loss = Huber()(
+            tf.gather(original_prediction, positive_anchor_indices), offsets
+        )
 
         # MSE loss (euclidean distance) for eye landmarks
         eye_loss = MeanSquaredError()(true_eye_landmarks, eye_landmarks)
