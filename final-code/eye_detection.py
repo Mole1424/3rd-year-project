@@ -459,7 +459,7 @@ def compute_ious(boxes1: tf.Tensor, boxes2: tf.Tensor) -> tf.Tensor:
 
 
 @tf.function
-def frcnn_loss(
+def frcnn_loss(  # noqa: PLR0915
     y_true: tuple[tf.Tensor, tf.Tensor, tf.Tensor],
     y_pred: tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor],
 ) -> tf.Tensor:
@@ -467,7 +467,7 @@ def frcnn_loss(
     loss function for the faster rcnn
     """
 
-    def frcnn_loss_per_sample(
+    def frcnn_loss_per_sample(  # noqa: PLR0915
         input: tuple[
             tuple[tf.Tensor, tf.Tensor, tf.Tensor],
             tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor],
@@ -477,11 +477,32 @@ def frcnn_loss(
         ratio = 3.0
 
         y_true, y_pred = input
-        rois, eye_landmarks, anchors, original_prediction = y_pred
-        true_bboxs, true_eye_landmarks, has_landmarks = y_true
+        cx_rois, eye_landmarks, anchors, original_prediction = y_pred
+        cx_true_bboxs, true_eye_landmarks, has_landmarks = y_true
+
+        # convert to (x1, y1, x2, y2)
+        x1_rois = tf.stack(
+            [
+                cx_rois[:, 0] - cx_rois[:, 2] / 2,  # type: ignore
+                cx_rois[:, 1] - cx_rois[:, 3] / 2,  # type: ignore
+                cx_rois[:, 0] + cx_rois[:, 2] / 2,  # type: ignore
+                cx_rois[:, 1] + cx_rois[:, 3] / 2,  # type: ignore
+            ],
+            axis=-1,
+        )
+        x1_true_bboxs = tf.stack(
+            [
+                cx_true_bboxs[:, 0] - cx_true_bboxs[:, 2] / 2,  # type: ignore
+                cx_true_bboxs[:, 1] - cx_true_bboxs[:, 3] / 2,  # type: ignore
+                cx_true_bboxs[:, 0] + cx_true_bboxs[:, 2] / 2,  # type: ignore
+                cx_true_bboxs[:, 1] + cx_true_bboxs[:, 3] / 2,  # type: ignore
+            ],
+            axis=-1,
+        )
+        l_eye_bbox, r_eye_bbox = x1_true_bboxs[0], x1_true_bboxs[1]  # type: ignore
 
         # compute ious
-        ious = compute_ious(rois, true_bboxs)
+        ious = compute_ious(x1_rois, x1_true_bboxs)
         argmax_ious = tf.argmax(ious, axis=1)
         max_ious = tf.reduce_max(ious, axis=1)
         truth_argmax_indices = tf.argmax(ious, axis=0)
@@ -530,29 +551,61 @@ def frcnn_loss(
                 labels, disable_indices, tf.fill([tf.shape(disable_indices)[0]], -1)  # type: ignore
             )
 
-        positive_anchor_indices = tf.where(labels == 1)[:, 0]
-        rois = tf.gather(rois, positive_anchor_indices)
-        true_bboxs = tf.gather(
-            true_bboxs, tf.gather(argmax_ious, positive_anchor_indices)
+        # only keep positive and negative anchors
+        positive_anchor_indices = tf.where(labels != 1)[:, 0]
+        cx_rois = tf.gather(cx_rois, positive_anchor_indices)
+        x1_rois = tf.gather(x1_rois, positive_anchor_indices)
+        cx_true_bboxs = tf.gather(
+            cx_true_bboxs, tf.gather(argmax_ious, positive_anchor_indices)
+        )
+        x1_true_bboxs = tf.gather(
+            x1_true_bboxs, tf.gather(argmax_ious, positive_anchor_indices)
         )
 
-        eps = tf.constant(np.finfo(rois.dtype.as_numpy_dtype).eps)  # type: ignore
-        h = tf.maximum(rois[:, 2], eps)  # type: ignore
-        w = tf.maximum(rois[:, 3], eps)  # type: ignore
+        # compute offsets for bbox loss
+        eps = tf.constant(np.finfo(cx_rois.dtype.as_numpy_dtype).eps)  # type: ignore
+        h = tf.maximum(cx_rois[:, 2], eps)  # type: ignore
+        w = tf.maximum(cx_rois[:, 3], eps)  # type: ignore
 
-        dx = (true_bboxs[:, 0] - rois[:, 0]) / w  # type: ignore
-        dy = (true_bboxs[:, 1] - rois[:, 1]) / h  # type: ignore
-        dw = tf.math.log(true_bboxs[:, 2] / w)  # type: ignore
-        dh = tf.math.log(true_bboxs[:, 3] / h)  # type: ignore
+        dx = (cx_true_bboxs[:, 0] - cx_rois[:, 0]) / w  # type: ignore
+        dy = (cx_true_bboxs[:, 1] - cx_rois[:, 1]) / h  # type: ignore
+        dw = tf.math.log(cx_true_bboxs[:, 2] / w)  # type: ignore
+        dh = tf.math.log(cx_true_bboxs[:, 3] / h)  # type: ignore
         offsets = tf.stack([dx, dy, dw, dh], axis=-1)
+
         # smooth L1 loss for bounding boxes
         bbox_loss = Huber()(
             tf.gather(original_prediction, positive_anchor_indices), offsets
         )
 
+        # get best roi for each eye
+        ious_left = tf.squeeze(compute_ious(x1_rois, l_eye_bbox), axis=1)
+        ious_right = tf.squeeze(compute_ious(x1_rois, r_eye_bbox), axis=1)
+        left_roi = cx_rois[tf.argmax(ious_left, axis=0)]  # type: ignore
+        right_roi = cx_rois[tf.argmax(ious_right, axis=0)]  # type: ignore
+
+        pred_left = tf.reshape(eye_landmarks[:12], [6, 2])  # type: ignore
+        pred_right = tf.reshape(eye_landmarks[12:], [6, 2])  # type: ignore
+
+        # convert eye landmarks to be relative to the roi
+        converted_left = (
+            pred_left - tf.stack([left_roi[0], left_roi[1]])  # type: ignore
+        ) / tf.stack(
+            [left_roi[2], left_roi[3]]  # type: ignore
+        )
+        converted_right = (
+            pred_right - tf.stack([right_roi[0], right_roi[1]])  # type: ignore
+        ) / tf.stack(
+            [right_roi[2], right_roi[3]]  # type: ignore
+        )
+
+        converted_left = tf.reshape(converted_left, [-1])
+        converted_right = tf.reshape(converted_right, [-1])
+
         # MSE loss (euclidean distance) for eye landmarks
-        eye_loss = MeanSquaredError()(true_eye_landmarks, eye_landmarks)
-        eye_loss = ratio * eye_loss * tf.cast(has_landmarks, tf.float32)
+        left_loss = MeanSquaredError()(converted_left, true_eye_landmarks[:12])  # type: ignore
+        right_loss = MeanSquaredError()(converted_right, true_eye_landmarks[12:])  # type: ignore
+        eye_loss = ratio * left_loss + right_loss * tf.cast(has_landmarks, tf.float32)
 
         return bbox_loss + eye_loss
 
