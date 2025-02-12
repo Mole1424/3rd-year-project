@@ -473,7 +473,7 @@ def frcnn_loss(
             tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor],
         ],
     ) -> tf.Tensor:
-        # how much to weight the eye landmarks
+        # number of +ve to -ve examples
         ratio = 3.0
 
         y_true, y_pred = input
@@ -491,20 +491,26 @@ def frcnn_loss(
         iou_threshold = 0.5
         background_indices = tf.where(max_ious < iou_threshold)
         labels = tf.tensor_scatter_nd_update(
-            labels, background_indices, tf.zeros([tf.shape(background_indices)[0]], dtype=tf.int32)  # type: ignore
+            labels,
+            background_indices,
+            tf.zeros([tf.shape(background_indices)[0]], dtype=tf.int32),  # type: ignore
         )
         foreground_indices = tf.expand_dims(truth_argmax_indices, axis=1)
         labels = tf.tensor_scatter_nd_update(
-            labels, foreground_indices, tf.ones([tf.shape(truth_argmax_indices)[0]], dtype=tf.int32)  # type: ignore
+            labels,
+            foreground_indices,
+            tf.ones([tf.shape(truth_argmax_indices)[0]], dtype=tf.int32),  # type: ignore
         )
         high_iou_indices = tf.where(max_ious > iou_threshold)
         labels = tf.tensor_scatter_nd_update(
-            labels, high_iou_indices, tf.ones([tf.shape(high_iou_indices)[0]], dtype=tf.int32)  # type: ignore
+            labels,
+            high_iou_indices,
+            tf.ones([tf.shape(high_iou_indices)[0]], dtype=tf.int32),  # type: ignore
         )
 
-        # subsample to get 128 positives and 128 negatives
-        num_positives, num_negatives = 128, 128
-
+        # subsample anchors
+        num_positives = int(256 * (1 - 1 / ratio))
+        num_negatives = 256 - num_positives
         positive_indices = tf.where(labels == 1)
         num_positive = tf.shape(positive_indices)[0]  # type: ignore
         if num_positive > num_positives:
