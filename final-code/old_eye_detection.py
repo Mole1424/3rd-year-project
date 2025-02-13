@@ -1,3 +1,7 @@
+###################################################################################################
+# MARK:THIS CODE DOES NOT WORK AND IS NO LONGER BEING DEVELOPED, IT IS HERE FOR ARCHIVAL PURPOSES #
+###################################################################################################
+
 # an adapted version of "Eye landmarks detection via weakly supervised learning"
 # available at https://www.sciencedirect.com/science/article/pii/S0031320319303772
 # thanks to Bin Huang, Renwen Chen, Qinbang Zhou, and Wang Xu
@@ -456,6 +460,9 @@ def compute_ious(boxes1: tf.Tensor, boxes2: tf.Tensor) -> tf.Tensor:
 
     union = area1 + area2 - intersection
     return intersection / union
+
+
+# MARK: GTS IS THE OFFSSETS FROM ANCHOR TO GT
 
 
 @tf.function
