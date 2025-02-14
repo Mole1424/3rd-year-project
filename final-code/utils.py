@@ -26,18 +26,25 @@ def visualise_eye_datasets() -> None:
     """visualise the eye datasets on sample images"""
     # 300w
     visualise_points(f"{path_to_eyes}/300w/indoor_001", "png")
+    visualise_points(f"{path_to_eyes}/300w/indoor_001_r", "png")
     # afw
     visualise_points(f"{path_to_eyes}/afw/134212_1", "jpg")
+    visualise_points(f"{path_to_eyes}/afw/134212_1_r", "jpg")
     # cofw
     visualise_points(f"{path_to_eyes}/cofw/61", "jpg")
+    visualise_points(f"{path_to_eyes}/cofw/61_r", "jpg")
     # helen
     visualise_points(f"{path_to_eyes}/helen/12799337_1", "jpg")
+    visualise_points(f"{path_to_eyes}/helen/12799337_1_r", "jpg")
     # ibug
     visualise_points(f"{path_to_eyes}/ibug/image_003_1", "jpg")
+    visualise_points(f"{path_to_eyes}/ibug/image_003_1_r", "jpg")
     # lfpw
     visualise_points(f"{path_to_eyes}/lfpw/trainset/image_0001", "png")
+    visualise_points(f"{path_to_eyes}/lfpw/trainset/image_0001_r", "png")
     # wflw
     visualise_points(f"{path_to_eyes}/wflw/0_Parade_marchingband_1_116", "jpg")
+    visualise_points(f"{path_to_eyes}/wflw/0_Parade_marchingband_1_116_r", "jpg")
 
 
 def visualise_points(path: str, image_type: str) -> None:
@@ -129,15 +136,22 @@ def reflect_datasets() -> None:
     """reflects the datasets horizontally to double the size"""
     # delete all files with "*_r_r*"
     # oops
+    print("Deleting all files with *_r_r.*")
     system("find /dcs/large/u2204489/eyes -type f -name '*_r_r.*' -exec rm -f {} +")
+    print("Deleting all files with *_r.*")
     system("find /dcs/large/u2204489/eyes -type f -name '*_r.*' -exec rm -f {} +")
+    print("Deleting files")
 
     reflect_dataset(f"{path_to_eyes}/300w/", "png")
-    reflect_dataset(f"{path_to_eyes}/aflw/", "jpg")
     reflect_dataset(f"{path_to_eyes}/afw/", "jpg")
+    reflect_dataset(f"{path_to_eyes}/cofw/", "jpg")
     reflect_dataset(f"{path_to_eyes}/helen/", "jpg")
+    reflect_dataset(f"{path_to_eyes}/ibug/", "jpg")
     reflect_dataset(f"{path_to_eyes}/lfpw/testset/", "png")
     reflect_dataset(f"{path_to_eyes}/lfpw/trainset/", "png")
+    reflect_dataset(f"{path_to_eyes}/wflw/", "jpg")
+
+    print("done :)")
 
 
 # this takes a while, could be sped up with parallelism
@@ -152,19 +166,86 @@ def reflect_dataset(path: str, type: str) -> None:
         # reflect the image
         # (thanks to python3.12 for embedded f-strings)
         img = cv.imread(f"{file.with_suffix(f".{type}")}")
-        # reflected_img = cv.flip(img, 1)
-        # cv.imwrite(str(file.with_name(file.stem + f"_r.{type}")), reflected_img)
+        reflected_img = cv.flip(img, 1)
+        cv.imwrite(str(file.with_name(file.stem + f"_r.{type}")), reflected_img)
 
         # reflect the points
         with file.open() as f:
             points = np.loadtxt(f, comments=("version:", "n_points:", "{", "}"))
-        reflected_points = np.copy(points)
-        reflected_points[:, 0] = img.shape[1] - reflected_points[:, 0]
         file_content = "version: 1\nn_points: 68\n{\n"
-        for x, y in reflected_points:
-            file_content += f"{x} {y}\n"
+        for x, y in points:
+            file_content += f"{img.shape[1] - x} {y}\n"
         file_content += "}"
         with file.with_name(file.stem + "_r.pts").open("w") as f:
+            f.write(file_content)
+
+
+def correct_reflections() -> None:
+    """corrects the reflections of the datasets"""
+    correct_reflection(f"{path_to_eyes}/300w/")
+    correct_reflection(f"{path_to_eyes}/afw/")
+    correct_reflection(f"{path_to_eyes}/cofw/")
+    correct_reflection(f"{path_to_eyes}/helen/")
+    correct_reflection(f"{path_to_eyes}/ibug/")
+    correct_reflection(f"{path_to_eyes}/lfpw/testset/")
+    correct_reflection(f"{path_to_eyes}/lfpw/trainset/")
+    correct_reflection(f"{path_to_eyes}/wflw/")
+    print("done :)")
+
+
+def correct_reflection(path: str) -> None:
+    """corrects the reflections of an individual dataset"""
+    # fmt: off
+    # mapping from incorrect reflection to correct points
+    mapping = [17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1,
+               27, 26, 25, 24, 23, 22, 21, 20, 19, 18,
+               28, 29, 30, 31, 36, 35, 34, 33, 32,
+               46, 45, 44, 43, 48, 47,
+               40, 39, 38, 37, 41, 42,
+               55, 54, 53, 52, 51, 50, 49, 60, 59, 58, 57, 56,
+               65, 64, 63, 62, 61, 68, 67, 66]
+    mapping = [x - 1 for x in mapping]
+    # fmt: onsw
+    files = list(Path(path).glob("*_r.pts"))
+    files = files[1:]
+    for file in files:
+        print("Correcting file:", file)
+        with file.open() as f:
+            points = np.loadtxt(f, comments=("version:", "n_points:", "{", "}"))
+        points = points[mapping]
+        file_content = "version: 1\nn_points: 68\n{\n"
+        for x, y in points:
+            file_content += f"{x} {y}\n"
+        file_content += "}"
+        with file.open("w") as f:
+            f.write(file_content)
+
+
+def truncate_datasets() -> None:
+    """truncate all datasets to 3dp"""
+    truncate_dataset(f"{path_to_eyes}/300w/")
+    truncate_dataset(f"{path_to_eyes}/afw/")
+    truncate_dataset(f"{path_to_eyes}/cofw/")
+    truncate_dataset(f"{path_to_eyes}/helen/")
+    truncate_dataset(f"{path_to_eyes}/ibug/")
+    truncate_dataset(f"{path_to_eyes}/lfpw/testset/")
+    truncate_dataset(f"{path_to_eyes}/lfpw/trainset/")
+    truncate_dataset(f"{path_to_eyes}/wflw/")
+    print("done :)")
+
+
+def truncate_dataset(path: str) -> None:
+    """truncate reflecting points file to 3dp remove floating point errors"""
+    files = list(Path(path).glob("*.pts"))
+    for file in files:
+        print("Truncating file:", file)
+        with file.open() as f:
+            points = np.loadtxt(f, comments=("version:", "n_points:", "{", "}"))
+        file_content = "version: 1\nn_points: 68\n{\n"
+        for x, y in points:
+            file_content += f"{x:.3f} {y:.3f}\n"
+        file_content += "}"
+        with file.open("w") as f:
             f.write(file_content)
 
 
@@ -186,6 +267,10 @@ if __name__ == "__main__":
         visualise_eye_datasets()
     elif arg == "reflect":
         reflect_datasets()
+    elif arg == "correct":
+        correct_reflections()
+    elif arg == "truncate":
+        truncate_datasets()
     else:
         print("invalid argument")
         sys.exit(1)
