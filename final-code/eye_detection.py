@@ -3,11 +3,9 @@ from pathlib import Path
 from typing import Generator
 
 import cv2 as cv
-import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 from hrnet import HRNET
-from tensorflow.keras.callbacks import History  # type: ignore
 from tensorflow.keras.losses import MeanSquaredError  # type: ignore
 from tensorflow.keras.optimizers import Adam  # type: ignore
 
@@ -98,35 +96,17 @@ def load_datasets(
     return combine_datasets(datasets, batch_size, debug)
 
 
-def save_graphs(history: History, epochs: int, model_type: str) -> None:
-    """save accuracy and loss graphs"""
-
-    plt.figure()
-    epoch_list = list(range(1, epochs + 1))
-    plt.plot(epoch_list, history.history["accuracy"], label="Train Accuracy")
-    plt.plot(epoch_list, history.history["val_accuracy"], label="Validation Accuracy")
-    plt.xlabel("Epochs")
-    plt.xticks(epoch_list)
-    plt.ylabel("Accuracy")
-    plt.legend()
-    plt.title(f"Accuracy for {model_type}")
-    plt.savefig(f"{model_type}-accuracy.png")
-
-    plt.figure()
-    plt.plot(epoch_list, history.history["loss"], label="Train Loss")
-    plt.plot(epoch_list, history.history["val_loss"], label="Validation Loss")
-    plt.xlabel("Epochs")
-    plt.xticks(epoch_list)
-    plt.ylabel("Loss")
-    plt.legend()
-    plt.title(f"Loss for {model_type}")
-    plt.savefig(f"{model_type}-loss.png")
-
-
 def main(debug: bool) -> None:
     path_to_large = "/dcs/large/u2204489/"
 
+    gpus = tf.config.experimental.list_physical_devices("GPU")
+    for gpu in gpus:
+        tf.config.experimental.set_memory_growth(gpu, True)
+
     batch_size = 16
+    epochs = 60
+    # steps per epoch = dataset/batch ~= 13000/16 ~= 812 ~= 1000
+    steps_per_epoch = 1000
 
     hrnet_dataset = load_datasets(path_to_large, batch_size, True, debug)
 
@@ -157,11 +137,8 @@ def main(debug: bool) -> None:
     # create and train model
     model = HRNET(hrnet_config)
     model.compile(optimizer=Adam(0.001), loss=MeanSquaredError())
-    history = model.fit(hrnet_dataset, epochs=60)
-
-    # save model and graphs
+    model.fit(hrnet_dataset, epochs=epochs, steps_per_epoch=steps_per_epoch)
     model.save_weights(f"{path_to_large}hrnet.weights.h5")
-    save_graphs(history, 60, "hrnet")
 
     print("done :)")
 
