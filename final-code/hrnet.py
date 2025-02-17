@@ -25,10 +25,10 @@ class BasicBlock(Layer):
     def __init__(self, filters: int, stride: int = 1, downsample: Layer = None) -> None:
         super(BasicBlock, self).__init__()
         self.conv1 = Conv2D(filters, 3, stride, padding="same", use_bias=False)
-        self.bn1 = BatchNormalization(momentum=MOMENTUM, epsilon=1e-5, axis=-1)
+        self.bn1 = BatchNormalization(momentum=MOMENTUM, epsilon=1e-5)
         self.relu = ReLU()
         self.conv2 = Conv2D(filters, 3, 1, padding="same", use_bias=False)
-        self.bn2 = BatchNormalization(momentum=MOMENTUM, epsilon=1e-5, axis=-1)
+        self.bn2 = BatchNormalization(momentum=MOMENTUM, epsilon=1e-5)
         self.downsample = downsample
         self.stride = stride
 
@@ -56,13 +56,13 @@ class Bottleneck(Layer):
     def __init__(self, filters: int, stride: int = 1, downsample: Layer = None) -> None:
         super(Bottleneck, self).__init__()
         self.conv1 = Conv2D(filters, 1, 1, padding="same", use_bias=False)
-        self.bn1 = BatchNormalization(momentum=MOMENTUM, epsilon=1e-5, axis=-1)
+        self.bn1 = BatchNormalization(momentum=MOMENTUM, epsilon=1e-5)
         self.conv2 = Conv2D(filters, 3, stride, padding="same", use_bias=False)
-        self.bn2 = BatchNormalization(momentum=MOMENTUM, epsilon=1e-5, axis=-1)
+        self.bn2 = BatchNormalization(momentum=MOMENTUM, epsilon=1e-5)
         self.conv3 = Conv2D(
             filters * self.expansion, 1, 1, padding="same", use_bias=False
         )
-        self.bn3 = BatchNormalization(momentum=MOMENTUM, epsilon=1e-5, axis=-1)
+        self.bn3 = BatchNormalization(momentum=MOMENTUM, epsilon=1e-5)
         self.relu = ReLU()
         self.downsample = downsample
         self.stride = stride
@@ -143,7 +143,7 @@ class HRNetModule(Model):
                         stride,
                         use_bias=False,
                     ),
-                    BatchNormalization(momentum=MOMENTUM, epsilon=1e-5, axis=-1),
+                    BatchNormalization(momentum=MOMENTUM, epsilon=1e-5),
                 ]
             )
 
@@ -182,9 +182,7 @@ class HRNetModule(Model):
                         Sequential(
                             [
                                 Conv2D(num_inchannels[i], 1, use_bias=False),
-                                BatchNormalization(
-                                    momentum=MOMENTUM, epsilon=1e-5, axis=-1
-                                ),
+                                BatchNormalization(momentum=MOMENTUM, epsilon=1e-5),
                             ]
                         )
                     )
@@ -209,7 +207,7 @@ class HRNetModule(Model):
                                             use_bias=False,
                                         ),
                                         BatchNormalization(
-                                            momentum=MOMENTUM, epsilon=1e-5, axis=-1
+                                            momentum=MOMENTUM, epsilon=1e-5
                                         ),
                                     ]
                                 )
@@ -228,7 +226,7 @@ class HRNetModule(Model):
                                             use_bias=False,
                                         ),
                                         BatchNormalization(
-                                            momentum=MOMENTUM, epsilon=1e-5, axis=-1
+                                            momentum=MOMENTUM, epsilon=1e-5
                                         ),
                                         ReLU(),
                                     ]
@@ -282,9 +280,9 @@ class HRNET(Model):
 
         # stage 1 is the same for all HRNet models
         self.conv1 = Conv2D(64, 3, 2, padding="same", use_bias=False)
-        self.bn1 = BatchNormalization(momentum=MOMENTUM, epsilon=1e-5, axis=-1)
+        self.bn1 = BatchNormalization(momentum=MOMENTUM, epsilon=1e-5)
         self.conv2 = Conv2D(64, 3, 2, padding="same", use_bias=False)
-        self.bn2 = BatchNormalization(momentum=MOMENTUM, epsilon=1e-5, axis=-1)
+        self.bn2 = BatchNormalization(momentum=MOMENTUM, epsilon=1e-5)
         self.relu = ReLU()
         self.sf = Softmax(axis=1)  # ?????????
 
@@ -320,7 +318,7 @@ class HRNET(Model):
         self.head = Sequential(
             [
                 Conv2D(final_channels, 1, padding="same"),
-                BatchNormalization(momentum=MOMENTUM, epsilon=1e-5, axis=-1),
+                BatchNormalization(momentum=MOMENTUM, epsilon=1e-5),
                 ReLU(),
                 Conv2D(
                     config["NUM_JOINTS"], config["FINAL_CONV_KERNEL"], padding="same"
@@ -350,9 +348,7 @@ class HRNET(Model):
                                     padding="same",
                                     use_bias=False,
                                 ),
-                                BatchNormalization(
-                                    momentum=MOMENTUM, epsilon=1e-5, axis=-1
-                                ),
+                                BatchNormalization(momentum=MOMENTUM, epsilon=1e-5),
                                 ReLU(),
                             ]
                         )
@@ -376,9 +372,7 @@ class HRNET(Model):
                                 Conv2D(
                                     outchannels, 3, 2, padding="same", use_bias=False
                                 ),
-                                BatchNormalization(
-                                    momentum=MOMENTUM, epsilon=1e-5, axis=-1
-                                ),
+                                BatchNormalization(momentum=MOMENTUM, epsilon=1e-5),
                                 ReLU(),
                             ]
                         )
@@ -397,7 +391,7 @@ class HRNET(Model):
             downsample = Sequential(
                 [
                     Conv2D(planes * block.expansion, 1, stride, use_bias=False),
-                    BatchNormalization(momentum=MOMENTUM, epsilon=1e-5, axis=-1),
+                    BatchNormalization(momentum=MOMENTUM, epsilon=1e-5),
                 ]
             )
 
@@ -419,20 +413,13 @@ class HRNET(Model):
         num_channels = config["NUM_CHANNELS"]
 
         # create the modules
-        modules = []
-        for _ in range(num_modules):
-            modules.append(
-                HRNetModule(
-                    num_branches,
-                    BasicBlock,
-                    num_blocks,
-                    num_inchannels,
-                    num_channels,
-                )
+        modules = [
+            HRNetModule(
+                num_branches, BasicBlock, num_blocks, num_inchannels, num_channels
             )
-            # update the number of input channels
-            num_inchannels = modules[-1].num_inchannels
-        return modules, num_inchannels
+            for _ in range(num_modules)
+        ]
+        return modules, modules[-1].num_inchannels
 
     def call(self, x: tf.Tensor) -> tf.Tensor:  # noqa: PLR0912
         # stage 1

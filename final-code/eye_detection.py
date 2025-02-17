@@ -9,7 +9,7 @@ from hrnet import HRNET
 from tensorflow.keras.losses import MeanSquaredError  # type: ignore
 from tensorflow.keras.optimizers import Adam  # type: ignore
 
-IMAGE_SIZE = (512, 512)
+IMAGE_SIZE = (256, 256)
 
 
 def points_to_heatmap(
@@ -20,8 +20,8 @@ def points_to_heatmap(
     num_points = points.shape[0]
     heatmap = np.zeros((h, w, num_points), dtype=np.float32)
 
-    scale_x = h / IMAGE_SIZE[0]
-    scale_y = w / IMAGE_SIZE[1]
+    scale_x = w / IMAGE_SIZE[0]
+    scale_y = h / IMAGE_SIZE[1]
 
     grid_x, grid_y = np.meshgrid(np.arange(w), np.arange(h))
 
@@ -30,7 +30,7 @@ def points_to_heatmap(
         cy = y * scale_y
 
         d2 = (grid_x - cx) ** 2 + (grid_y - cy) ** 2
-        exponent = d2 / 2.0 / sigma / sigma
+        exponent = d2 / (2.0 * sigma**2)
         heatmap[:, :, i] = np.exp(-exponent)
 
     return heatmap
@@ -40,14 +40,33 @@ def dataset_generator(path: str, file_type: str, heatmap: bool) -> Generator:
     """generator for dataset"""
     for file in Path(path).glob("*.pts"):
         image = cv.imread(str(file).replace("pts", file_type))
-        original_size = image.shape[:2]
-        image = cv.resize(image, IMAGE_SIZE)
-        points = np.loadtxt(file, comments=("version:", "n_points:", "{", "}"))
-        points[:, 0] = points[:, 0] * IMAGE_SIZE[0] / original_size[0]
-        points[:, 1] = points[:, 1] * IMAGE_SIZE[1] / original_size[1]
+        points = np.loadtxt(
+            file, np.float32, comments=("version:", "n_points:", "{", "}")
+        )
+        print(points)
+
+        # crop image to points
+        x, y, w, h = cv.boundingRect(points)
+        # add 2% padding
+        x -= int(w * 0.02)
+        y -= int(h * 0.02)
+        w += int(w * 0.04)
+        h += int(h * 0.04)
+
+        # Clamp the coordinates to be within image bounds
+        x = max(0, x)
+        y = max(0, y)
+        w = min(w, image.shape[1] - x)
+        h = min(h, image.shape[0] - y)
+
+        image = cv.resize(image[int(y) : int(y + h), int(x) : int(x + w)], IMAGE_SIZE)
+
+        # scale points
+        points[:, 0] = (points[:, 0] - x) / w * IMAGE_SIZE[0]
+        points[:, 1] = (points[:, 1] - y) / h * IMAGE_SIZE[1]
 
         # convert to heatmap
-        points = points_to_heatmap(points, (128, 128), 1.5) if heatmap else points
+        points = points_to_heatmap(points, (64, 64), 1.5) if heatmap else points
 
         yield image, points
 
@@ -59,7 +78,7 @@ def load_dataset(path: str, file_type: str, heatmap: bool) -> tf.data.Dataset:
         output_signature=(
             tf.TensorSpec(shape=(*IMAGE_SIZE, 3), dtype=tf.float32),  # type: ignore
             (
-                tf.TensorSpec(shape=(128, 128, 68), dtype=tf.float32)  # type: ignore
+                tf.TensorSpec(shape=(64, 64, 68), dtype=tf.float32)  # type: ignore
                 if heatmap
                 else tf.TensorSpec(shape=(68, 2), dtype=tf.float32)  # type: ignore
             ),
@@ -96,6 +115,31 @@ def load_datasets(
     return combine_datasets(datasets, batch_size, debug)
 
 
+# config adapted from https://github.com/HRNet/HRNet-Facial-Landmark-Detection/blob/master/experiments/wflw/face_alignment_wflw_hrnet_w18.yaml
+hrnet_config = {
+    "NUM_JOINTS": 68,
+    "FINAL_CONV_KERNEL": 1,
+    "STAGE2": {
+        "NUM_MODULES": 1,
+        "NUM_BRANCHES": 2,
+        "NUM_BLOCKS": [4, 4],
+        "NUM_CHANNELS": [18, 36],
+    },
+    "STAGE3": {
+        "NUM_MODULES": 4,
+        "NUM_BRANCHES": 3,
+        "NUM_BLOCKS": [4, 4, 4],
+        "NUM_CHANNELS": [18, 36, 72],
+    },
+    "STAGE4": {
+        "NUM_MODULES": 3,
+        "NUM_BRANCHES": 4,
+        "NUM_BLOCKS": [4, 4, 4, 4],
+        "NUM_CHANNELS": [18, 36, 72, 144],
+    },
+}
+
+
 def main(debug: bool) -> None:
     path_to_large = "/dcs/large/u2204489/"
 
@@ -109,30 +153,6 @@ def main(debug: bool) -> None:
     steps_per_epoch = 1000
 
     hrnet_dataset = load_datasets(path_to_large, batch_size, True, debug)
-
-    # config adapted from https://github.com/HRNet/HRNet-Facial-Landmark-Detection/blob/master/experiments/wflw/face_alignment_wflw_hrnet_w18.yaml
-    hrnet_config = {
-        "NUM_JOINTS": 68,
-        "FINAL_CONV_KERNEL": 1,
-        "STAGE2": {
-            "NUM_MODULES": 1,
-            "NUM_BRANCHES": 2,
-            "NUM_BLOCKS": [4, 4],
-            "NUM_CHANNELS": [18, 36],
-        },
-        "STAGE3": {
-            "NUM_MODULES": 4,
-            "NUM_BRANCHES": 3,
-            "NUM_BLOCKS": [4, 4, 4],
-            "NUM_CHANNELS": [18, 36, 72],
-        },
-        "STAGE4": {
-            "NUM_MODULES": 3,
-            "NUM_BRANCHES": 4,
-            "NUM_BLOCKS": [4, 4, 4, 4],
-            "NUM_CHANNELS": [18, 36, 72, 144],
-        },
-    }
 
     # create and train model
     model = HRNET(hrnet_config)
