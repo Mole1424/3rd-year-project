@@ -8,5 +8,7 @@ proof-of-concept/*.png
 
 demonstrations/images/
 
+final-code/test-images/
+
 *.err
 *.out

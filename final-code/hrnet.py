@@ -482,43 +482,66 @@ class HRNet:
 
     def __init__(self, config: dict, path_to_weights: str) -> None:
         """initialises the HRNet model"""
-        self.image_size = (512, 512)
+        self.cropped_image_size = (256, 256)
 
         self.model = HRNET(config)
 
         # build the model and load the weights
-        self.model.build((None, *self.image_size, 3))
+        self.model(tf.zeros((1, *self.cropped_image_size, 3)))
         self.model.load_weights(path_to_weights)
 
-    def get_landmarks(self, image: np.ndarray) -> tf.Tensor:
+        # get opencv face detector
+        self.face_cascade = cv.CascadeClassifier(
+            cv.data.haarcascades + "haarcascade_frontalface_default.xml"  # type: ignore
+        )
+
+    def get_landmarks(self, image: np.ndarray) -> np.ndarray:
         """gets landmarks from the image"""
-        # resize the image, preserve the original size
+
         original_size = image.shape[:2]
-        image = cv.resize(image, self.image_size)
-        image = tf.expand_dims(image, axis=0)
+        # crop image to faces
+        faces = self.face_cascade.detectMultiScale(
+            cv.cvtColor(image, cv.COLOR_BGR2GRAY), 1.3, 5
+        )
+        if len(faces) == 0:
+            raise ValueError("No faces detected")
 
-        # apply the model
-        heatmap = self.model(image)
-        heatmap_size = heatmap.shape[1:3]
+        multi_landmarks = []
+        for x, y, w, h in faces:
+            image = cv.resize(image[y : y + h, x : x + w], self.cropped_image_size)
+            image = tf.cast(tf.expand_dims(image, axis=0), tf.float32)  # type: ignore
 
-        # scale the landmarks to the original size
-        scale_x = original_size[0] / heatmap_size[0]
-        scale_y = original_size[1] / heatmap_size[1]
+            # apply the model
+            heatmap = self.model(image)
+            heatmap_size = heatmap.shape[1:3]
 
-        # get definite landmarks from heatmap via differentiable soft-argmax
-        beta = 100
-        batch_size, height, width, num_joints = tf.shape(heatmap)  # type: ignore
-        heatmap = tf.reshape(heatmap, (batch_size, height * width, num_joints))
-        softmax = tf.nn.softmax(beta * heatmap, axis=1)
+            # get definite landmarks from heatmap via differentiable soft-argmax
+            beta = 10
+            batch_size, height, width, num_joints = tf.shape(heatmap)  # type: ignore
+            heatmap = tf.reshape(heatmap, (batch_size, height * width, num_joints))
+            softmax = tf.nn.softmax(beta * heatmap, axis=1)
 
-        grid_y = tf.reshape(tf.cast(tf.range(height), tf.float32), (height, 1))
-        grid_y = tf.reshape(tf.tile(grid_y, [1, width]), [-1])
-        grid_x = tf.reshape(tf.cast(tf.range(width), tf.float32), (1, width))
-        grid_x = tf.reshape(tf.tile(grid_x, [height, 1]), [-1])
+            grid_y = tf.reshape(tf.cast(tf.range(height), tf.float32), (height, 1))
+            grid_y = tf.reshape(tf.tile(grid_y, [1, width]), [-1])
+            grid_x = tf.reshape(tf.cast(tf.range(width), tf.float32), (1, width))
+            grid_x = tf.reshape(tf.tile(grid_x, [height, 1]), [-1])
 
-        exp_y = tf.reduce_sum(softmax * grid_y[None, :, None], axis=1)
-        exp_x = tf.reduce_sum(softmax * grid_x[None, :, None], axis=1)
+            exp_y = tf.reduce_sum(softmax * grid_y[None, :, None], axis=1)
+            exp_x = tf.reduce_sum(softmax * grid_x[None, :, None], axis=1)
 
-        landmarks = tf.stack([exp_x, exp_y], axis=1)
+            landmarks = tf.reshape(tf.stack([exp_x, exp_y], axis=1), (num_joints, 2))
+            landmarks = landmarks.numpy()
 
-        return landmarks * tf.constant([scale_x, scale_y], dtype=tf.float32)  # type: ignore
+            # heatmap space -> cropped image space
+            landmarks[:, 0] = landmarks[:, 0] / heatmap_size[1] * w + x
+            landmarks[:, 1] = landmarks[:, 1] / heatmap_size[0] * h + y
+
+            # cropped image space -> original image space
+            landmarks[:, 0] = (
+                landmarks[:, 0] / self.cropped_image_size[1] * original_size[1]
+            )
+            landmarks[:, 1] = (
+                landmarks[:, 1] / self.cropped_image_size[0] * original_size[0]
+            )
+
+        return multi_landmarks  # type: ignore

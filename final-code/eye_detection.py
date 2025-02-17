@@ -5,7 +5,7 @@ from typing import Generator
 import cv2 as cv
 import numpy as np
 import tensorflow as tf
-from hrnet import HRNET
+from hrnet import HRNET, HRNet
 from tensorflow.keras.losses import MeanSquaredError  # type: ignore
 from tensorflow.keras.optimizers import Adam  # type: ignore
 
@@ -43,7 +43,6 @@ def dataset_generator(path: str, file_type: str, heatmap: bool) -> Generator:
         points = np.loadtxt(
             file, np.float32, comments=("version:", "n_points:", "{", "}")
         )
-        print(points)
 
         # crop image to points
         x, y, w, h = cv.boundingRect(points)
@@ -110,6 +109,7 @@ def load_datasets(
         load_dataset(path_to_datasets + "helen/", "jpg", heatmap),
         load_dataset(path_to_datasets + "ibug/", "jpg", heatmap),
         load_dataset(path_to_datasets + "lfpw/trainset/", "png", heatmap),
+        # load_dataset(path_to_datasets + "lfpw/testset/", "png", heatmap),
         load_dataset(path_to_datasets + "wflw/", "jpg", heatmap),
     ]
     return combine_datasets(datasets, batch_size, debug)
@@ -163,5 +163,42 @@ def main(debug: bool) -> None:
     print("done :)")
 
 
+def test_model() -> None:
+    # delete all files in test-images from previous runs
+    for file in Path("test-images/").glob("*"):
+        file.unlink()
+
+    path_to_large = "/dcs/large/u2204489/"
+    path_to_hrnet = path_to_large + "hrnet.weights.h5"
+    path_to_testset = path_to_large + "eyes/lfpw/testset/"
+
+    images = Path(path_to_testset).glob("*.png")
+    images = [image for image, _ in zip(images, range(5))]
+    model = HRNet(hrnet_config, path_to_hrnet)
+
+    for image in images:
+        print("Processing image:", image)
+        img = cv.imread(str(image))
+        points = model.get_landmarks(img)
+
+        for x, y in points:
+            cv.circle(img, (int(x), int(y)), 2, (0, 255, 0), -1)
+
+        new_path = "test-images/" + str(image).split("/")[-1]
+        cv.imwrite(new_path, img)
+
+    print("done :)")
+
+
 if __name__ == "__main__":
-    main(sys.argv[1] == "debug")
+    arg = None
+    try:
+        arg = sys.argv[1]
+    except IndexError:
+        print("Please provide an argument")
+        sys.exit(1)
+
+    if arg == "test":
+        test_model()
+    else:
+        main(arg == "debug")
