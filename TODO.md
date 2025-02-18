@@ -5,15 +5,14 @@
 
 ## Main model
 - [X] Research and implement custom model for eye landmark detection (cropping on eye, then some kind of pre-trained model?)
-  - [X] Model is from https://www.sciencedirect.com/science/article/pii/S0031320319303772
   - [X] Create and annotate dataset (email authors?)
-  - [X] Train model
-  - [ ] Test model
+  - [X] HRNet
+  - [ ] PFLD
 - [ ] Implement EAR analysis
-  - [ ] 1D CNN
-  - [ ] LSTM layers (bidirectional?)
+  - [X] 1D CNN
+  - [X] LSTM layers (bidirectional?)
   - [ ] Split blinks into feature vector then train
-  - find best one and use for final model
+  - [ ] find best one and use for final model
 
 ## Noise
 - [ ] Code own versions of all the noise functions

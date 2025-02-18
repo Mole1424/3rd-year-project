@@ -3,7 +3,6 @@ from typing import List
 import cv2 as cv
 import numpy as np
 import tensorflow as tf
-from scipy.optimize import curve_fit
 from tensorflow.keras import Model, Sequential  # type: ignore
 from tensorflow.keras.layers import (  # type: ignore
     BatchNormalization,
@@ -516,9 +515,9 @@ class HRNet:
             heatmap_size = heatmap.shape[1:3]
 
             # get definite landmarks from heatmap
+            # landmarks 36-47 are the eyes
             landmarks = [
-                self.heatmap_to_landmark(heatmap[0, :, :, i])
-                for i in range(heatmap.shape[-1])
+                self.heatmap_to_landmark(heatmap[0, :, :, i]) for i in range(36, 48)
             ]
 
             landmarks = (
@@ -535,40 +534,28 @@ class HRNet:
         return np.array(multi_landmarks)
 
     def heatmap_to_landmark(self, heatmap: np.ndarray) -> np.ndarray:
-        y_max, x_max = np.unravel_index(heatmap.argmax(), heatmap.shape)
-        return np.array([x_max, y_max])
+        """converts a heatmap to a landmark with refinement from CoM7"""
+        max_y, max_x = np.unravel_index(np.argmax(heatmap), heatmap.shape)
 
-    #     window_size = 7
-    #     x_min = max(0, x_max - window_size)
-    #     x_max = min(heatmap.shape[1], x_max + window_size)
-    #     y_min = max(0, y_max - window_size)
-    #     y_max = min(heatmap.shape[0], y_max + window_size)
+        fx_3 = heatmap[max_y, max_x - 3] if max_x - 3 >= 0 else 0
+        fx_2 = heatmap[max_y, max_x - 2] if max_x - 2 >= 0 else 0
+        fx_1 = heatmap[max_y, max_x - 1] if max_x - 1 >= 0 else 0
+        fx1 = heatmap[max_y, max_x + 1] if max_x + 1 < heatmap.shape[1] else 0
+        fx2 = heatmap[max_y, max_x + 2] if max_x + 2 < heatmap.shape[1] else 0
+        fx3 = heatmap[max_y, max_x + 3] if max_x + 3 < heatmap.shape[1] else 0
+        fy_3 = heatmap[max_y - 3, max_x] if max_y - 3 >= 0 else 0
+        fy_2 = heatmap[max_y - 2, max_x] if max_y - 2 >= 0 else 0
+        fy_1 = heatmap[max_y - 1, max_x] if max_y - 1 >= 0 else 0
+        fy1 = heatmap[max_y + 1, max_x] if max_y + 1 < heatmap.shape[0] else 0
+        fy2 = heatmap[max_y + 2, max_x] if max_y + 2 < heatmap.shape[0] else 0
+        fy3 = heatmap[max_y + 3, max_x] if max_y + 3 < heatmap.shape[0] else 0
+        fxy = heatmap[max_y, max_x]
 
-    #     heatmap = heatmap[y_min:y_max, x_min:x_max]
-    #     x_grid, y_grid = np.meshgrid(np.arange(x_min, x_max), np.arange(y_min, y_max))
+        dx = (3 * fx3 + 2 * fx2 + fx1 - fx_1 - 2 * fx_2 - 3 * fx_3) / (
+            fx3 + fx2 + fx1 + fxy + fx_1 + fx_2 + fx_3
+        )
+        dy = (3 * fy3 + 2 * fy2 + fy1 - fy_1 - 2 * fy_2 - 3 * fy_3) / (
+            fy3 + fy2 + fy1 + fxy + fy_1 + fy_2 + fy_3
+        )
 
-    #     x_flat = x_grid.ravel()
-    #     y_flat = y_grid.ravel()
-    #     heatmap_flat = heatmap.ravel()
-
-    #     initial_guess = (x_max, y_max, heatmap.max(), 1.5, 1.5, heatmap.min())
-
-    #     if len(heatmap_flat) < 10 or np.all(heatmap_flat == heatmap_flat[0]):  # noqa: PLR2004
-    #         x_fit, y_fit = float(x_max), float(y_max)
-    #     else:
-    #         try:
-    #             popt, _ = curve_fit(
-    #                 self.gaussian,
-    #                 (x_flat, y_flat),
-    #                 heatmap_flat,
-    #                 p0=initial_guess
-    #             )
-    #             x_fit, y_fit = popt[:2]
-    #         except RuntimeError:
-    #             x_fit, y_fit = float(x_max), float(y_max)
-
-    #     return np.array([x_fit, y_fit])
-
-    # def gaussian(self, xy: tuple, x0: float, y0: float, amplitude: float, sigma_x: float, sigma_y: float, offset: float) -> float:  # noqa: PLR0913
-    #     x, y = xy
-    #     return offset + amplitude * np.exp(-((x - x0)**2 / (2 * sigma_x**2) + (y - y0)**2 / (2 * sigma_y**2)))
+        return np.array([max_x + dx, max_y + dy])

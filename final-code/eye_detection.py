@@ -26,9 +26,11 @@ def points_to_heatmap(
     grid_x, grid_y = np.meshgrid(np.arange(w), np.arange(h))
 
     for i, (x, y) in enumerate(points):
+        # apply downscaling
         cx = x * scale_x
         cy = y * scale_y
 
+        # apply guassian blur to form heatmap
         d2 = (grid_x - cx) ** 2 + (grid_y - cy) ** 2
         exponent = d2 / (2.0 * sigma**2)
         heatmap[:, :, i] = np.exp(-exponent)
@@ -44,15 +46,14 @@ def dataset_generator(path: str, file_type: str, heatmap: bool) -> Generator:
             file, np.float32, comments=("version:", "n_points:", "{", "}")
         )
 
-        # crop image to points
+        # crop image to points with some padding
         x, y, w, h = cv.boundingRect(points)
-        # add 2% padding
         x -= int(w * 0.02)
         y -= int(h * 0.02)
         w += int(w * 0.04)
         h += int(h * 0.04)
 
-        # Clamp the coordinates to be within image bounds
+        # clamp to image size
         x = max(0, x)
         y = max(0, y)
         w = min(w, image.shape[1] - x)
@@ -172,6 +173,7 @@ def test_model() -> None:
     path_to_hrnet = path_to_large + "hrnet.weights.h5"
     path_to_testset = path_to_large + "eyes/lfpw/testset/"
 
+    # get 5 images from testset
     images = Path(path_to_testset).glob("*.png")
     images = [image for image, _ in zip(images, range(5))]
     model = HRNet(hrnet_config, path_to_hrnet)
@@ -183,6 +185,7 @@ def test_model() -> None:
 
         for i, face_points in enumerate(points):
             for j, (x, y) in enumerate(face_points):
+                # for each face and point draw labelled point
                 cv.circle(img, (int(x), int(y)), 2, (0, 255, 0), -1)
                 cv.putText(
                     img,
@@ -194,6 +197,7 @@ def test_model() -> None:
                     2,
                 )
 
+        # save image for testing
         new_path = "test-images/" + str(image).split("/")[-1]
         cv.imwrite(new_path, img)
 
