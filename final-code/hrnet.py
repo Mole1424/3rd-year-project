@@ -3,6 +3,7 @@ from typing import List
 import cv2 as cv
 import numpy as np
 import tensorflow as tf
+from scipy.optimize import curve_fit
 from tensorflow.keras import Model, Sequential  # type: ignore
 from tensorflow.keras.layers import (  # type: ignore
     BatchNormalization,
@@ -498,7 +499,6 @@ class HRNet:
     def get_landmarks(self, image: np.ndarray) -> np.ndarray:
         """gets landmarks from the image"""
 
-        original_size = image.shape[:2]
         # crop image to faces
         faces = self.face_cascade.detectMultiScale(
             cv.cvtColor(image, cv.COLOR_BGR2GRAY), 1.3, 5
@@ -508,40 +508,67 @@ class HRNet:
 
         multi_landmarks = []
         for x, y, w, h in faces:
-            image = cv.resize(image[y : y + h, x : x + w], self.cropped_image_size)
-            image = tf.cast(tf.expand_dims(image, axis=0), tf.float32)  # type: ignore
+            face_crop = cv.resize(image[y : y + h, x : x + w], self.cropped_image_size)
+            face_crop = tf.cast(tf.expand_dims(face_crop, axis=0), tf.float32)  # type: ignore
 
             # apply the model
-            heatmap = self.model(image)
+            heatmap = self.model(face_crop).numpy()
             heatmap_size = heatmap.shape[1:3]
 
-            # get definite landmarks from heatmap via differentiable soft-argmax
-            beta = 10
-            batch_size, height, width, num_joints = tf.shape(heatmap)  # type: ignore
-            heatmap = tf.reshape(heatmap, (batch_size, height * width, num_joints))
-            softmax = tf.nn.softmax(beta * heatmap, axis=1)
+            # get definite landmarks from heatmap
+            landmarks = [
+                self.heatmap_to_landmark(heatmap[0, :, :, i])
+                for i in range(heatmap.shape[-1])
+            ]
 
-            grid_y = tf.reshape(tf.cast(tf.range(height), tf.float32), (height, 1))
-            grid_y = tf.reshape(tf.tile(grid_y, [1, width]), [-1])
-            grid_x = tf.reshape(tf.cast(tf.range(width), tf.float32), (1, width))
-            grid_x = tf.reshape(tf.tile(grid_x, [height, 1]), [-1])
-
-            exp_y = tf.reduce_sum(softmax * grid_y[None, :, None], axis=1)
-            exp_x = tf.reduce_sum(softmax * grid_x[None, :, None], axis=1)
-
-            landmarks = tf.reshape(tf.stack([exp_x, exp_y], axis=1), (num_joints, 2))
-            landmarks = landmarks.numpy()
-
-            # heatmap space -> cropped image space
-            landmarks[:, 0] = landmarks[:, 0] / heatmap_size[1] * w + x
-            landmarks[:, 1] = landmarks[:, 1] / heatmap_size[0] * h + y
-
-            # cropped image space -> original image space
-            landmarks[:, 0] = (
-                landmarks[:, 0] / self.cropped_image_size[1] * original_size[1]
+            landmarks = (
+                np.array(landmarks)
+                / np.array(heatmap_size)
+                * np.array(self.cropped_image_size)
             )
-            landmarks[:, 1] = (
-                landmarks[:, 1] / self.cropped_image_size[0] * original_size[0]
+            landmarks = np.array([x, y]) + landmarks * np.array([w, h]) / np.array(
+                self.cropped_image_size
             )
 
-        return multi_landmarks  # type: ignore
+            multi_landmarks.append(landmarks)
+
+        return np.array(multi_landmarks)
+
+    def heatmap_to_landmark(self, heatmap: np.ndarray) -> np.ndarray:
+        y_max, x_max = np.unravel_index(heatmap.argmax(), heatmap.shape)
+        return np.array([x_max, y_max])
+
+    #     window_size = 7
+    #     x_min = max(0, x_max - window_size)
+    #     x_max = min(heatmap.shape[1], x_max + window_size)
+    #     y_min = max(0, y_max - window_size)
+    #     y_max = min(heatmap.shape[0], y_max + window_size)
+
+    #     heatmap = heatmap[y_min:y_max, x_min:x_max]
+    #     x_grid, y_grid = np.meshgrid(np.arange(x_min, x_max), np.arange(y_min, y_max))
+
+    #     x_flat = x_grid.ravel()
+    #     y_flat = y_grid.ravel()
+    #     heatmap_flat = heatmap.ravel()
+
+    #     initial_guess = (x_max, y_max, heatmap.max(), 1.5, 1.5, heatmap.min())
+
+    #     if len(heatmap_flat) < 10 or np.all(heatmap_flat == heatmap_flat[0]):  # noqa: PLR2004
+    #         x_fit, y_fit = float(x_max), float(y_max)
+    #     else:
+    #         try:
+    #             popt, _ = curve_fit(
+    #                 self.gaussian,
+    #                 (x_flat, y_flat),
+    #                 heatmap_flat,
+    #                 p0=initial_guess
+    #             )
+    #             x_fit, y_fit = popt[:2]
+    #         except RuntimeError:
+    #             x_fit, y_fit = float(x_max), float(y_max)
+
+    #     return np.array([x_fit, y_fit])
+
+    # def gaussian(self, xy: tuple, x0: float, y0: float, amplitude: float, sigma_x: float, sigma_y: float, offset: float) -> float:  # noqa: PLR0913
+    #     x, y = xy
+    #     return offset + amplitude * np.exp(-((x - x0)**2 / (2 * sigma_x**2) + (y - y0)**2 / (2 * sigma_y**2)))

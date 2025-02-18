@@ -181,8 +181,18 @@ def test_model() -> None:
         img = cv.imread(str(image))
         points = model.get_landmarks(img)
 
-        for x, y in points:
-            cv.circle(img, (int(x), int(y)), 2, (0, 255, 0), -1)
+        for i, face_points in enumerate(points):
+            for j, (x, y) in enumerate(face_points):
+                cv.circle(img, (int(x), int(y)), 2, (0, 255, 0), -1)
+                cv.putText(
+                    img,
+                    str(i) + "_" + str(j + 1),
+                    (int(x), int(y)),
+                    cv.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (0, 255, 0),
+                    2,
+                )
 
         new_path = "test-images/" + str(image).split("/")[-1]
         cv.imwrite(new_path, img)
