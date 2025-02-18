@@ -224,10 +224,8 @@ def calculate_ears() -> None:
         print("Processing video:", video_path)
 
         video = cv.VideoCapture(str(video_path))
-        frame_rate = video.get(cv.CAP_PROP_FPS)
-        video_length = int(video.get(cv.CAP_PROP_FRAME_COUNT) / frame_rate)
 
-        ears = np.zeros(video_length)
+        ears = np.zeros(int(video.get(cv.CAP_PROP_FRAME_COUNT)))
         previous_points = []
         while video.isOpened():
             success, frame = video.read()
@@ -260,7 +258,7 @@ def calculate_ears() -> None:
             ear_l = calculate_ear(points[0:6])
             ear_r = calculate_ear(points[6:12])
             ear = (ear_l + ear_r) / 2
-            ears[int(video.get(cv.CAP_PROP_POS_FRAMES) / frame_rate)] = ear
+            ears[int(video.get(cv.CAP_PROP_POS_FRAMES)) - 1] = ear
 
         video.release()
         np.save(str(video_path).replace("mp4", "npy"), ears)
