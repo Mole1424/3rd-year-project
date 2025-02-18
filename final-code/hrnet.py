@@ -503,7 +503,7 @@ class HRNet:
             cv.cvtColor(image, cv.COLOR_BGR2GRAY), 1.3, 5
         )
         if len(faces) == 0:
-            raise ValueError("No faces detected")
+            return np.array([])
 
         multi_landmarks = []
         for x, y, w, h in faces:

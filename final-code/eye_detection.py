@@ -204,6 +204,70 @@ def test_model() -> None:
     print("done :)")
 
 
+def calculate_ear(points: np.ndarray) -> float:
+    """calcualte eye aspect ratio"""
+    p2_p6 = np.linalg.norm(points[1] - points[5])
+    p3_p5 = np.linalg.norm(points[2] - points[4])
+    p1_p4 = np.linalg.norm(points[0] - points[3])
+
+    return float((p2_p6 + p3_p5) / (2.0 * p1_p4))
+
+
+def calculate_ears() -> None:
+    path_to_large = "/dcs/large/u2204489/"
+    path_to_hrnet = path_to_large + "hrnet.weights.h5"
+    path_to_videos = path_to_large + "/faceforensics/"
+
+    model = HRNet(hrnet_config, path_to_hrnet)
+
+    for video_path in Path(path_to_videos).rglob("*.mp4"):
+        print("Processing video:", video_path)
+
+        video = cv.VideoCapture(str(video_path))
+        frame_rate = video.get(cv.CAP_PROP_FPS)
+        video_length = int(video.get(cv.CAP_PROP_FRAME_COUNT) / frame_rate)
+
+        ears = np.zeros(video_length)
+        previous_points = []
+        while video.isOpened():
+            success, frame = video.read()
+            if not success:
+                break
+
+            points = model.get_landmarks(frame)
+            if len(points) == 0:
+                continue
+
+            # for first frame choose first face
+            if len(previous_points) == 0:
+                points = points[0]
+                previous_points = points
+            else:
+                # otherwise choose face with the most overlap to previous frame
+                max_overlap = 0
+                max_index = 0
+                for i, face_points in enumerate(points):
+                    overlap = np.sum(
+                        np.linalg.norm(previous_points - face_points, axis=1)
+                    )
+                    if overlap > max_overlap:
+                        max_overlap = overlap
+                        max_index = i
+                previous_points = points[max_index]
+                points = previous_points
+
+            # ear is average of left and right eye
+            ear_l = calculate_ear(points[0:6])
+            ear_r = calculate_ear(points[6:12])
+            ear = (ear_l + ear_r) / 2
+            ears[int(video.get(cv.CAP_PROP_POS_FRAMES) / frame_rate)] = ear
+
+        video.release()
+        np.save(str(video_path).replace("mp4", "npy"), ears)
+
+    print("done :)")
+
+
 if __name__ == "__main__":
     arg = None
     try:
@@ -214,5 +278,7 @@ if __name__ == "__main__":
 
     if arg == "test":
         test_model()
+    elif arg == "ear":
+        calculate_ears()
     else:
         main(arg == "debug")

@@ -15,4 +15,4 @@ source /etc/profile.d/conda.sh
 
 module load CUDA
 source ../venv/bin/activate
-python3.12 -u eye_detection.py train
+python3.12 -u eye_detection.py ear
