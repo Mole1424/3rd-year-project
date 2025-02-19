@@ -1,5 +1,4 @@
 from typing import List
-from time import time
 
 import cv2 as cv
 import numpy as np
@@ -519,7 +518,7 @@ class HRNet:
         for idx, (x, y, w, h) in enumerate(faces):
             heatmap = heatmaps[idx]
             landmarks = [
-                self.heatmap_to_landmark(heatmap[:, :, i]) for i in range(36, 48)
+                self._heatmap_to_landmark(heatmap[:, :, i]) for i in range(36, 48)
             ]
 
             landmarks = (
@@ -536,10 +535,11 @@ class HRNet:
         return np.array(multi_landmarks)
 
 
-    def heatmap_to_landmark(self, heatmap: np.ndarray) -> np.ndarray:
+    def _heatmap_to_landmark(self, heatmap: np.ndarray) -> np.ndarray:
         """converts a heatmap to a landmark with refinement from CoM7"""
         max_y, max_x = np.unravel_index(np.argmax(heatmap), heatmap.shape)
 
+        # precompute and clamp 7x7 window
         fx_3 = heatmap[max_y, max_x - 3] if max_x - 3 >= 0 else 0
         fx_2 = heatmap[max_y, max_x - 2] if max_x - 2 >= 0 else 0
         fx_1 = heatmap[max_y, max_x - 1] if max_x - 1 >= 0 else 0
