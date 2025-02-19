@@ -1,4 +1,5 @@
 from typing import List
+from time import time
 
 import cv2 as cv
 import numpy as np
@@ -505,19 +506,20 @@ class HRNet:
         if len(faces) == 0:
             return np.array([])
 
-        multi_landmarks = []
+        face_crops = []
         for x, y, w, h in faces:
             face_crop = cv.resize(image[y : y + h, x : x + w], self.cropped_image_size)
-            face_crop = tf.cast(tf.expand_dims(face_crop, axis=0), tf.float32)  # type: ignore
+            face_crops.append(face_crop)
+        face_crops = tf.cast(tf.convert_to_tensor(face_crops), tf.float32)
 
-            # apply the model
-            heatmap = self.model(face_crop).numpy()
-            heatmap_size = heatmap.shape[1:3]
+        heatmaps = self.model(face_crops).numpy()
+        heatmap_size = heatmaps.shape[1:3]
 
-            # get definite landmarks from heatmap
-            # landmarks 36-47 are the eyes
+        multi_landmarks = []
+        for idx, (x, y, w, h) in enumerate(faces):
+            heatmap = heatmaps[idx]
             landmarks = [
-                self.heatmap_to_landmark(heatmap[0, :, :, i]) for i in range(36, 48)
+                self.heatmap_to_landmark(heatmap[:, :, i]) for i in range(36, 48)
             ]
 
             landmarks = (
@@ -532,6 +534,7 @@ class HRNet:
             multi_landmarks.append(landmarks)
 
         return np.array(multi_landmarks)
+
 
     def heatmap_to_landmark(self, heatmap: np.ndarray) -> np.ndarray:
         """converts a heatmap to a landmark with refinement from CoM7"""

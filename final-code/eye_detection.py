@@ -199,7 +199,9 @@ def test_model() -> None:
 
         # save image for testing
         new_path = "test-images/" + str(image).split("/")[-1]
-        cv.imwrite(new_path, img)
+        cv.imshow(new_path, img)
+    cv.waitKey(0)
+    cv.destroyAllWindows()
 
     print("done :)")
 
