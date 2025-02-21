@@ -12,8 +12,9 @@ from pyts.classification import (
     LearningShapelets,
     TimeSeriesForest,
 )
-from tensorflow.keras import Model  # type: ignore
+from tensorflow.keras import Layer, Model  # type: ignore
 from tensorflow.keras.callbacks import ReduceLROnPlateau  # type: ignore
+from tensorflow.keras.config import enable_unsafe_deserialization  # type: ignore
 from tensorflow.keras.layers import (  # type: ignore
     LSTM,
     Activation,
@@ -27,16 +28,17 @@ from tensorflow.keras.layers import (  # type: ignore
     GlobalAveragePooling1D,
     Input,
     Lambda,
-    Masking,
     MaxPooling1D,
     Multiply,
     PReLU,
+    Reshape,
     Softmax,
     add,
     concatenate,
 )
 from tensorflow.keras.models import load_model  # type: ignore
-from tensorflow.keras.utils import pad_sequences  # type: ignore
+from tensorflow.keras.saving import register_keras_serializable  # type: ignore
+from tensorflow.keras.utils import pad_sequences, to_categorical  # type: ignore
 
 
 class KerasTimeSeriesClassifier:
@@ -70,8 +72,7 @@ class LongShortTermMemory(KerasTimeSeriesClassifier):
         super().__init__(self.model)
 
     def build_model(self) -> Model:
-        input = Input(shape=(None, 1))
-        input = Masking(-1)(input)
+        input = Input(shape=(256, 1))
 
         x1 = Conv1D(128, 8, padding="same")(input)
         x1 = BatchNormalization()(x1)
@@ -86,8 +87,17 @@ class LongShortTermMemory(KerasTimeSeriesClassifier):
         x1 = Activation("relu")(x1)
 
         x1 = GlobalAveragePooling1D()(x1)
+        x1 = Reshape((1, 128))(x1)
 
-        x2 = Lambda(lambda x: tf.transpose(x, perm=[0, 2, 1]))(input)
+        @register_keras_serializable(package="Custom", name="TransposeLayer")
+        class TransposeLayer(Layer):
+            def __init__(self, **kwargs: dict) -> None:
+                super(TransposeLayer, self).__init__(**kwargs)
+
+            def call(self, inputs: tf.Tensor) -> tf.Tensor:
+                return tf.transpose(inputs, perm=[0, 2, 1])
+
+        x2 = TransposeLayer()(input)
 
         x2 = LSTM(128, return_sequences=True)(x2)
         if self.attention:
@@ -95,6 +105,7 @@ class LongShortTermMemory(KerasTimeSeriesClassifier):
         x2 = Dropout(0.2)(x2)
 
         x = concatenate([x1, x2])
+        x = Flatten()(x)
         x = Dense(2, activation="softmax")(x)
 
         model = Model(inputs=input, outputs=x)
@@ -116,8 +127,7 @@ class MultiLayerPerceptron(KerasTimeSeriesClassifier):
         super().__init__(self.model)
 
     def build_model(self) -> Model:
-        input = Input(shape=(None, 1))
-        input = Masking(-1)(input)
+        input = Input(shape=(256, 1))
 
         x = Dropout(0.1)(input)
         x = Dense(500, activation="relu")(x)
@@ -126,6 +136,7 @@ class MultiLayerPerceptron(KerasTimeSeriesClassifier):
         x = Dense(500, activation="relu")(x)
 
         x = Dropout(0.3)(x)
+        x = GlobalAveragePooling1D()(x)
         x = Dense(2, activation="softmax")(x)
 
         model = Model(inputs=input, outputs=x)
@@ -142,8 +153,7 @@ class FullyConvolutionalNeuralNetwork(KerasTimeSeriesClassifier):
         super().__init__(self.model)
 
     def build_model(self) -> Model:
-        input = Input(shape=(None, 1))
-        input = Masking(-1)(input)
+        input = Input(shape=(256, 1))
 
         x = Conv1D(128, 8, padding="same")(input)
         x = BatchNormalization()(x)
@@ -174,8 +184,7 @@ class ConvolutionalNeuralNetwork(KerasTimeSeriesClassifier):
         super().__init__(self.model)
 
     def build_model(self) -> Model:
-        input = Input(shape=(None, 1))
-        input = Masking(-1)(input)
+        input = Input(shape=(256, 1))
 
         x = Conv1D(6, 7, padding="same", activation="sigmoid")(input)
         x = AveragePooling1D(3)(x)
@@ -189,6 +198,8 @@ class ConvolutionalNeuralNetwork(KerasTimeSeriesClassifier):
         model = Model(inputs=input, outputs=x)
         model.compile(optimizer="adam", loss="mean_squared_error", metrics=["accuracy"])
 
+        return model
+
 
 class ResNet(KerasTimeSeriesClassifier):
     def __init__(self, path: str | None = None) -> None:
@@ -198,8 +209,7 @@ class ResNet(KerasTimeSeriesClassifier):
     def build_model(self) -> Model:
         n_feature_maps = 64
 
-        input = Input(shape=(None, 1))
-        input = Masking(-1)(input)
+        input = Input(shape=(256, 1))
 
         x = Conv1D(n_feature_maps, 8, padding="same")(input)
         x = BatchNormalization()(x)
@@ -269,8 +279,7 @@ class Encoder(KerasTimeSeriesClassifier):
         super().__init__(self.model)
 
     def build_model(self) -> Model:
-        input = Input(shape=(None, 1))
-        input = Masking(-1)(input)
+        input = Input(shape=(256, 1))
 
         x = Conv1D(128, 5, padding="same")(input)
         x = InstanceNormalization()(x)
@@ -289,8 +298,18 @@ class Encoder(KerasTimeSeriesClassifier):
         x = PReLU(shared_axes=[1])(x)
         x = Dropout(0.2)(x)
 
-        attention_data = Lambda(lambda x: x[:, :, :256])(x)
-        attention_softmax = Lambda(lambda x: x[:, :, 256:])(x)
+        def attention_data_slice(x: tf.Tensor) -> tf.Tensor:
+            return x[:, :, :256]  # type: ignore
+
+        def attention_softmax_slice(x: tf.Tensor) -> tf.Tensor:
+            return x[:, :, 256:]  # type: ignore
+
+        attention_data = Lambda(
+            attention_data_slice, output_shape=lambda s: (s[1], 256)
+        )(x)
+        attention_softmax = Lambda(
+            attention_softmax_slice, output_shape=lambda s: (s[1], 256)
+        )(x)
 
         atttention_softmax = Softmax()(attention_softmax)
         x = Multiply()([attention_data, atttention_softmax])
@@ -338,17 +357,26 @@ def generate_datasets() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
                 X_test.append(data)
                 y_test.append(label)
 
+    # pad or truncate time series to 256
     X_train = pad_sequences(  # noqa: N806
-        X_train, dtype="float32", padding="post", value=-1
+        X_train, maxlen=256, dtype="float32", padding="post"
     )
     X_test = pad_sequences(  # noqa: N806
-        X_test, dtype="float32", padding="post", value=-1
+        X_test, maxlen=256, dtype="float32", padding="post"
     )
 
-    return X_train, np.array(y_train), X_test, np.array(y_test)
+    X_train = np.expand_dims(X_train, axis=-1)  # noqa: N806
+    X_test = np.expand_dims(X_test, axis=-1)  # noqa: N806
+
+    y_train = to_categorical(y_train, num_classes=2)
+    y_test = to_categorical(y_test, num_classes=2)
+
+    return X_train, y_train, X_test, y_test
 
 
-def compare_keras_models() -> None:
+def compare_keras_models() -> None:  # noqa: PLR0912
+    enable_unsafe_deserialization()
+
     X_train, y_train, X_test, y_test = generate_datasets()  # noqa: N806
 
     models = [
@@ -358,7 +386,7 @@ def compare_keras_models() -> None:
         FullyConvolutionalNeuralNetwork(),
         ConvolutionalNeuralNetwork(),
         ResNet(),
-        Encoder(),
+        # Encoder(),
     ]
 
     epochs = [500, 500, 5000, 2000, 2000, 1500, 100]
@@ -368,15 +396,21 @@ def compare_keras_models() -> None:
     results = []
 
     for i, (model, epoch) in enumerate(zip(models, epochs)):
-        if isinstance(model, ResNet):
-            model.fit(X_train, y_train, epoch, resnet_batch_size)
-        else:
-            model.fit(X_train, y_train, epoch, batch_size)
-
         model_path = "/dcs/large/u2204489/" + model.__class__.__name__.lower()
         if i == 1:
             model_path += "_attention"
-        model.save(model_path)
+        model_path += ".keras"
+
+        if Path(model_path).exists():
+            model = load_model(model_path)  # noqa: PLW2901
+        else:
+            print(f"Training {model.__class__.__name__}...")
+            if isinstance(model, ResNet):
+                model.fit(X_train, y_train, epoch, resnet_batch_size)
+            else:
+                model.fit(X_train, y_train, epoch, batch_size)
+
+            model.save(model_path)
 
         false_positives = 0
         false_negatives = 0
@@ -387,12 +421,12 @@ def compare_keras_models() -> None:
 
         for pred, actual in zip(y_pred, y_test):
             if pred[0] > pred[1]:
-                if actual == 0:
+                if np.argmax(actual) == 0:
                     true_negatives += 1
                 else:
                     false_negatives += 1
             else:  # noqa: PLR5501
-                if actual == 1:
+                if np.argmax(actual) == 1:
                     true_positives += 1
                 else:
                     false_positives += 1
@@ -404,6 +438,7 @@ def compare_keras_models() -> None:
                 "false_negatives": false_negatives,
                 "true_positives": true_positives,
                 "true_negatives": true_negatives,
+                "accuracy": (true_positives + true_negatives) / len(y_test),
             }
         )
 
