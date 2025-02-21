@@ -1,86 +1,428 @@
+import sys
+from pathlib import Path
+
 import numpy as np
-from fastdtw import fastdtw
-from sklearn.neighbors import KNeighborsClassifier
-from tensorflow.keras import Model, Sequential  # type: ignore
+import tensorflow as tf
+from instance_normalization import InstanceNormalization
+from pyts.classification import (
+    BOSSVS,
+    SAXVSM,
+    TSBF,
+    KNeighborsClassifier,
+    LearningShapelets,
+    TimeSeriesForest,
+)
+from tensorflow.keras import Model  # type: ignore
+from tensorflow.keras.callbacks import ReduceLROnPlateau  # type: ignore
 from tensorflow.keras.layers import (  # type: ignore
     LSTM,
-    Bidirectional,
+    Activation,
+    Attention,
+    AveragePooling1D,
+    BatchNormalization,
     Conv1D,
     Dense,
+    Dropout,
+    Flatten,
+    GlobalAveragePooling1D,
     Input,
+    Lambda,
+    Masking,
+    MaxPooling1D,
+    Multiply,
+    PReLU,
+    Softmax,
+    add,
+    concatenate,
 )
-
-# MARK: Neural Networks
-
-
-def dense_model(nun_layers: int, num_units: int) -> Model:
-    """A model of <num_layers> Dense layers"""
-    model = Sequential()
-    model.add(Input(shape=(None, 1)))
-    for _ in range(nun_layers):
-        model.add(Dense(num_units, activation="relu"))
-    model.add(Dense(1), activation="sigmoid")
-    return model
+from tensorflow.keras.models import load_model  # type: ignore
+from tensorflow.keras.utils import pad_sequences  # type: ignore
 
 
-def cnn_model(num_filters: int, kernel_size: int, num_layers: int) -> Model:
-    """Model of <num_layers> Conv1D layers"""
-    model = Sequential()
-    model.add(Input(shape=(None, 1)))
-    for _ in range(num_layers):
-        model.add(Conv1D(num_filters, kernel_size, activation="relu"))
-    model.add(Dense(num_filters, activation="relu"))
-    model.add(Dense(1), activation="sigmoid")
-    return model
+class KerasTimeSeriesClassifier:
+    def __init__(self, model: Model) -> None:
+        self.model = model
+        self.callbacks = [
+            ReduceLROnPlateau(monitor="loss", factor=0.5, patience=50, min_lr=0.0001)
+        ]
+
+    def fit(
+        self, X: np.ndarray, y: np.ndarray, epochs: int, batch_size: int  # noqa: N803
+    ) -> None:
+        self.model.fit(X, y, epochs=epochs, batch_size=batch_size)
+
+    def predict(self, X: np.ndarray) -> np.ndarray:  # noqa: N803
+        return self.model.predict(X)
+
+    def save(self, path: str) -> None:
+        self.model.save(path)
 
 
-def lstm_model(num_units: int, bidirectional: bool) -> Model:
-    """LSTM model"""
-    model = Sequential()
-    model.add(Input(shape=(None, 1)))
-    lstm = LSTM(num_units, activation="relu", return_sequences=True)
-    model.add(Bidirectional(lstm) if bidirectional else lstm)
-    model.add(Dense(1), activation="sigmoid")
-    return model
+# MARK: LSTM
+# https://ieeexplore.ieee.org/document/8141873
 
 
-def compile_and_train_model(  # noqa: PLR0913
-    model: Model,
-    model_path: str,
-    x_train: np.ndarray,
-    y_train: np.ndarray,
-    x_test: np.ndarray,
-    y_test: np.ndarray,
-) -> Model:
-    """compile and train a given model (saves the model to model_path)"""
-    model.compile(optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"])
-    model.fit(x_train, y_train, validation_data=(x_test, y_test), epochs=32)
-    model.save(model_path)
-    return model
+class LongShortTermMemory(KerasTimeSeriesClassifier):
+    def __init__(self, path: str | None = None, attention: bool = False) -> None:
+        self.attention = attention
+
+        self.model = load_model(path) if path else self.build_model()
+        super().__init__(self.model)
+
+    def build_model(self) -> Model:
+        input = Input(shape=(None, 1))
+        input = Masking(-1)(input)
+
+        x1 = Conv1D(128, 8, padding="same")(input)
+        x1 = BatchNormalization()(x1)
+        x1 = Activation("relu")(x1)
+
+        x1 = Conv1D(256, 5, padding="same")(x1)
+        x1 = BatchNormalization()(x1)
+        x1 = Activation("relu")(x1)
+
+        x1 = Conv1D(128, 3, padding="same")(x1)
+        x1 = BatchNormalization()(x1)
+        x1 = Activation("relu")(x1)
+
+        x1 = GlobalAveragePooling1D()(x1)
+
+        x2 = Lambda(lambda x: tf.transpose(x, perm=[0, 2, 1]))(input)
+
+        x2 = LSTM(128, return_sequences=True)(x2)
+        if self.attention:
+            x2 = Attention()([x2, x2])
+        x2 = Dropout(0.2)(x2)
+
+        x = concatenate([x1, x2])
+        x = Dense(2, activation="softmax")(x)
+
+        model = Model(inputs=input, outputs=x)
+        model.compile(
+            optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"]
+        )
+
+        return model
 
 
-# https://www.intechopen.com/chapters/1185930
-# MARK: Nearest Neighbour with Dynamic Time Warping
+# MARK: Deep Neural Network Ensembles for Time Series Classification
+# https://arxiv.org/pdf/1903.06602 and https://link.springer.com/article/10.1007/s10618-019-00619-1
+# code from https://github.com/hfawaz/dl-4-tsc and https://github.com/hfawaz/ijcnn19ensemble
 
 
-# https://medium.com/@quantclubiitkgp/time-series-classification-using-dynamic-time-warping-k-nearest-neighbour-e683896e0861
-class NearestNeighbour:
-    """Nearest Neighbour with Dynamic Time Warping"""
+class MultiLayerPerceptron(KerasTimeSeriesClassifier):
+    def __init__(self, path: str | None = None) -> None:
+        self.model = load_model(path) if path else self.build_model()
+        super().__init__(self.model)
 
-    def __init__(self) -> None:
-        self.knn = KNeighborsClassifier(n_neighbors=1, metric=self._dtw)
+    def build_model(self) -> Model:
+        input = Input(shape=(None, 1))
+        input = Masking(-1)(input)
 
-    def _dtw(self, ears1: np.ndarray, ears2: np.ndarray) -> float:
-        """Dynamic Time Warping distance between two ears"""
-        return float(fastdtw(ears1, ears2)[0])
+        x = Dropout(0.1)(input)
+        x = Dense(500, activation="relu")(x)
 
-    def fit(self, x_train: np.ndarray, y_train: np.ndarray) -> None:
-        """Fit the model"""
-        self.knn.fit(x_train, y_train)
+        x = Dropout(0.2)(x)
+        x = Dense(500, activation="relu")(x)
 
-    def predict(self, x_test: np.ndarray) -> np.ndarray:
-        """Predict the model"""
-        return self.knn.predict(x_test).astype(bool)
+        x = Dropout(0.3)(x)
+        x = Dense(2, activation="softmax")(x)
+
+        model = Model(inputs=input, outputs=x)
+        model.compile(
+            optimizer="adadelta", loss="binary_crossentropy", metrics=["accuracy"]
+        )
+
+        return model
 
 
-# MARK: Global Alignment Kernel
+class FullyConvolutionalNeuralNetwork(KerasTimeSeriesClassifier):
+    def __init__(self, path: str | None = None) -> None:
+        self.model = load_model(path) if path else self.build_model()
+        super().__init__(self.model)
+
+    def build_model(self) -> Model:
+        input = Input(shape=(None, 1))
+        input = Masking(-1)(input)
+
+        x = Conv1D(128, 8, padding="same")(input)
+        x = BatchNormalization()(x)
+        x = Activation("relu")(x)
+
+        x = Conv1D(256, 5, padding="same")(x)
+        x = BatchNormalization()(x)
+        x = Activation("relu")(x)
+
+        x = Conv1D(128, 3, padding="same")(x)
+        x = BatchNormalization()(x)
+        x = Activation("relu")(x)
+
+        x = GlobalAveragePooling1D()(x)
+        x = Dense(2, activation="softmax")(x)
+
+        model = Model(inputs=input, outputs=x)
+        model.compile(
+            optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"]
+        )
+
+        return model
+
+
+class ConvolutionalNeuralNetwork(KerasTimeSeriesClassifier):
+    def __init__(self, path: str | None = None) -> None:
+        self.model = load_model(path) if path else self.build_model()
+        super().__init__(self.model)
+
+    def build_model(self) -> Model:
+        input = Input(shape=(None, 1))
+        input = Masking(-1)(input)
+
+        x = Conv1D(6, 7, padding="same", activation="sigmoid")(input)
+        x = AveragePooling1D(3)(x)
+
+        x = Conv1D(12, 7, padding="same", activation="sigmoid")(x)
+        x = AveragePooling1D(3)(x)
+
+        x = Flatten()(x)
+        x = Dense(2, activation="softmax")(x)
+
+        model = Model(inputs=input, outputs=x)
+        model.compile(optimizer="adam", loss="mean_squared_error", metrics=["accuracy"])
+
+
+class ResNet(KerasTimeSeriesClassifier):
+    def __init__(self, path: str | None = None) -> None:
+        self.model = load_model(path) if path else self.build_model()
+        super().__init__(self.model)
+
+    def build_model(self) -> Model:
+        n_feature_maps = 64
+
+        input = Input(shape=(None, 1))
+        input = Masking(-1)(input)
+
+        x = Conv1D(n_feature_maps, 8, padding="same")(input)
+        x = BatchNormalization()(x)
+        x = Activation("relu")(x)
+
+        x = Conv1D(n_feature_maps, 5, padding="same")(x)
+        x = BatchNormalization()(x)
+        x = Activation("relu")(x)
+
+        x = Conv1D(n_feature_maps, 3, padding="same")(x)
+        x = BatchNormalization()(x)
+
+        y = Conv1D(n_feature_maps, 1, padding="same")(input)
+        y = BatchNormalization()(y)
+
+        block1 = add([x, y])
+        block1 = Activation("relu")(block1)
+
+        x = Conv1D(n_feature_maps * 2, 8, padding="same")(block1)
+        x = BatchNormalization()(x)
+        x = Activation("relu")(x)
+
+        x = Conv1D(n_feature_maps * 2, 5, padding="same")(x)
+        x = BatchNormalization()(x)
+        x = Activation("relu")(x)
+
+        x = Conv1D(n_feature_maps * 2, 3, padding="same")(x)
+        x = BatchNormalization()(x)
+        x = Activation("relu")(x)
+
+        y = Conv1D(n_feature_maps * 2, 1, padding="same")(block1)
+        y = BatchNormalization()(y)
+
+        block2 = add([x, y])
+        block2 = Activation("relu")(block2)
+
+        x = Conv1D(n_feature_maps * 2, 8, padding="same")(block2)
+        x = BatchNormalization()(x)
+        x = Activation("relu")(x)
+
+        x = Conv1D(n_feature_maps * 2, 5, padding="same")(x)
+        x = BatchNormalization()(x)
+        x = Activation("relu")(x)
+
+        x = Conv1D(n_feature_maps * 2, 3, padding="same")(x)
+        x = BatchNormalization()(x)
+
+        y = BatchNormalization()(block2)
+
+        block3 = add([x, y])
+        block3 = Activation("relu")(block3)
+
+        x = GlobalAveragePooling1D()(block3)
+        x = Dense(2, activation="softmax")(x)
+
+        model = Model(inputs=input, outputs=x)
+        model.compile(
+            optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"]
+        )
+
+        return model
+
+
+class Encoder(KerasTimeSeriesClassifier):
+    def __init__(self, path: str | None = None) -> None:
+        self.model = load_model(path) if path else self.build_model()
+        super().__init__(self.model)
+
+    def build_model(self) -> Model:
+        input = Input(shape=(None, 1))
+        input = Masking(-1)(input)
+
+        x = Conv1D(128, 5, padding="same")(input)
+        x = InstanceNormalization()(x)
+        x = PReLU(shared_axes=[1])(x)
+        x = Dropout(0.2)(x)
+        x = MaxPooling1D(2)(x)
+
+        x = Conv1D(256, 11, padding="same")(x)
+        x = InstanceNormalization()(x)
+        x = PReLU(shared_axes=[1])(x)
+        x = Dropout(0.2)(x)
+        x = MaxPooling1D(2)(x)
+
+        x = Conv1D(512, 21, padding="same")(x)
+        x = InstanceNormalization()(x)
+        x = PReLU(shared_axes=[1])(x)
+        x = Dropout(0.2)(x)
+
+        attention_data = Lambda(lambda x: x[:, :, :256])(x)
+        attention_softmax = Lambda(lambda x: x[:, :, 256:])(x)
+
+        atttention_softmax = Softmax()(attention_softmax)
+        x = Multiply()([attention_data, atttention_softmax])
+
+        x = Dense(256, activation="sigmoid")(x)
+        x = InstanceNormalization()(x)
+
+        x = Flatten()(x)
+        x = Dense(2, activation="softmax")(x)
+
+        model = Model(inputs=input, outputs=x)
+        model.compile(
+            optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"]
+        )
+
+        return model
+
+
+# MARK: Classical Methods
+
+
+def generate_datasets() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    path_to_faceforensics = "/dcs/large/u2204489/faceforensics/"
+    path_to_train = path_to_faceforensics + "train/"
+    path_to_train_real = path_to_train + "real/"
+    path_to_train_fake = path_to_train + "fake/"
+    path_to_test = path_to_faceforensics + "test/"
+    path_to_test_real = path_to_test + "real/"
+    path_to_test_fake = path_to_test + "fake/"
+
+    X_train, y_train, X_test, y_test = [], [], [], []  # noqa: N806
+
+    for path, label in [
+        (path_to_train_real, 0),
+        (path_to_train_fake, 1),
+        (path_to_test_real, 0),
+        (path_to_test_fake, 1),
+    ]:
+        for file in Path(path).glob("*.npy"):
+            data = np.load(file)
+            if "train" in str(path):
+                X_train.append(data)
+                y_train.append(label)
+            else:
+                X_test.append(data)
+                y_test.append(label)
+
+    X_train = pad_sequences(  # noqa: N806
+        X_train, dtype="float32", padding="post", value=-1
+    )
+    X_test = pad_sequences(  # noqa: N806
+        X_test, dtype="float32", padding="post", value=-1
+    )
+
+    return X_train, np.array(y_train), X_test, np.array(y_test)
+
+
+def compare_keras_models() -> None:
+    X_train, y_train, X_test, y_test = generate_datasets()  # noqa: N806
+
+    models = [
+        LongShortTermMemory(),
+        LongShortTermMemory(attention=True),
+        MultiLayerPerceptron(),
+        FullyConvolutionalNeuralNetwork(),
+        ConvolutionalNeuralNetwork(),
+        ResNet(),
+        Encoder(),
+    ]
+
+    epochs = [500, 500, 5000, 2000, 2000, 1500, 100]
+    batch_size = 16
+    resnet_batch_size = 64
+
+    results = []
+
+    for i, (model, epoch) in enumerate(zip(models, epochs)):
+        if isinstance(model, ResNet):
+            model.fit(X_train, y_train, epoch, resnet_batch_size)
+        else:
+            model.fit(X_train, y_train, epoch, batch_size)
+
+        model_path = "/dcs/large/u2204489/" + model.__class__.__name__.lower()
+        if i == 1:
+            model_path += "_attention"
+        model.save(model_path)
+
+        false_positives = 0
+        false_negatives = 0
+        true_positives = 0
+        true_negatives = 0
+
+        y_pred = model.predict(X_test)
+
+        for pred, actual in zip(y_pred, y_test):
+            if pred[0] > pred[1]:
+                if actual == 0:
+                    true_negatives += 1
+                else:
+                    false_negatives += 1
+            else:  # noqa: PLR5501
+                if actual == 1:
+                    true_positives += 1
+                else:
+                    false_positives += 1
+
+        results.append(
+            {
+                "model": model.__class__.__name__,
+                "false_positives": false_positives,
+                "false_negatives": false_negatives,
+                "true_positives": true_positives,
+                "true_negatives": true_negatives,
+            }
+        )
+
+    for result in results:
+        print(result)
+
+    print("done :)")
+
+
+if __name__ == "__main__":
+    arg = None
+    try:
+        arg = sys.argv[1]
+    except IndexError:
+        print("Please provide an argument")
+        sys.exit(1)
+
+    if arg == "keras":
+        compare_keras_models()
+    else:
+        print("Please provide a valid argument")
+        sys.exit(1)

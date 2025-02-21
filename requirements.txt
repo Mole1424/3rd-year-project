@@ -8,4 +8,4 @@ scikit-learn
 
 foolbox
 
-fastdtw
+pyts
