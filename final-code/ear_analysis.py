@@ -1,12 +1,9 @@
-import sys
 from pathlib import Path
 
 import numpy as np
 import tensorflow as tf
 from instance_normalization import InstanceNormalization
 from pyts.classification import (
-    BOSSVS,
-    SAXVSM,
     TSBF,
     KNeighborsClassifier,
     LearningShapelets,
@@ -328,10 +325,9 @@ class Encoder(KerasTimeSeriesClassifier):
         return model
 
 
-# MARK: Classical Methods
-
-
-def generate_datasets() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def generate_datasets(
+    tensorflow: bool,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     path_to_faceforensics = "/dcs/large/u2204489/faceforensics/"
     path_to_train = path_to_faceforensics + "train/"
     path_to_train_real = path_to_train + "real/"
@@ -365,11 +361,17 @@ def generate_datasets() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
         X_test, maxlen=256, dtype="float32", padding="post"
     )
 
-    X_train = np.expand_dims(X_train, axis=-1)  # noqa: N806
-    X_test = np.expand_dims(X_test, axis=-1)  # noqa: N806
+    if tensorflow:
+        X_train = np.expand_dims(X_train, axis=-1)  # noqa: N806
+        X_test = np.expand_dims(X_test, axis=-1)  # noqa: N806
 
-    y_train = to_categorical(y_train, num_classes=2)
-    y_test = to_categorical(y_test, num_classes=2)
+        y_train = to_categorical(y_train, num_classes=2)
+        y_test = to_categorical(y_test, num_classes=2)
+    else:
+        X_train = np.array(X_train)  # noqa: N806
+        y_train = np.array(y_train)
+        X_test = np.array(X_test)  # noqa: N806
+        y_test = np.array(y_test)
 
     return X_train, y_train, X_test, y_test
 
@@ -377,7 +379,7 @@ def generate_datasets() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
 def compare_keras_models() -> None:  # noqa: PLR0912
     enable_unsafe_deserialization()
 
-    X_train, y_train, X_test, y_test = generate_datasets()  # noqa: N806
+    X_train, y_train, X_test, y_test = generate_datasets(True)  # noqa: N806
 
     models = [
         LongShortTermMemory(),
@@ -448,16 +450,81 @@ def compare_keras_models() -> None:  # noqa: PLR0912
     print("done :)")
 
 
-if __name__ == "__main__":
-    arg = None
-    try:
-        arg = sys.argv[1]
-    except IndexError:
-        print("Please provide an argument")
-        sys.exit(1)
+# MARK: Classical Methods
 
-    if arg == "keras":
-        compare_keras_models()
-    else:
-        print("Please provide a valid argument")
-        sys.exit(1)
+
+def compare_classical_methods() -> None:
+    X_train, y_train, X_test, y_test = generate_datasets(False)  # noqa: N806
+
+    models = [
+        KNeighborsClassifier(metric="dtw", n_jobs=-1),
+        KNeighborsClassifier(metric="dtw_sakoechiba", n_jobs=-1),
+        KNeighborsClassifier(metric="dtw_itakura", n_jobs=-1),
+        KNeighborsClassifier(metric="dtw_fast", n_jobs=-1),
+        LearningShapelets(random_state=42, n_jobs=-1),
+        TimeSeriesForest(n_jobs=-1, random_state=42),
+        TSBF(n_jobs=-1, random_state=42),
+        # SAXVSM(), # cannot do due to sparse matrix
+        # BOSSVS(n_bins=2), # cannot do due to data being too similar
+    ]
+
+    names = [
+        "dtw",
+        "dtw_sakoechiba",
+        "dtw_itakura",
+        "dtw_fast",
+        "learning_shapelets",
+        "time_series_forest",
+        "tsbf",
+        # "saxvsm",
+        # "boss_vs",
+    ]
+
+    results = []
+
+    for model, name in zip(models, names):
+        print(f"Training {name}")
+        model.fit(X_train, y_train)
+
+        model.predict(X_test)
+
+        false_positives = 0
+        false_negatives = 0
+        true_positives = 0
+        true_negatives = 0
+
+        for pred, actual in zip(model.predict(X_test), y_test):
+            if pred == 0:
+                if np.argmax(actual) == 0:
+                    true_negatives += 1
+                else:
+                    false_negatives += 1
+            else:  # noqa: PLR5501
+                if np.argmax(actual) == 1:
+                    true_positives += 1
+                else:
+                    false_positives += 1
+
+        results.append(
+            {
+                "model": name,
+                "false_positives": false_positives,
+                "false_negatives": false_negatives,
+                "true_positives": true_positives,
+                "true_negatives": true_negatives,
+                "accuracy": (true_positives + true_negatives) / len(y_test),
+            }
+        )
+
+        with Path(f"/dcs/large/u2204489/{name}.npy").open("w") as f:
+            f.write(str(model.get_params()))
+
+    for result in results:
+        print(result)
+
+    print("done :)")
+
+
+if __name__ == "__main__":
+    compare_keras_models()
+    compare_classical_methods()

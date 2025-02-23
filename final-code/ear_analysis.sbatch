@@ -15,4 +15,4 @@ source /etc/profile.d/conda.sh
 
 module load CUDA
 source ../venv/bin/activate
-python3.12 -u ear_analysis.py keras
+python3.12 -u ear_analysis.py
