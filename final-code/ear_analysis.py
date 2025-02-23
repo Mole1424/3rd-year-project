@@ -486,21 +486,21 @@ def compare_classical_methods() -> None:
         print(f"Training {name}")
         model.fit(X_train, y_train)
 
-        model.predict(X_test)
+        predictions = model.predict(X_test)
 
         false_positives = 0
         false_negatives = 0
         true_positives = 0
         true_negatives = 0
 
-        for pred, actual in zip(model.predict(X_test), y_test):
+        for pred, actual in zip(predictions, y_test):
             if pred == 0:
-                if np.argmax(actual) == 0:
+                if actual == 0:
                     true_negatives += 1
                 else:
                     false_negatives += 1
             else:  # noqa: PLR5501
-                if np.argmax(actual) == 1:
+                if actual == 1:
                     true_positives += 1
                 else:
                     false_positives += 1
