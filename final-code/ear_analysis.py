@@ -528,3 +528,29 @@ def compare_classical_methods() -> None:
 if __name__ == "__main__":
     compare_keras_models()
     compare_classical_methods()
+
+
+# MARK: Main external class
+
+
+class EarAnalysis:
+    """Analyses ear data to determine if it is real or fake."""
+
+    def __init__(self) -> None:
+        self.classifier = TimeSeriesForest(n_jobs=-1, random_state=42)
+
+    def fit_from_data(self, X: np.ndarray, y: np.ndarray) -> None:  # noqa: N803
+        """
+        Fits the classifier to the given data
+        X: the ear graph
+        y: the label (0 for real, 1 for fake)
+        """
+        self.classifier.fit(X, y)
+
+    def fit_from_file(self, path: str) -> None:
+        """load params from file"""
+        self.classifier.set_params(**np.load(path))
+
+    def predict(self, X: np.ndarray) -> np.ndarray:  # noqa: N803
+        """predicts the label of the given ear graph"""
+        return self.classifier.predict(X)  # type: ignore
