@@ -1,5 +1,6 @@
 from os import listdir
 from pathlib import Path
+from random import sample
 
 import cv2 as cv
 import numpy as np
@@ -16,7 +17,7 @@ from tensorflow.keras.layers import (  # type: ignore
 from tensorflow.keras.models import Model  # type: ignore
 from tensorflow.keras.optimizers import Adam  # type: ignore
 from tensorflow.keras.preprocessing.image import img_to_array, load_img  # type: ignore
-from tensorflow.keras.utils import to_categorical  # type: ignore
+from tensorflow.keras.utils import Sequence, to_categorical  # type: ignore
 
 path_to_train_data = "/dcs/large/u2204489/faceforensics/train"
 
@@ -44,32 +45,45 @@ def create_image_dataset() -> None:
             cap.release()
 
 
-def preprocess_data() -> tuple:
-    # X is images, Y is real(0)/fake(1)
-    X, Y = [], []  # noqa: N806
+class ImageDataGenerator(Sequence):
+    def __init__(
+        self,
+        reals: list[str],
+        fakes: list[str],
+        batch_size: int,
+        image_size: tuple[int, int],
+    ) -> None:
+        super().__init__()
+        self.reals = reals
+        self.fakes = fakes
+        self.batch_size = batch_size
+        self.real_batch_size = batch_size // 2
+        self.fake_batch_size = batch_size // 2
+        self.image_size = image_size
+        self.indices = np.arange(len(self.reals) + len(self.fakes))
+        self.on_epoch_end()
 
-    # load the images and labels
-    real_data = [f for f in listdir(f"{path_to_train_data}/real") if f.endswith(".png")]
-    fake_data = [f for f in listdir(f"{path_to_train_data}/fake") if f.endswith(".png")]
+    def __len__(self) -> int:
+        return len(self.indices) // self.batch_size
 
-    for img in real_data:
-        X.append(
-            img_to_array(load_img(f"{path_to_train_data}/real/{img}")).flatten() / 255.0
+    def __getitem__(self, index: int) -> tuple[np.ndarray, np.ndarray]:
+        real_batch = sample(self.reals, self.real_batch_size)
+        fake_batch = sample(self.fakes, self.fake_batch_size)
+
+        return self.__data_generation(
+            real_batch + fake_batch,
+            [1] * self.real_batch_size + [0] * self.fake_batch_size,
         )
-        Y.append(0)
-    for img in fake_data:
-        X.append(
-            img_to_array(load_img(f"{path_to_train_data}/fake/{img}")).flatten() / 255.0
-        )
-        Y.append(1)
 
-    # preprocess the data
-    X = np.array(X)  # noqa: N806
-    Y = to_categorical(Y, 2)  # noqa: N806
-
-    X = X.reshape(-1, 256, 256, 3)  # noqa: N806
-
-    return X, Y
+    def __data_generation(
+        self, X: list[str], Y: list[int]  # noqa: N803
+    ) -> tuple[np.ndarray, np.ndarray]:
+        return np.array(
+            [
+                img_to_array(load_img(img_path, target_size=self.image_size)) / 255.0
+                for img_path in X
+            ]
+        ), to_categorical(Y, num_classes=2)
 
 
 # Video Face Manipulation Detection Through Ensemble of CNNs
@@ -107,23 +121,35 @@ def xception() -> Model:
 
 
 def main() -> None:
-    create_image_dataset()
-    X, Y = preprocess_data()  # noqa: N806
+    # create_image_dataset()
+
+    gpus = tf.config.experimental.list_physical_devices("GPU")
+    for gpu in gpus:
+        tf.config.experimental.set_memory_growth(gpu, True)
+
+    fakes = [
+        str(f) for f in listdir(f"{path_to_train_data}/fake") if f.endswith(".png")
+    ]
+    reals = [
+        str(f) for f in listdir(f"{path_to_train_data}/real") if f.endswith(".png")
+    ]
+    fakes = [f"{path_to_train_data}/fake/{f}" for f in fakes]
+    reals = [f"{path_to_train_data}/real/{r}" for r in reals]
 
     model = efficientnet_b4()
     model.compile(
         optimizer=Adam(learning_rate=0.00001, beta_1=0.9, beta_2=0.999, epsilon=1e-07),
         loss=tf.compat.v1.losses.log_loss,
     )
-    model.fit(X, Y, batch_size=32, epochs=10, validation_split=0.2)
+    model.fit(ImageDataGenerator(reals, fakes, 32, (256, 256)), epochs=60)
     model.save("/dcs/large/u2204489/efficientnet_b4.keras")
 
     model = xception()
     model.compile(
-        optimizer=Adam(learning_rate=0.0002, bera_1=0.9, beta_2=0.999, epsilon=1e-07),
+        optimizer=Adam(learning_rate=0.0002, beta_1=0.9, beta_2=0.999, epsilon=1e-07),
         loss="categorical_crossentropy",
     )
-    model.fit(X, Y, batch_size=32, epochs=10, validation_split=0.2)
+    model.fit(ImageDataGenerator(reals, fakes, 32, (256, 256)), epochs=60)
     model.save("/dcs/large/u2204489/xception.keras")
 
     print("Done :)")

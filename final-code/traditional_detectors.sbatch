@@ -14,5 +14,6 @@ source /etc/profile.d/modules.sh
 source /etc/profile.d/conda.sh
 
 module load CUDA
+export TF_GPU_ALLOCATOR=cuda_malloc_async
 source ../venv/bin/activate
 python3.12 traditional_detectors.py
