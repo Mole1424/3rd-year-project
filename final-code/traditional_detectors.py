@@ -139,7 +139,7 @@ def main() -> None:
     model = efficientnet_b4()
     model.compile(
         optimizer=Adam(learning_rate=0.00001, beta_1=0.9, beta_2=0.999, epsilon=1e-07),
-        loss=tf.compat.v1.losses.log_loss,
+        loss="binary_crossentropy",
     )
     model.fit(ImageDataGenerator(reals, fakes, 32, (256, 256)), epochs=60)
     model.save("/dcs/large/u2204489/efficientnet_b4.keras")

@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import joblib
 import numpy as np
 import tensorflow as tf
 from instance_normalization import InstanceNormalization
@@ -516,8 +517,8 @@ def compare_classical_methods() -> None:
             }
         )
 
-        with Path(f"/dcs/large/u2204489/{name}.npy").open("w") as f:
-            f.write(str(model.get_params()))
+        path = Path(f"/dcs/large/u2204489/{name}.joblib")
+        joblib.dump(model, path)
 
     for result in results:
         print(result)
@@ -536,8 +537,10 @@ if __name__ == "__main__":
 class EarAnalysis:
     """Analyses ear data to determine if it is real or fake."""
 
-    def __init__(self) -> None:
+    def __init__(self, path_to_model: str | None = None) -> None:
         self.classifier = TimeSeriesForest(n_jobs=-1, random_state=42)
+        if path_to_model is not None:
+            self.fit_from_file(path_to_model)
 
     def fit_from_data(self, X: np.ndarray, y: np.ndarray) -> None:  # noqa: N803
         """
@@ -549,7 +552,7 @@ class EarAnalysis:
 
     def fit_from_file(self, path: str) -> None:
         """load params from file"""
-        self.classifier.set_params(**np.load(path))
+        self.classifier = joblib.load(path)
 
     def predict(self, X: np.ndarray) -> np.ndarray:  # noqa: N803
         """predicts the label of the given ear graph"""
