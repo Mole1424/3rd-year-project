@@ -340,10 +340,10 @@ def generate_datasets(
     X_train, y_train, X_test, y_test = [], [], [], []  # noqa: N806
 
     for path, label in [
-        (path_to_train_real, 0),
-        (path_to_train_fake, 1),
-        (path_to_test_real, 0),
-        (path_to_test_fake, 1),
+        (path_to_train_real, 1),
+        (path_to_train_fake, 0),
+        (path_to_test_real, 1),
+        (path_to_test_fake, 0),
     ]:
         for file in Path(path).glob("*.npy"):
             data = np.load(file)
@@ -537,23 +537,10 @@ if __name__ == "__main__":
 class EarAnalysis:
     """Analyses ear data to determine if it is real or fake."""
 
-    def __init__(self, path_to_model: str | None = None) -> None:
-        self.classifier = TimeSeriesForest(n_jobs=-1, random_state=42)
-        if path_to_model is not None:
-            self.fit_from_file(path_to_model)
-
-    def fit_from_data(self, X: np.ndarray, y: np.ndarray) -> None:  # noqa: N803
-        """
-        Fits the classifier to the given data
-        X: the ear graph
-        y: the label (0 for real, 1 for fake)
-        """
-        self.classifier.fit(X, y)
-
-    def fit_from_file(self, path: str) -> None:
-        """load params from file"""
-        self.classifier = joblib.load(path)
+    def __init__(self, path_to_model: str) -> None:
+        self.classifier = load_model(path_to_model)
 
     def predict(self, X: np.ndarray) -> np.ndarray:  # noqa: N803
         """predicts the label of the given ear graph"""
-        return self.classifier.predict(X)  # type: ignore
+        # if multiple graphs are given, predict each one
+        return np.array([np.argmax(self.classifier.predict(x)) for x in X])
