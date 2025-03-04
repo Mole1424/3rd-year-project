@@ -35,7 +35,16 @@ def classify_video_custom(
 
     for frame in video:
         # get landmarks of the first face detected
-        landmarks = landmarker.get_landmarks(frame)[0]
+        landmarks = landmarker.get_landmarks(frame)
+
+        if len(landmarks) == 0:
+            ears.append(-1)
+            continue
+
+        landmarks = landmarks[0]
+        if len(landmarks) != 12:  # noqa: PLR2004
+            ears.append(-1)
+            continue
 
         # calculate the eye aspect ratio for each eye and take the average
         ear_l = (
