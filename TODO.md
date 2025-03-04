@@ -15,20 +15,20 @@
   - [X] find best one and use for final model
 
 ## Noise
-- [ ] Code own versions of all the noise functions
-  - [ ] CW-L2
+- [X] Code own versions of all the noise functions
+  - [X] CW-L2
   - [ ] FakeRetouch
-  - [ ] FGSM?
+  - [X] FGSM
 
 ## Testing
-- [ ] Email SCRTP to ask for more space
-- [ ] See if anyone has got access to Meta's DFDC or try and find an email
+- [X] Email SCRTP to ask for more space
+- [X] See if anyone has got access to Meta's DFDC or try and find an email
 - [ ] Look into complete deepfaked models (not changing the face with another clip, but changing the face with a generated face)
 - [X] Adapt script to be generalised (`python main.py <path_to_dataset>`)
 - [ ] Work on test script to make multithreaded and save progress as it goes (add buffer back in to speed up testing)
 
 ## Presentation
-- [ ] Make presentation
+- [X] Make presentation
 - [ ] Practice presentation
 - [ ] Present presentation (ideally will have final data by this point)
 
