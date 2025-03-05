@@ -1,5 +1,4 @@
 import sys
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import cv2 as cv
@@ -30,7 +29,7 @@ def generate_datasets(path_to_dataset: str) -> list[tuple[str, int]]:
 def classify_video_custom(
     video: np.ndarray, landmarker: HRNet | PFLD, ear_analyser: EarAnalysis
 ) -> bool:
-    """classifies a video using custom models (1 real, 0 fake)"""
+    """classifies a video using custom models (true real, false fake)"""
     ears = []
 
     for frame in video:
@@ -57,6 +56,9 @@ def classify_video_custom(
         ) / (2 * np.linalg.norm(landmarks[8] - landmarks[11]))
         ears.append((ear_l + ear_r) / 2)
 
+    if len(ears) == 0 or all(ear == -1 for ear in ears):
+        return False
+
     # return the prediction of the ear analyser
     return bool(ear_analyser.predict(np.array(ears)))
 
@@ -80,31 +82,6 @@ def classify_video_classical(video: np.ndarray, model: Model) -> bool:
     return bool(real_frames / len(video) > real_frame_threshold)  # thanks bool_
 
 
-# config adapted from https://github.com/HRNet/HRNet-Facial-Landmark-Detection/blob/master/experiments/wflw/face_alignment_wflw_hrnet_w18.yaml
-hrnet_config = {
-    "NUM_JOINTS": 68,
-    "FINAL_CONV_KERNEL": 1,
-    "STAGE2": {
-        "NUM_MODULES": 1,
-        "NUM_BRANCHES": 2,
-        "NUM_BLOCKS": [4, 4],
-        "NUM_CHANNELS": [18, 36],
-    },
-    "STAGE3": {
-        "NUM_MODULES": 4,
-        "NUM_BRANCHES": 3,
-        "NUM_BLOCKS": [4, 4, 4],
-        "NUM_CHANNELS": [18, 36, 72],
-    },
-    "STAGE4": {
-        "NUM_MODULES": 3,
-        "NUM_BRANCHES": 4,
-        "NUM_BLOCKS": [4, 4, 4, 4],
-        "NUM_CHANNELS": [18, 36, 72, 144],
-    },
-}
-
-
 def perturbate_frames(
     frames: np.ndarray, xception: Model, efficientnet: Model
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -117,40 +94,44 @@ def perturbate_frames(
 
         # pre-process frame for models
         frame = cv.resize(frame, (256, 256))  # noqa: PLW2901
-        frame = img_to_array(frame) / 255.0  # noqa: PLW2901
+        frame = frame / 255.0  # noqa: PLW2901
         frame = np.expand_dims(frame, axis=0)  # noqa: PLW2901
-        frame = tf.convert_to_tensor(frame, dtype=tf.float32)  # type: ignore # noqa: PLW2901
+        frame = tf.convert_to_tensor(frame, dtype=tf.float32)  # noqa: PLW2901
 
         # generate noise using the fast gradient sign attack
         attack = LinfFastGradientAttack()
-        epsilon = 0.02
+        epsilon = 0.01
         xception_frame = attack.run(
-            TensorFlowModel(xception, bounds=(0, 1)),
+            TensorFlowModel(xception, bounds=(0, 256)),
             frame,
             # attempt to misclassify the frame as real
             Misclassification(tf.constant([1], dtype=tf.int32)),
             epsilon=epsilon,
         )
         efficientnet_frame = attack.run(
-            TensorFlowModel(efficientnet, bounds=(0, 1)),
+            TensorFlowModel(efficientnet, bounds=(0, 256)),
             frame,
             # attempt to misclassify the frame as real
             Misclassification(tf.constant([1], dtype=tf.int32)),
             epsilon=epsilon,
         )
 
-        frame_set = (xception_frame, efficientnet_frame)
+        # post-process the frames to return to original quality
+        xception_frame = np.squeeze(xception_frame, axis=0)
+        efficientnet_frame = np.squeeze(efficientnet_frame, axis=0)
+        xception_frame = np.clip(xception_frame, 0, 1) * 255
+        efficientnet_frame = np.clip(efficientnet_frame, 0, 1) * 255
+        xception_frame = xception_frame.astype(np.uint8)
+        efficientnet_frame = efficientnet_frame.astype(np.uint8)
+        xception_frame = cv.resize(
+            xception_frame, (original_dimensions[1], original_dimensions[0])
+        )
+        efficientnet_frame = cv.resize(
+            efficientnet_frame, (original_dimensions[1], original_dimensions[0])
+        )
 
-        # post-process frame
-        for frame in frame_set:  # noqa: PLW2901
-            frame = np.squeeze(frame, axis=0)  # noqa: PLW2901
-            frame = np.clip(frame, 0, 1)  # noqa: PLW2901
-            frame = (frame * 255).astype(np.uint8)  # noqa: PLW2901
-            frame = cv.resize(  # noqa: PLW2901
-                frame, (original_dimensions[1], original_dimensions[0])
-            )
-        return_frames[0].append(frame_set[0])
-        return_frames[1].append(frame_set[1])
+        return_frames[0].append(xception_frame)
+        return_frames[1].append(efficientnet_frame)
 
     return np.array(return_frames[0]), np.array(return_frames[1])
 
@@ -170,11 +151,14 @@ def process_video(
     # get all frames and convert into numpy array
     video = cv.VideoCapture(video_path)
     frames = []
+    max_frames = 256
     while video.isOpened():
         success, frame = video.read()
         if not success:
             break
         frames.append(frame)
+        if len(frames) == max_frames:
+            break
     frames = np.array(frames)
 
     # predict the video using all models
@@ -182,8 +166,8 @@ def process_video(
     xception_prediction = classify_video_classical(frames, xception)
     efficientnet_prediction = classify_video_classical(frames, efficientnet)
 
-    # perturbate and classify fake frames
     if label == 0:
+        # perturbate and classify fake frames
         perturbarted_xception, perturbarted_efficientnet = perturbate_frames(
             frames, xception, efficientnet
         )
@@ -194,12 +178,14 @@ def process_video(
         custom_efficientnet_prediction = classify_video_custom(
             perturbarted_efficientnet, landmarker, ear_analyser
         )
+
         xception_xception_prediction = classify_video_classical(
             perturbarted_xception, xception
         )
         xception_efficientnet_prediction = classify_video_classical(
             perturbarted_efficientnet, xception
         )
+
         efficientnet_xception_prediction = classify_video_classical(
             perturbarted_xception, efficientnet
         )
@@ -216,6 +202,19 @@ def process_video(
             efficientnet_prediction
         )
 
+    # print results for video in case of error
+    print(f"Finished processing {video_path}")
+    print(f"Label: {label}")
+    print(f"Custom: {custom_prediction}")
+    print(f"Xception: {xception_prediction}")
+    print(f"EfficientNet: {efficientnet_prediction}")
+    print(f"Custom Xception: {custom_xception_prediction}")
+    print(f"Xception Xception: {xception_xception_prediction}")
+    print(f"EfficientNet Xception: {efficientnet_xception_prediction}")
+    print(f"Custom EfficientNet: {custom_efficientnet_prediction}")
+    print(f"Xception EfficientNet: {xception_efficientnet_prediction}")
+    print(f"EfficientNet EfficientNet: {efficientnet_efficientnet_prediction}")
+
     return (
         label,
         custom_prediction,
@@ -230,32 +229,7 @@ def process_video(
     )
 
 
-def worker(
-    video_info: tuple[str, int]
-) -> tuple[int, bool, bool, bool, bool, bool, bool, bool, bool, bool]:
-    """Processes a single video and returns classification results"""
-
-    path_to_large = "/dcs/large/u2204489/"
-
-    # load models
-    landmarker = HRNet(hrnet_config, path_to_large + "hrnet.weights.h5")
-    ear_analyser = EarAnalysis(path_to_large + "fullyconvolutionalneuralnetwork.keras")
-
-    xception = load_model(path_to_large + "xception.keras")
-    efficientnet = load_model(path_to_large + "efficientnet_b4.keras")
-
-    # process video
-    return process_video(
-        video_info,
-        landmarker,
-        ear_analyser,
-        xception,
-        efficientnet,
-    )
-
-
 def main(path_to_dataset: str) -> None:
-
     # allow for memory growth on GPU
     for gpu in tf.config.experimental.list_physical_devices("GPU"):
         tf.config.experimental.set_memory_growth(gpu, True)
@@ -264,6 +238,35 @@ def main(path_to_dataset: str) -> None:
     path_to_large = "/dcs/large/u2204489/"
     path_to_dataset = path_to_large + path_to_dataset
     dataset = generate_datasets(path_to_dataset)
+
+    # load models
+    hrnet_config = {
+        "NUM_JOINTS": 68,
+        "FINAL_CONV_KERNEL": 1,
+        "STAGE2": {
+            "NUM_MODULES": 1,
+            "NUM_BRANCHES": 2,
+            "NUM_BLOCKS": [4, 4],
+            "NUM_CHANNELS": [18, 36],
+        },
+        "STAGE3": {
+            "NUM_MODULES": 4,
+            "NUM_BRANCHES": 3,
+            "NUM_BLOCKS": [4, 4, 4],
+            "NUM_CHANNELS": [18, 36, 72],
+        },
+        "STAGE4": {
+            "NUM_MODULES": 3,
+            "NUM_BRANCHES": 4,
+            "NUM_BLOCKS": [4, 4, 4, 4],
+            "NUM_CHANNELS": [18, 36, 72, 144],
+        },
+    }
+    landmarker = HRNet(hrnet_config, path_to_large + "hrnet.weights.h5")
+    ear_analyser = EarAnalysis(path_to_large + "fullyconvolutionalneuralnetwork.keras")
+
+    xception = load_model(path_to_large + "xception.keras")
+    efficientnet = load_model(path_to_large + "efficientnet_b4.keras")
 
     # create results dictionary
     results = {
@@ -278,13 +281,25 @@ def main(path_to_dataset: str) -> None:
         "efficientnet_efficientnet": {"tp": 0, "fp": 0, "tn": 0, "fn": 0},
     }
 
-    # process videos in parallel for performance
-    with ThreadPoolExecutor(max_workers=8) as executor:
-        futures = [executor.submit(worker, video_info) for video_info in dataset]
+    for video in dataset:
+        # process video
+        (
+            label,
+            custom_pred,
+            xception_pred,
+            efficientnet_pred,
+            custom_xception_pred,
+            xception_xception_pred,
+            efficientnet_xception_pred,
+            custom_efficientnet_pred,
+            xception_efficientnet_pred,
+            efficientnet_efficientnet_pred,
+        ) = process_video(video, landmarker, ear_analyser, xception, efficientnet)
 
-        for future in as_completed(futures):
-            (
-                label,
+        # update results dictionary
+        for model_name, pred in zip(
+            results.keys(),
+            [
                 custom_pred,
                 xception_pred,
                 efficientnet_pred,
@@ -294,35 +309,20 @@ def main(path_to_dataset: str) -> None:
                 custom_efficientnet_pred,
                 xception_efficientnet_pred,
                 efficientnet_efficientnet_pred,
-            ) = future.result()
+            ],
+        ):
+            if pred:
+                if label:
+                    results[model_name]["tp"] += 1
+                else:
+                    results[model_name]["fp"] += 1
+            else:  # noqa: PLR5501
+                if label:
+                    results[model_name]["fn"] += 1
+                else:
+                    results[model_name]["tn"] += 1
 
-            # update results dictionary
-            for model_name, pred in zip(
-                results.keys(),
-                [
-                    custom_pred,
-                    xception_pred,
-                    efficientnet_pred,
-                    custom_xception_pred,
-                    xception_xception_pred,
-                    efficientnet_xception_pred,
-                    custom_efficientnet_pred,
-                    xception_efficientnet_pred,
-                    efficientnet_efficientnet_pred,
-                ],
-            ):
-                if pred:
-                    if label:
-                        results[model_name]["tp"] += 1
-                    else:
-                        results[model_name]["fp"] += 1
-                else:  # noqa: PLR5501
-                    if label:
-                        results[model_name]["fn"] += 1
-                    else:
-                        results[model_name]["tn"] += 1
-
-    # print final results
+    # print results
     for model_name in results:
         tp, fp, tn, fn = (
             results[model_name]["tp"],

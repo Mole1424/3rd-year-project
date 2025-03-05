@@ -540,7 +540,9 @@ class EarAnalysis:
     def __init__(self, path_to_model: str) -> None:
         self.classifier = load_model(path_to_model)
 
-    def predict(self, X: np.ndarray) -> np.ndarray:  # noqa: N803
+    def predict(self, ears: np.ndarray) -> int:
         """predicts the label of the given ear graph"""
-        # if multiple graphs are given, predict each one
-        return np.array([np.argmax(self.classifier.predict(x)) for x in X])
+        ears = pad_sequences([ears], maxlen=256, dtype="float32", padding="post")
+        ears = np.expand_dims(ears, axis=-1)
+        prediction = self.classifier.predict(ears, verbose=0)
+        return int(np.argmax(prediction))
