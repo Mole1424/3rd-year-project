@@ -29,7 +29,7 @@
 
 ## Presentation
 - [X] Make presentation
-- [ ] Practice presentation
+- [X] Practice presentation
 - [ ] Present presentation (ideally will have final data by this point)
 
 ## Dissertation
