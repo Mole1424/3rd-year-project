@@ -5,9 +5,9 @@ from random import sample
 import cv2 as cv
 import numpy as np
 import tensorflow as tf
+from sklearn.model_selection import train_test_split
 from tensorflow.keras import Input  # type: ignore
 from tensorflow.keras.applications import EfficientNetB4, Xception  # type: ignore
-from tensorflow.keras.applications.efficientnet import preprocess_input  # type: ignore
 from tensorflow.keras.layers import (  # type: ignore
     BatchNormalization,
     Dense,
@@ -46,16 +46,29 @@ def create_image_dataset() -> None:
 
 
 class ImageDataGenerator(Sequence):
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         reals: list[str],
         fakes: list[str],
         batch_size: int,
         image_size: tuple[int, int],
+        train: bool = True,
+        split: float = 0.8,
     ) -> None:
         super().__init__()
-        self.reals = reals
-        self.fakes = fakes
+
+        # split real and fake images into train/test sets
+        reals_train, reals_test = train_test_split(
+            reals, train_size=split, random_state=42
+        )
+        fakes_train, fakes_test = train_test_split(
+            fakes, train_size=split, random_state=42
+        )
+
+        # select train or test set based on flag
+        self.reals = reals_train if train else reals_test
+        self.fakes = fakes_train if train else fakes_test
+
         self.batch_size = batch_size
         self.real_batch_size = batch_size // 2
         self.fake_batch_size = batch_size // 2
@@ -80,10 +93,12 @@ class ImageDataGenerator(Sequence):
     ) -> tuple[np.ndarray, np.ndarray]:
         return np.array(
             [
-                img_to_array(load_img(img_path, target_size=self.image_size)) / 255.0
+                img_to_array(load_img(img_path, target_size=self.image_size)).flatten()
+                / 255.0
                 for img_path in X
             ]
-        ), to_categorical(Y, num_classes=2)
+        ).reshape(-1, self.image_size[0], self.image_size[1], 3), to_categorical(Y, num_classes=2)
+
 
 
 # Video Face Manipulation Detection Through Ensemble of CNNs
@@ -94,7 +109,7 @@ def efficientnet_b4() -> Model:
     backbone = EfficientNetB4(include_top=False, input_shape=(256, 256, 3))
 
     inputs = Input(shape=(256, 256, 3))
-    x = backbone(preprocess_input(inputs))
+    x = backbone(inputs)
     x = GlobalAveragePooling2D()(x)
     x = BatchNormalization()(x)
     x = Dropout(0.5)(x)
@@ -111,7 +126,7 @@ def xception() -> Model:
     backbone = Xception(include_top=False, input_shape=(256, 256, 3))
 
     inputs = Input(shape=(256, 256, 3))
-    x = backbone(preprocess_input(inputs))
+    x = backbone(inputs)
     x = GlobalAveragePooling2D()(x)
     x = BatchNormalization()(x)
     x = Dropout(0.5)(x)
@@ -136,21 +151,24 @@ def main() -> None:
     fakes = [f"{path_to_train_data}/fake/{f}" for f in fakes]
     reals = [f"{path_to_train_data}/real/{r}" for r in reals]
 
+    train_generator = ImageDataGenerator(reals, fakes, 32, (256, 256), True)
+    test_generator = ImageDataGenerator(reals, fakes, 32, (256, 256), False)
+
     model = efficientnet_b4()
     model.compile(
         optimizer=Adam(learning_rate=0.00001, beta_1=0.9, beta_2=0.999, epsilon=1e-07),
         loss="binary_crossentropy",
     )
-    model.fit(ImageDataGenerator(reals, fakes, 32, (256, 256)), epochs=60)
-    model.save("/dcs/large/u2204489/efficientnet_b4.keras")
+    model.fit(train_generator, epochs=60, validation_data=test_generator)
+    model.save("/dcs/large/u2204489/efficientnet_b4_1.keras")
 
     model = xception()
     model.compile(
         optimizer=Adam(learning_rate=0.0002, beta_1=0.9, beta_2=0.999, epsilon=1e-07),
         loss="categorical_crossentropy",
     )
-    model.fit(ImageDataGenerator(reals, fakes, 32, (256, 256)), epochs=60)
-    model.save("/dcs/large/u2204489/xception.keras")
+    model.fit(train_generator, epochs=60, validation_data=test_generator)
+    model.save("/dcs/large/u2204489/xception_1.keras")
 
     print("Done :)")
 
