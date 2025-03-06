@@ -46,14 +46,8 @@ def classify_video_custom(
             continue
 
         # calculate the eye aspect ratio for each eye and take the average
-        ear_l = (
-            np.linalg.norm(landmarks[1] - landmarks[5])
-            + np.linalg.norm(landmarks[2] - landmarks[4])
-        ) / (2 * np.linalg.norm(landmarks[0] - landmarks[3]))
-        ear_r = (
-            np.linalg.norm(landmarks[6] - landmarks[10])
-            + np.linalg.norm(landmarks[7] - landmarks[9])
-        ) / (2 * np.linalg.norm(landmarks[8] - landmarks[11]))
+        ear_l = (((landmarks[1][0] - landmarks[5][0]) **2 + (landmarks[1][1] - landmarks[5][1]) **2) + ((landmarks[2][0] - landmarks[4][0]) **2 + (landmarks[2][1] - landmarks[4][1]) **2)) / (2 * ((landmarks[0][0] - landmarks[3][0]) **2 + (landmarks[0][1] - landmarks[3][1]) **2))
+        ear_r = (((landmarks[7][0] - landmarks[11][0]) **2 + (landmarks[7][1] - landmarks[11][1]) **2) + ((landmarks[8][0] - landmarks[10][0]) **2 + (landmarks[8][1] - landmarks[10][1]) **2)) / (2 * ((landmarks[6][0] - landmarks[9][0]) **2 + (landmarks[6][1] - landmarks[9][1]) **2))
         ears.append((ear_l + ear_r) / 2)
 
     if len(ears) == 0 or all(ear == -1 for ear in ears):
@@ -102,14 +96,14 @@ def perturbate_frames(
         attack = LinfFastGradientAttack()
         epsilon = 0.01
         xception_frame = attack.run(
-            TensorFlowModel(xception, bounds=(0, 256)),
+            TensorFlowModel(xception, bounds=(0, 255)),
             frame,
             # attempt to misclassify the frame as real
             Misclassification(tf.constant([1], dtype=tf.int32)),
             epsilon=epsilon,
         )
         efficientnet_frame = attack.run(
-            TensorFlowModel(efficientnet, bounds=(0, 256)),
+            TensorFlowModel(efficientnet, bounds=(0, 255)),
             frame,
             # attempt to misclassify the frame as real
             Misclassification(tf.constant([1], dtype=tf.int32)),
