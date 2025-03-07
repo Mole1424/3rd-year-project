@@ -30,7 +30,7 @@
 ## Presentation
 - [X] Make presentation
 - [X] Practice presentation
-- [ ] Present presentation (ideally will have final data by this point)
+- [X] Present presentation (ideally will have final data by this point)
 
 ## Dissertation
 - [ ] Words (a lot of them (an awful lot of them)) 
