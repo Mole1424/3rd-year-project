@@ -5,8 +5,8 @@ import cv2 as cv
 import numpy as np
 import tensorflow as tf
 from ear_analysis import EarAnalysis
-from foolbox import Misclassification, TensorFlowModel  # type: ignore
-from foolbox.attacks import LinfFastGradientAttack  # type: ignore
+from foolbox import TargetedMisclassification, TensorFlowModel  # type: ignore
+from foolbox.attacks import LinfPGD
 from hrnet import HRNet
 from pfld import PFLD
 from tensorflow.keras.models import Model, load_model  # type: ignore
@@ -20,10 +20,20 @@ def generate_datasets(path_to_dataset: str) -> list[tuple[str, int]]:
     dataset = []
 
     for video in videos:
-        label = int("real" in video.name)
+        label = int("real" in str(video))
+        # if label == 1:
+        #     continue
         dataset.append((str(video), label))
 
     return dataset
+
+def calculate_ear(points: np.ndarray) -> float:
+    """calcualte eye aspect ratio"""
+    p2_p6 = np.linalg.norm(points[1] - points[5])
+    p3_p5 = np.linalg.norm(points[2] - points[4])
+    p1_p4 = np.linalg.norm(points[0] - points[3])
+
+    return float((p2_p6 + p3_p5) / (2.0 * p1_p4))
 
 
 def classify_video_custom(
@@ -37,20 +47,20 @@ def classify_video_custom(
         landmarks = landmarker.get_landmarks(frame)
 
         if len(landmarks) == 0:
-            ears.append(-1)
+            print("No face detected")
             continue
 
         landmarks = landmarks[0]
         if len(landmarks) != 12:  # noqa: PLR2004
-            ears.append(-1)
+            print("Not enough landmarks detected")
             continue
 
         # calculate the eye aspect ratio for each eye and take the average
-        ear_l = (((landmarks[1][0] - landmarks[5][0]) **2 + (landmarks[1][1] - landmarks[5][1]) **2) + ((landmarks[2][0] - landmarks[4][0]) **2 + (landmarks[2][1] - landmarks[4][1]) **2)) / (2 * ((landmarks[0][0] - landmarks[3][0]) **2 + (landmarks[0][1] - landmarks[3][1]) **2))
-        ear_r = (((landmarks[7][0] - landmarks[11][0]) **2 + (landmarks[7][1] - landmarks[11][1]) **2) + ((landmarks[8][0] - landmarks[10][0]) **2 + (landmarks[8][1] - landmarks[10][1]) **2)) / (2 * ((landmarks[6][0] - landmarks[9][0]) **2 + (landmarks[6][1] - landmarks[9][1]) **2))
+        ear_l = calculate_ear(landmarks[0:6])
+        ear_r = calculate_ear(landmarks[6:12])
         ears.append((ear_l + ear_r) / 2)
 
-    if len(ears) == 0 or all(ear == -1 for ear in ears):
+    if len(ears) == 0:
         return False
 
     # return the prediction of the ear analyser
@@ -64,8 +74,8 @@ def classify_video_classical(video: np.ndarray, model: Model) -> bool:
     for frame in video:
         # pre-process frame for model
         input_frame = cv.resize(frame, (256, 256))
-        input_frame = img_to_array(input_frame) / 255.0
-        input_frame = np.expand_dims(input_frame, axis=0)
+        input_frame = img_to_array(input_frame).flatten() / 255.0
+        input_frame = np.reshape(input_frame, (-1, 256, 256, 3))
 
         # predict the frame
         prediction = model.predict(input_frame, verbose=0)
@@ -93,20 +103,19 @@ def perturbate_frames(
         frame = tf.convert_to_tensor(frame, dtype=tf.float32)  # noqa: PLW2901
 
         # generate noise using the fast gradient sign attack
-        attack = LinfFastGradientAttack()
-        epsilon = 0.01
+        attack = LinfPGD(steps=1)
+        epsilon = 0.001
         xception_frame = attack.run(
-            TensorFlowModel(xception, bounds=(0, 255)),
+            TensorFlowModel(xception, bounds=(0, 1)),
             frame,
             # attempt to misclassify the frame as real
-            Misclassification(tf.constant([1], dtype=tf.int32)),
+            TargetedMisclassification(tf.constant([1], dtype=tf.int32)),
             epsilon=epsilon,
         )
         efficientnet_frame = attack.run(
-            TensorFlowModel(efficientnet, bounds=(0, 255)),
+            TensorFlowModel(efficientnet, bounds=(0, 1)),
             frame,
-            # attempt to misclassify the frame as real
-            Misclassification(tf.constant([1], dtype=tf.int32)),
+            TargetedMisclassification(tf.constant([1], dtype=tf.int32)),
             epsilon=epsilon,
         )
 
@@ -198,7 +207,7 @@ def process_video(
 
     # print results for video in case of error
     print(f"Finished processing {video_path}")
-    print(f"Label: {label}")
+    print(f"Label: {bool(label)}")
     print(f"Custom: {custom_prediction}")
     print(f"Xception: {xception_prediction}")
     print(f"EfficientNet: {efficientnet_prediction}")
