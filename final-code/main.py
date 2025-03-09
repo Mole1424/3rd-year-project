@@ -10,7 +10,6 @@ from foolbox.attacks import LinfPGD
 from hrnet import HRNet
 from pfld import PFLD
 from tensorflow.keras.models import Model, load_model  # type: ignore
-from tensorflow.keras.preprocessing.image import img_to_array  # type: ignore
 
 
 def generate_datasets(path_to_dataset: str) -> list[tuple[str, int]]:
@@ -67,19 +66,34 @@ def classify_video_custom(
     return bool(ear_analyser.predict(np.array(ears)))
 
 
+def pre_process_frames(frames: np.ndarray) -> np.ndarray:
+    """pre-process a frames for traditional models"""
+    processed_frames = []
+    num, height, width, channels = frames.shape
+
+    for i in range(0, num, 170):
+        batch = frames[i : i + 170]
+        num_frames = len(batch)
+
+        # hack to resize the images in one go using opencv
+        # https://stackoverflow.com/questions/65154879/using-opencv-resize-multiple-the-same-size-of-images-at-once-in-python
+        # channels * num <= 512 due to opencv limitations so need to take batches of 170
+        batch = batch.transpose((1, 2, 3, 0))
+        batch = batch.reshape((height, width, channels * num_frames))
+        batch = cv.resize(batch, (256, 256))
+        batch = batch.reshape((256, 256, channels, num_frames))
+        batch = batch.transpose((3, 0, 1, 2))
+
+        batch = batch / 255.0
+        processed_frames.extend(batch)
+
+    return np.array(processed_frames)
+
 def classify_video_classical(video: np.ndarray, model: Model) -> bool:
     """classifies a video using a pre-existing model (1 real, 0 fake)"""
-    real_frames = 0
-
-    for frame in video:
-        # pre-process frame for model
-        input_frame = cv.resize(frame, (256, 256))
-        input_frame = img_to_array(input_frame).flatten() / 255.0
-        input_frame = np.reshape(input_frame, (-1, 256, 256, 3))
-
-        # predict the frame
-        prediction = model.predict(input_frame, verbose=0)
-        real_frames += np.argmax(prediction)
+    frames = pre_process_frames(video)
+    predictions = model.predict(frames, verbose=0)
+    real_frames = np.sum(np.argmax(predictions, axis=1))
 
     # assume if >50% of frames are classified as real, the video is real
     real_frame_threshold = 0.5
@@ -91,52 +105,64 @@ def perturbate_frames(
 ) -> tuple[np.ndarray, np.ndarray]:
     """add noise to a video"""
 
-    return_frames = ([], [])
-    for frame in frames:
-        # save the original frame
-        original_dimensions = frame.shape
+    _, height, width, _ = frames.shape
 
-        # pre-process frame for models
-        frame = cv.resize(frame, (256, 256))  # noqa: PLW2901
-        frame = frame / 255.0  # noqa: PLW2901
-        frame = np.expand_dims(frame, axis=0)  # noqa: PLW2901
-        frame = tf.convert_to_tensor(frame, dtype=tf.float32)  # noqa: PLW2901
+    frames = pre_process_frames(frames)
 
-        # generate noise using the fast gradient sign attack
-        attack = LinfPGD(steps=1)
-        epsilon = 0.001
-        xception_frame = attack.run(
+    attack = LinfPGD(steps=1)
+    epsilon = 0.5
+
+    batch_size = 16
+    dataset = tf.data.Dataset.from_tensor_slices(frames).batch(batch_size)
+
+    xception_adv = []
+    efficientnet_adv = []
+
+    for batch in dataset:
+        batch_size_actual = tf.shape(batch)[0] # type: ignore
+
+        xception_batch = attack.run(
             TensorFlowModel(xception, bounds=(0, 1)),
-            frame,
-            # attempt to misclassify the frame as real
-            TargetedMisclassification(tf.constant([1], dtype=tf.int32)),
+            batch,
+            TargetedMisclassification(tf.ones(batch_size_actual, dtype=tf.int32)),
             epsilon=epsilon,
         )
-        efficientnet_frame = attack.run(
+
+        efficientnet_batch = attack.run(
             TensorFlowModel(efficientnet, bounds=(0, 1)),
-            frame,
-            TargetedMisclassification(tf.constant([1], dtype=tf.int32)),
+            batch,
+            TargetedMisclassification(tf.ones(batch_size_actual, dtype=tf.int32)),
             epsilon=epsilon,
         )
 
-        # post-process the frames to return to original quality
-        xception_frame = np.squeeze(xception_frame, axis=0)
-        efficientnet_frame = np.squeeze(efficientnet_frame, axis=0)
-        xception_frame = np.clip(xception_frame, 0, 1) * 255
-        efficientnet_frame = np.clip(efficientnet_frame, 0, 1) * 255
-        xception_frame = xception_frame.astype(np.uint8)
-        efficientnet_frame = efficientnet_frame.astype(np.uint8)
-        xception_frame = cv.resize(
-            xception_frame, (original_dimensions[1], original_dimensions[0])
-        )
-        efficientnet_frame = cv.resize(
-            efficientnet_frame, (original_dimensions[1], original_dimensions[0])
-        )
+        xception_batch = np.clip(xception_batch.numpy(), 0, 1) * 255 # type: ignore
+        efficientnet_batch = np.clip(efficientnet_batch.numpy(), 0, 1) * 255 # type: ignore
+        xception_batch = xception_batch.astype(np.uint8)
+        efficientnet_batch = efficientnet_batch.astype(np.uint8)
 
-        return_frames[0].append(xception_frame)
-        return_frames[1].append(efficientnet_frame)
+        xnum, xheight, xwidth, xchannels = xception_batch.shape
+        xception_batch = xception_batch.transpose((1,2,3,0))
+        xception_batch = xception_batch.reshape((xheight, xwidth, xnum*xchannels))
+        xception_batch = cv.resize(xception_batch, (width, height))
+        xception_batch = xception_batch.reshape((height, width, xchannels, xnum))
+        xception_batch = xception_batch.transpose((3,0,1,2))
 
-    return np.array(return_frames[0]), np.array(return_frames[1])
+        enum, eheight, ewidth, echannels = efficientnet_batch.shape
+        efficientnet_batch = efficientnet_batch.transpose((1,2,3,0))
+        efficientnet_batch = efficientnet_batch.reshape(
+            (eheight, ewidth, enum * echannels)
+        )
+        efficientnet_batch = cv.resize(efficientnet_batch, (width, height))
+        efficientnet_batch = efficientnet_batch.reshape(
+            (height, width, echannels, enum)
+        )
+        efficientnet_batch = efficientnet_batch.transpose((3,0,1,2))
+
+        xception_adv.extend(xception_batch)
+        efficientnet_adv.extend(efficientnet_batch)
+
+    return np.array(xception_adv), np.array(efficientnet_adv)
+
 
 
 def process_video(
