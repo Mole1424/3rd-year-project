@@ -10,4 +10,4 @@ scikit-learn
 foolbox
 
 pyts
-deepface
+mtcnn

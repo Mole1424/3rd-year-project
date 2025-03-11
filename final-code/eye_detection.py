@@ -181,7 +181,7 @@ def test_model() -> None:
     for image in images:
         print("Processing image:", image)
         img = cv.imread(str(image))
-        points = model.get_landmarks(img)
+        points = model.get_landmarks([img])[0] # type: ignore
 
         for i, face_points in enumerate(points):
             for j, (x, y) in enumerate(face_points):

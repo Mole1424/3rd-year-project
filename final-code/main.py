@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from time import time
 
 import cv2 as cv
 import numpy as np
@@ -41,22 +42,12 @@ def classify_video_custom(
     """classifies a video using custom models (true real, false fake)"""
     ears = []
 
-    for frame in video:
-        # get landmarks of the first face detected
-        landmarks = landmarker.get_landmarks(frame)
-
-        if len(landmarks) == 0:
-            print("No face detected")
+    landmarks = landmarker.get_landmarks(video)[0]
+    for landmark in landmarks:
+        if len(landmark) != 12:  # noqa: PLR2004
             continue
-
-        landmarks = landmarks[0]
-        if len(landmarks) != 12:  # noqa: PLR2004
-            print("Not enough landmarks detected")
-            continue
-
-        # calculate the eye aspect ratio for each eye and take the average
-        ear_l = calculate_ear(landmarks[0:6])
-        ear_r = calculate_ear(landmarks[6:12])
+        ear_l = calculate_ear(landmark[0:6])
+        ear_r = calculate_ear(landmark[6:12])
         ears.append((ear_l + ear_r) / 2)
 
     if len(ears) == 0:
@@ -110,7 +101,7 @@ def perturbate_frames(
     frames = pre_process_frames(frames)
 
     attack = LinfPGD(steps=1)
-    epsilon = 0.5
+    epsilon = 0.35
 
     batch_size = 16
     dataset = tf.data.Dataset.from_tensor_slices(frames).batch(batch_size)
@@ -176,6 +167,7 @@ def process_video(
     video_path, label = video_info
 
     print(f"Processing {video_path}")
+    start = time()
 
     # get all frames and convert into numpy array
     video = cv.VideoCapture(video_path)
@@ -231,6 +223,8 @@ def process_video(
             efficientnet_prediction
         )
 
+    end = time()
+
     # print results for video in case of error
     print(f"Finished processing {video_path}")
     print(f"Label: {bool(label)}")
@@ -243,6 +237,8 @@ def process_video(
     print(f"Custom EfficientNet: {custom_efficientnet_prediction}")
     print(f"Xception EfficientNet: {xception_efficientnet_prediction}")
     print(f"EfficientNet EfficientNet: {efficientnet_efficientnet_prediction}")
+
+    print(f"Time taken: {end - start:.2f}s")
 
     return (
         label,

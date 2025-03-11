@@ -3,7 +3,7 @@ from typing import List
 import cv2 as cv
 import numpy as np
 import tensorflow as tf
-from deepface import DeepFace
+from mtcnn import MTCNN
 from tensorflow.keras import Model, Sequential  # type: ignore
 from tensorflow.keras.layers import (  # type: ignore
     BatchNormalization,
@@ -491,44 +491,72 @@ class HRNet:
         self.model(tf.zeros((1, *self.cropped_image_size, 3)))
         self.model.load_weights(path_to_weights)
 
-    def get_landmarks(self, image: np.ndarray) -> np.ndarray:
+        # initialise the face detector
+        self.mtcnn = MTCNN(device="GPU:0")
+        self.mtcnn_config = {
+            "StagePNet": {
+                "threshold_pnet": 0.5,
+            },
+            "StageRNet": {
+                "threshold_rnet": 0.5,
+            },
+            "StageONet": {
+                "threshold_onet": 0.5,
+            },
+        }
+
+    def get_landmarks(self, video: np.ndarray) -> np.ndarray:
         """gets landmarks from the image"""
-
-        # crop image to faces
-        # should be updated to retinaface when updated
-        faces = DeepFace.extract_faces(image, detector_backend="mtcnn", align=True)
-        if len(faces) == 0:
-            return np.array([])
+        face_crop_vals = []
         face_crops = []
-        for face in faces:
-            x, y, w, h = [face["facial_area"][coord] for coord in ["x", "y", "w", "h"]]
-            face_crop = cv.resize(image[y : y + h, x : x + w], self.cropped_image_size)
-            face_crops.append(face_crop)
-        face_crops = tf.cast(tf.convert_to_tensor(face_crops), tf.float32)
+        num_faces_per_frame = []
 
-        heatmaps = self.model(face_crops).numpy()
-        heatmap_size = heatmaps.shape[1:3]
+        for i, frame in enumerate(video):
+            # print(f"processing frame {i+1}/{len(video)}")
+            faces = self.mtcnn.detect_faces(frame, kwargs=self.mtcnn_config)
+            num_faces_per_frame.append(len(faces)) # type: ignore
+            # print(f"found {len(faces)} faces") # type: ignore
+            for face in faces: # type: ignore
+                x, y, w, h = face["box"]
+                face_crop = cv.resize(
+                    frame[y : y + h, x : x + w], self.cropped_image_size
+                )
+                face_crops.append(face_crop)
+                face_crop_vals.append((x, y, w, h))
 
         multi_landmarks = []
-        for idx, face in enumerate(faces):
-            x, y, w, h = [face["facial_area"][coord] for coord in ["x", "y", "w", "h"]]
-            heatmap = heatmaps[idx]
-            landmarks = [
-                self._heatmap_to_landmark(heatmap[:, :, i]) for i in range(36, 48)
-            ]
+        batch_size = 256
+        for i in range(0, len(face_crops), batch_size):
+            batch = face_crops[i : i + batch_size]
+            heatmaps = self.model(tf.cast(tf.convert_to_tensor(batch), tf.float32)).numpy()
+            heatmap_size = heatmaps.shape[1:3]
 
-            landmarks = (
-                np.array(landmarks)
-                / np.array(heatmap_size)
-                * np.array(self.cropped_image_size)
-            )
-            landmarks = np.array([x, y]) + landmarks * np.array([w, h]) / np.array(
-                self.cropped_image_size
-            )
+            for idx, face in enumerate(face_crop_vals[i : i + batch_size]):
+                x, y, w, h = face
+                heatmap = heatmaps[idx]
+                landmarks = [
+                    self._heatmap_to_landmark(heatmap[:, :, i])
+                    for i in range(36, 48)
+                ]
 
-            multi_landmarks.append(landmarks)
+                landmarks = (
+                    np.array(landmarks)
+                    / np.array(heatmap_size)
+                    * np.array(self.cropped_image_size)
+                )
+                landmarks = np.array([x, y]) + landmarks * np.array([w, h]) / np.array(
+                    self.cropped_image_size
+                )
+                multi_landmarks.append(landmarks)
 
-        return np.array(multi_landmarks)
+        # convert to landmarks per frame
+        landmarks_per_frame = []
+        idx = 0
+        for num_faces in num_faces_per_frame:
+            landmarks_per_frame.append(multi_landmarks[idx : idx + num_faces])
+            idx += num_faces
+
+        return np.array(landmarks_per_frame)
 
 
     def _heatmap_to_landmark(self, heatmap: np.ndarray) -> np.ndarray:
