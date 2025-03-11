@@ -3,6 +3,7 @@ from typing import List
 import cv2 as cv
 import numpy as np
 import tensorflow as tf
+from deepface import DeepFace
 from tensorflow.keras import Model, Sequential  # type: ignore
 from tensorflow.keras.layers import (  # type: ignore
     BatchNormalization,
@@ -490,23 +491,17 @@ class HRNet:
         self.model(tf.zeros((1, *self.cropped_image_size, 3)))
         self.model.load_weights(path_to_weights)
 
-        # get opencv face detector
-        self.face_cascade = cv.CascadeClassifier(
-            cv.data.haarcascades + "haarcascade_frontalface_default.xml"  # type: ignore
-        )
-
     def get_landmarks(self, image: np.ndarray) -> np.ndarray:
         """gets landmarks from the image"""
 
         # crop image to faces
-        faces = self.face_cascade.detectMultiScale(
-            cv.cvtColor(image, cv.COLOR_BGR2GRAY), 1.3, 5
-        )
+        # should be updated to retinaface when updated
+        faces = DeepFace.extract_faces(image, detector_backend="mtcnn", align=True)
         if len(faces) == 0:
             return np.array([])
-
         face_crops = []
-        for x, y, w, h in faces:
+        for face in faces:
+            x, y, w, h = [face["facial_area"][coord] for coord in ["x", "y", "w", "h"]]
             face_crop = cv.resize(image[y : y + h, x : x + w], self.cropped_image_size)
             face_crops.append(face_crop)
         face_crops = tf.cast(tf.convert_to_tensor(face_crops), tf.float32)
@@ -515,7 +510,8 @@ class HRNet:
         heatmap_size = heatmaps.shape[1:3]
 
         multi_landmarks = []
-        for idx, (x, y, w, h) in enumerate(faces):
+        for idx, face in enumerate(faces):
+            x, y, w, h = [face["facial_area"][coord] for coord in ["x", "y", "w", "h"]]
             heatmap = heatmaps[idx]
             landmarks = [
                 self._heatmap_to_landmark(heatmap[:, :, i]) for i in range(36, 48)

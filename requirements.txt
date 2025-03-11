@@ -1,6 +1,7 @@
 mediapipe
 opencv-python
 matplotlib
+numpy
 
 tensorflow[and-cuda]
 pillow
@@ -9,3 +10,4 @@ scikit-learn
 foolbox
 
 pyts
+deepface
