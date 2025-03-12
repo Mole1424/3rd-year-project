@@ -42,13 +42,16 @@ def classify_video_custom(
     """classifies a video using custom models (true real, false fake)"""
     ears = []
 
-    landmarks = landmarker.get_landmarks(video)[0]
-    for landmark in landmarks:
-        if len(landmark) != 12:  # noqa: PLR2004
+    landmarks = landmarker.get_landmarks(video)
+    for frame_landmarks in landmarks:
+        if frame_landmarks is None:
             continue
-        ear_l = calculate_ear(landmark[0:6])
-        ear_r = calculate_ear(landmark[6:12])
-        ears.append((ear_l + ear_r) / 2)
+        for landmark in frame_landmarks:
+            if len(landmark) != 12:  # noqa: PLR2004
+                continue
+            ear_l = calculate_ear(landmark[0:6])
+            ear_r = calculate_ear(landmark[6:12])
+            ears.append(min((ear_l + ear_r) / 2, 1))
 
     if len(ears) == 0:
         return False

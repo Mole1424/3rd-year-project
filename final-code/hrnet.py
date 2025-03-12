@@ -492,43 +492,47 @@ class HRNet:
         self.model.load_weights(path_to_weights)
 
         # initialise the face detector
-        self.mtcnn = MTCNN(device="GPU:0")
+        self.mtcnn = MTCNN("face_detection_only", "GPU:0")
         self.mtcnn_config = {
             "StagePNet": {
                 "threshold_pnet": 0.5,
             },
             "StageRNet": {
                 "threshold_rnet": 0.5,
-            },
-            "StageONet": {
-                "threshold_onet": 0.5,
-            },
+            }
         }
 
-    def get_landmarks(self, video: np.ndarray) -> np.ndarray:
+    def get_landmarks(self, video: np.ndarray) -> list[np.ndarray]:
         """gets landmarks from the image"""
         face_crop_vals = []
         face_crops = []
         num_faces_per_frame = []
 
-        for i, frame in enumerate(video):
-            # print(f"processing frame {i+1}/{len(video)}")
-            faces = self.mtcnn.detect_faces(frame, kwargs=self.mtcnn_config)
-            num_faces_per_frame.append(len(faces)) # type: ignore
-            # print(f"found {len(faces)} faces") # type: ignore
-            for face in faces: # type: ignore
+        video = [video[i] for i in range(len(video))] # type: ignore
+        batch_size = 128
+        faces_per_frame = []
+        for i in range(0, len(video), batch_size):
+            faces_per_frame.extend(
+                self.mtcnn.detect_faces(
+                    video[i : i + batch_size], kwargs=self.mtcnn_config
+                ) # type: ignore
+            )
+        for i, frame in enumerate(faces_per_frame): # type: ignore
+            num_faces_per_frame.append(len(frame))
+            for face in frame:
                 x, y, w, h = face["box"]
                 face_crop = cv.resize(
-                    frame[y : y + h, x : x + w], self.cropped_image_size
+                    video[i][y : y + h, x : x + w], self.cropped_image_size
                 )
                 face_crops.append(face_crop)
                 face_crop_vals.append((x, y, w, h))
 
         multi_landmarks = []
-        batch_size = 256
+        batch_size = 128
         for i in range(0, len(face_crops), batch_size):
             batch = face_crops[i : i + batch_size]
-            heatmaps = self.model(tf.cast(tf.convert_to_tensor(batch), tf.float32)).numpy()
+            batch = tf.cast(tf.convert_to_tensor(batch), tf.float32)
+            heatmaps = self.model(batch).numpy()
             heatmap_size = heatmaps.shape[1:3]
 
             for idx, face in enumerate(face_crop_vals[i : i + batch_size]):
@@ -556,7 +560,7 @@ class HRNet:
             landmarks_per_frame.append(multi_landmarks[idx : idx + num_faces])
             idx += num_faces
 
-        return np.array(landmarks_per_frame)
+        return landmarks_per_frame
 
 
     def _heatmap_to_landmark(self, heatmap: np.ndarray) -> np.ndarray:
