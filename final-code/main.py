@@ -1,6 +1,5 @@
 import sys
 from pathlib import Path
-from time import time
 
 import cv2 as cv
 import numpy as np
@@ -19,10 +18,14 @@ def generate_datasets(path_to_dataset: str) -> list[tuple[str, int]]:
 
     dataset = []
 
+    # got_data = False
     for video in videos:
         label = int("real" in str(video))
         # if label == 1:
         #     continue
+        # if got_data:
+        #     break
+        # got_data = True
         dataset.append((str(video), label))
 
     return dataset
@@ -104,7 +107,7 @@ def perturbate_frames(
     frames = pre_process_frames(frames)
 
     attack = LinfPGD(steps=1)
-    epsilon = 0.35
+    epsilon = 0.1
 
     batch_size = 16
     dataset = tf.data.Dataset.from_tensor_slices(frames).batch(batch_size)
@@ -170,7 +173,6 @@ def process_video(
     video_path, label = video_info
 
     print(f"Processing {video_path}")
-    start = time()
 
     # get all frames and convert into numpy array
     video = cv.VideoCapture(video_path)
@@ -226,8 +228,6 @@ def process_video(
             efficientnet_prediction
         )
 
-    end = time()
-
     # print results for video in case of error
     print(f"Finished processing {video_path}")
     print(f"Label: {bool(label)}")
@@ -240,8 +240,6 @@ def process_video(
     print(f"Custom EfficientNet: {custom_efficientnet_prediction}")
     print(f"Xception EfficientNet: {xception_efficientnet_prediction}")
     print(f"EfficientNet EfficientNet: {efficientnet_efficientnet_prediction}")
-
-    print(f"Time taken: {end - start:.2f}s")
 
     return (
         label,
