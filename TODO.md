@@ -16,7 +16,7 @@
 
 ## Noise
 - [X] Code own versions of all the noise functions
-  - [X] CW-L2
+  - [X] CW-L2 (Cannot do takes ~1hr30min per video (also not effective))
   - [ ] FakeRetouch
   - [X] FGSM
 
