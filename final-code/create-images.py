@@ -1,0 +1,60 @@
+import sys
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+import cv2 as cv
+from sklearn.model_selection import train_test_split
+
+
+def generate_datasets(path_to_dataset: str) -> tuple[list[tuple[str, int]]]:
+    """creates dataset of video paths and labels, splitting into train and test sets"""
+    videos = Path(path_to_dataset).rglob("*.mp4")
+
+    dataset = [(str(video), int("real" in str(video))) for video in videos]
+
+    return train_test_split(dataset, train_size=0.8, random_state=42)
+
+def save_frames(
+    frame_size: tuple[int, int],
+    path_to_dataset: str,
+) -> None:
+    """Extract and save frames from videos in a dataset."""
+
+    dataset = generate_datasets(path_to_dataset)
+
+    labels = ["fake", "real"]
+    num_videos = [0, 0]
+    max_videos = sum(label for _, label in dataset)
+
+    def process_video(video_path: str, label: int) -> None:
+        """Extract and save frames from a video."""
+        nonlocal num_videos
+        if num_videos[label] >= max_videos:
+            return []
+
+        num_videos[label] += 1
+        video = cv.VideoCapture(video_path)
+        frame_num = 0
+
+        while video.isOpened():
+            success, frame = video.read()
+            if not success:
+                break
+            frame = cv.resize(frame, frame_size)
+            path = f"{path_to_dataset}/{labels[label]}/{num_videos[label]}_{frame_num}.jpg" # noqa: E501
+            cv.imwrite(path, frame)
+            frame_num += 1
+
+        video.release()
+        return None
+
+    # process videos in parallel
+    with ThreadPoolExecutor() as executor:
+        executor.map(
+            process_video,
+            (video for video, _ in dataset),
+            (label for _, label in dataset),
+        )
+
+if __name__ == "__main__":
+    save_frames((256, 256), sys.argv[1])

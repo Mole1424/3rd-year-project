@@ -1,8 +1,6 @@
 from pathlib import Path
 
-import cv2 as cv
 import numpy as np
-import tensorflow as tf
 from sklearn.model_selection import train_test_split
 from tensorflow.keras import Input  # type: ignore
 from tensorflow.keras.applications import (  # type: ignore
@@ -23,47 +21,25 @@ from tensorflow.keras.preprocessing.image import img_to_array, load_img  # type:
 from tensorflow.keras.utils import Sequence, to_categorical  # type: ignore
 
 
-def create_image_dataset(path_to_train_data: str) -> None:
-    # loop over the training videos
-    for type in ["fake", "real"]:
-        videos = [
-            f.name for f in Path(f"{path_to_train_data}/{type}").iterdir()
-            if f.suffix == ".mp4"
-        ]
-        for video in videos:
-            count = 0
-            # save images from the video
-            video = cv.VideoCapture(str(Path(path_to_train_data) / type / video))  # noqa: PLW2901
-            while video.isOpened():
-                success, frame = video.read()
-                if not success:
-                    break
-                cv.imwrite(
-                    str(Path(path_to_train_data) / type / f"{video}{count}.png"),
-                    cv.resize(frame, (256, 256)),
-                )
-                count += 1
-            video.release()
-
-
 class ImageDataGenerator(Sequence):
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
-        reals: list[str],
-        fakes: list[str],
+        path_to_dataset: str,
         batch_size: int,
         image_size: tuple[int, int],
-        train: bool = True,
-        split: float = 0.8,
+        train: bool = True
     ) -> None:
         super().__init__()
 
+        reals = list(Path(f"{path_to_dataset}real").rglob("*.jpg"))
+        fakes = list(Path(f"{path_to_dataset}fake").rglob("*.jpg"))
+
         # split real and fake images into train/test sets
         reals_train, reals_test = train_test_split(
-            reals, train_size=split, random_state=42
+            reals, train_size=0.8, random_state=42
         )
         fakes_train, fakes_test = train_test_split(
-            fakes, train_size=split, random_state=42
+            fakes, train_size=0.8, random_state=42
         )
 
         # select train or test set based on flag
@@ -103,13 +79,14 @@ class ImageDataGenerator(Sequence):
                     # load the image, resize it, and flatten it
                     img_to_array(
                         load_img(img_path, target_size=self.image_size)
-                    ).flatten()
-                    # normalse the image
-                    / 255.0
+                    ).flatten() / 255.0
                     for img_path in X
                 ]
             ).reshape(-1, self.image_size[0], self.image_size[1], 3) # reshape the image
         , to_categorical(Y, num_classes=2))
+
+    def on_epoch_end(self) -> None:
+        np.random.shuffle(self.indices)
 
 
 
@@ -173,35 +150,17 @@ def resnet50() -> Model:
 
 
 def train_detectors(
-    path_to_large: str, path_to_train_data: str, name: str
+    path_to_models: str, name: str, path_to_dataset: str
 ) -> tuple[Model, Model, Model, Model]:
-    create_image_dataset(path_to_train_data) # create the image dataset
-
-    # set memory growth for the GPU
-    gpus = tf.config.experimental.list_physical_devices("GPU")
-    for gpu in gpus:
-        tf.config.experimental.set_memory_growth(gpu, True)
-
-    # get all real and fake images
-    fakes = [
-        str(f) for f in Path(f"{path_to_train_data}/fake").iterdir()
-        if f.suffix == ".png"
-    ]
-    reals = [
-        str(f) for f in Path(f"{path_to_train_data}/real").iterdir()
-        if f.suffix == ".png"
-    ]
-    fakes = [f"{path_to_train_data}/fake/{f}" for f in fakes]
-    reals = [f"{path_to_train_data}/real/{r}" for r in reals]
 
     # create the image data generator
-    train_generator = ImageDataGenerator(reals, fakes, 32, (256, 256), True)
-    test_generator = ImageDataGenerator(reals, fakes, 32, (256, 256), False)
+    train_generator = ImageDataGenerator(path_to_dataset, 32, (256, 256), True)
+    test_generator = ImageDataGenerator(path_to_dataset, 32, (256, 256), False)
 
     # train the models
 
     # check if the models already exist
-    if not Path(f"{path_to_large}efficientnet{name}.keras").exists():
+    if not Path(f"{path_to_models}efficientnet{name}.keras").exists():
         # if not comile, train, and save with appropriate specs
         efficientnet = efficientnet_b4()
         efficientnet.compile(
@@ -211,11 +170,11 @@ def train_detectors(
             loss="binary_crossentropy",
         )
         efficientnet.fit(train_generator, epochs=60, validation_data=test_generator)
-        efficientnet.save(f"{path_to_large}efficientnet{name}.keras")
+        efficientnet.save(f"{path_to_models}efficientnet{name}.keras")
     else:
-        efficientnet = load_model(f"{path_to_large}efficientnet{name}.keras")
+        efficientnet = load_model(f"{path_to_models}efficientnet{name}.keras")
 
-    if not Path(f"{path_to_large}resnet{name}.keras").exists():
+    if not Path(f"{path_to_models}resnet{name}.keras").exists():
         x_ception = xception()
         x_ception.compile(
             optimizer=Adam(
@@ -224,11 +183,11 @@ def train_detectors(
             loss="categorical_crossentropy",
         )
         x_ception.fit(train_generator, epochs=60, validation_data=test_generator)
-        x_ception.save(f"{path_to_large}xception{name}.keras")
+        x_ception.save(f"{path_to_models}xception{name}.keras")
     else:
-        x_ception = load_model(f"{path_to_large}xception{name}.keras")
+        x_ception = load_model(f"{path_to_models}xception{name}.keras")
 
-    if not Path(f"{path_to_large}vgg19{name}.keras").exists():
+    if not Path(f"{path_to_models}vgg19{name}.keras").exists():
         vgg = vgg19()
         vgg.compile(
             optimizer=Adam(
@@ -238,11 +197,11 @@ def train_detectors(
             metrics=["accuracy"],
         )
         vgg.fit(train_generator, epochs=20, validation_data=test_generator)
-        vgg.save(f"{path_to_large}vgg19{name}.keras")
+        vgg.save(f"{path_to_models}vgg19{name}.keras")
     else:
-        vgg = load_model(f"{path_to_large}vgg19{name}.keras")
+        vgg = load_model(f"{path_to_models}vgg19{name}.keras")
 
-    if not Path(f"{path_to_large}resnet50{name}.keras").exists():
+    if not Path(f"{path_to_models}resnet50{name}.keras").exists():
         resnet = resnet50()
         resnet.compile(
             optimizer=Adam(),
@@ -250,20 +209,10 @@ def train_detectors(
             metrics=["accuracy"],
         )
         resnet.fit(train_generator, epochs=20, validation_data=test_generator)
-        resnet.save(f"{path_to_large}resnet50{name}.keras")
+        resnet.save(f"{path_to_models}resnet50{name}.keras")
     else:
-        resnet = load_model(f"{path_to_large}resnet50{name}.keras")
-
-    # delete the images
-    for type in ["fake", "real"]:
-        for img in Path(f"{path_to_train_data}/{type}").iterdir():
-            if img.suffix == ".png":
-                img.unlink()
+        resnet = load_model(f"{path_to_models}resnet50{name}.keras")
 
     print("Training Done :)")
 
     return efficientnet, x_ception, vgg, resnet
-
-
-if __name__ == "__main__":
-    train_detectors("/dcs/large/u2204489/faceforensics/train")

@@ -1,6 +1,6 @@
-import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import cv2 as cv
 import numpy as np
@@ -10,27 +10,18 @@ from foolbox import TargetedMisclassification, TensorFlowModel  # type: ignore
 from foolbox.attacks import LinfPGD
 from hrnet import HRNet
 from pfld import PFLD
+from sklearn.model_selection import train_test_split
 from tensorflow.keras.models import Model  # type: ignore
 from traditional_detectors import train_detectors
 
 
-def generate_datasets(path_to_dataset: str) -> list[tuple[str, int]]:
-    """creates dataset of video paths and labels"""
+def generate_datasets(path_to_dataset: str) -> tuple[list[tuple[str, int]]]:
+    """creates dataset of video paths and labels, splitting into train and test sets"""
     videos = Path(path_to_dataset).rglob("*.mp4")
 
-    dataset = []
+    dataset = [(str(video), int("real" in str(video))) for video in videos]
 
-    # got_data = False
-    for video in videos:
-        label = int("real" in str(video))
-        # if label == 1:
-        #     continue
-        # if got_data:
-        #     break
-        # got_data = True
-        dataset.append((str(video), label))
-
-    return dataset
+    return train_test_split(dataset, train_size=0.8, random_state=42)
 
 def calculate_ear(points: np.ndarray) -> float:
     """calcualte eye aspect ratio"""
@@ -99,7 +90,7 @@ def classify_video_classical(video: np.ndarray, model: Model) -> bool:
     return bool(real_frames / len(video) > real_frame_threshold)  # thanks bool_
 
 
-def post_process_frames(frames: np.ndarray, height: int, width: int) -> np.ndarray:
+def post_process_frames(frames: Any, height: int, width: int) -> np.ndarray:  # noqa: ANN401
     """post-process frames from noise attacks"""
     frames = np.clip(frames.numpy(), 0, 1) * 255
     frames = frames.astype(np.uint8)
@@ -115,7 +106,7 @@ def post_process_frames(frames: np.ndarray, height: int, width: int) -> np.ndarr
 
 def perturbate_frames(
     frames: np.ndarray, **models: Model
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, ...]:
     """Add adversarial noise to video frames for multiple models."""
 
     frames = pre_process_frames(frames)
@@ -137,8 +128,6 @@ def perturbate_frames(
             adv_frames[name].extend(post_process_frames(adv_batch, *frames.shape[1:3]))
 
     return tuple(np.array(adv_frames[name]) for name in models)
-
-
 
 
 def process_video(
@@ -164,18 +153,16 @@ def process_video(
         frames.append(frame)
     frames = np.array(frames)
 
-    classical_models = ["vgg", "resnet", "xception", "efficientnet"]
-
     # get initial predictions
     predictions = {"custom": classify_video_custom(frames, landmarker, ear_analyser)}
-    for name in classical_models:
-        predictions[name] = classify_video_classical(frames, models[name])
+    for name, model in models.items():
+        predictions[name] = classify_video_classical(frames, model)
 
     # if video is fake, perturbate frames and classify them
     if label == 0:
         perturbed_frames = perturbate_frames(frames, **models)
 
-        for i, model_name in enumerate(classical_models):
+        for i, model_name in enumerate(models.keys()):
             adv_frames = perturbed_frames[i]
 
             # reclassify perturbed frames using custom models
@@ -184,15 +171,15 @@ def process_video(
             )
 
             # reclassify perturbed frames using classical models
-            for target_model in classical_models:
-                predictions[f"{model_name}_{target_model}"] = classify_video_classical(
-                    adv_frames, models[target_model]
-                )
+            for target_model_name, target_model in models.items():
+                predictions[
+                    f"{model_name}_{target_model_name}"
+                ] = classify_video_classical(adv_frames, target_model)
     else:
         # if video is real, copy predictions
-        for model_name in classical_models:
+        for model_name in models:
             predictions[f"custom_{model_name}"] = predictions["custom"]
-            for target_model in classical_models:
+            for target_model in models:
                 predictions[f"{model_name}_{target_model}"] = predictions[target_model]
 
     print(f"Finished processing {video_path}")
@@ -203,15 +190,13 @@ def process_video(
     return (label, *predictions.values())
 
 
-def main(path_to_dataset: str) -> None:
+def main(path_to_dataset: str, path_to_models: str) -> None:
     # allow for memory growth on GPU
     for gpu in tf.config.experimental.list_physical_devices("GPU"):
         tf.config.experimental.set_memory_growth(gpu, True)
 
     # generate dataset
-    path_to_large = "/dcs/large/u2204489/"
-    path_to_dataset = path_to_large + path_to_dataset
-    dataset = generate_datasets(path_to_dataset)
+    train_set, test_set = generate_datasets(path_to_dataset)
 
     # load models
     hrnet_config = {
@@ -236,16 +221,12 @@ def main(path_to_dataset: str) -> None:
             "NUM_CHANNELS": [18, 36, 72, 144],
         },
     }
-    landmarker = HRNet(hrnet_config, path_to_large + "hrnet.weights.h5")
-    ear_analyser = EarAnalysis(path_to_large + "fullyconvolutionalneuralnetwork.keras")
+    landmarker = HRNet(hrnet_config, path_to_models + "hrnet.weights.h5")
+    ear_analyser = EarAnalysis(path_to_models + "fullyconvolutionalneuralnetwork.keras")
 
     models = train_detectors(
-        path_to_large,
-        path_to_large + path_to_dataset,
-        path_to_dataset.replace("/", "_")
+        path_to_models, path_to_dataset.replace("/", "_"), train_set, path_to_dataset
     )
-
-    models = []
 
     # initialise results
     traditional_models = ["vgg", "resnet", "xception", "efficientnet"]
@@ -257,11 +238,11 @@ def main(path_to_dataset: str) -> None:
         for model in all_models for target in traditional_models}
     )
 
-    # print(json.dumps(results, indent=4))
-
     # process each video in the dataset
-    for video in dataset:
-        label, *predictions = process_video(video, landmarker, ear_analyser, *models)
+    for video in test_set:
+        label, *predictions = process_video(
+            video, landmarker, ear_analyser, **dict(zip(traditional_models, models))
+        )
         for model_name, prediction in zip(results.keys(), predictions):
             if label == 1 and prediction:
                 results[model_name]["tp"] += 1
@@ -274,14 +255,14 @@ def main(path_to_dataset: str) -> None:
 
     # print final results
     for model_name, metrics in results.items():
-        accuracy = (metrics["tp"] + metrics["tn"]) / len(dataset)
+        accuracy = (metrics["tp"] + metrics["tn"]) / len(test_set)
         print("=" * 20)
         print(f"Model: {model_name}")
         print(f"Accuracy: {accuracy}")
-        print(f"True Positives: {metrics['tp']}")
-        print(f"True Negatives: {metrics['tn']}")
-        print(f"False Positives: {metrics['fp']}")
-        print(f"False Negatives: {metrics['fn']}")
+        print(f"True Positives: {metrics["tp"]}")
+        print(f"True Negatives: {metrics["tn"]}")
+        print(f"False Positives: {metrics["fp"]}")
+        print(f"False Negatives: {metrics["fn"]}")
 
     print("done :)")
 
@@ -289,7 +270,8 @@ def main(path_to_dataset: str) -> None:
 if __name__ == "__main__":
     try:
         path_to_dataset = sys.argv[1]
+        path_to_models = sys.argv[2]
     except IndexError:
-        print("Please provide the path to the dataset")
+        print("Please provide the path to the dataset and models")
         sys.exit(1)
-    main(path_to_dataset)
+    main(path_to_dataset, path_to_models)
