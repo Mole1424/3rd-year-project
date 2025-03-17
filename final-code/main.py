@@ -15,7 +15,7 @@ from tensorflow.keras.models import Model  # type: ignore
 from traditional_detectors import train_detectors
 
 
-def generate_datasets(path_to_dataset: str) -> tuple[list[tuple[str, int]]]:
+def generate_datasets(path_to_dataset: str) -> list[list[tuple[str, int]]]:
     """creates dataset of video paths and labels, splitting into train and test sets"""
     videos = Path(path_to_dataset).rglob("*.mp4")
 
@@ -23,13 +23,68 @@ def generate_datasets(path_to_dataset: str) -> tuple[list[tuple[str, int]]]:
 
     return train_test_split(dataset, train_size=0.8, random_state=42)
 
-def calculate_ear(points: np.ndarray) -> float:
-    """calcualte eye aspect ratio"""
-    p2_p6 = np.linalg.norm(points[1] - points[5])
-    p3_p5 = np.linalg.norm(points[2] - points[4])
-    p1_p4 = np.linalg.norm(points[0] - points[3])
+def get_custom_model(
+    hrnet: bool, train_set: list[tuple[str, int]]
+) -> tuple[HRNet | PFLD, EarAnalysis]:
+    if hrnet:
+        hrnet_config = {
+            "NUM_JOINTS": 68,
+            "FINAL_CONV_KERNEL": 1,
+            "STAGE2": {
+                "NUM_MODULES": 1,
+                "NUM_BRANCHES": 2,
+                "NUM_BLOCKS": [4, 4],
+                "NUM_CHANNELS": [18, 36],
+            },
+            "STAGE3": {
+                "NUM_MODULES": 4,
+                "NUM_BRANCHES": 3,
+                "NUM_BLOCKS": [4, 4, 4],
+                "NUM_CHANNELS": [18, 36, 72],
+            },
+            "STAGE4": {
+                "NUM_MODULES": 3,
+                "NUM_BRANCHES": 4,
+                "NUM_BLOCKS": [4, 4, 4, 4],
+                "NUM_CHANNELS": [18, 36, 72, 144],
+            },
+        }
+        landmarker = HRNet(hrnet_config, path_to_models + "hrnet.weights.h5")
+    else:
+        landmarker = PFLD(path_to_models + "pfld.weights.h5")
 
-    return float((p2_p6 + p3_p5) / (2.0 * p1_p4))
+    ears_dataset = []
+    for video in train_set:
+        video_path, label = video
+        video = cv.VideoCapture(video_path)  # noqa: PLW2901
+        frames = []
+        while video.isOpened():
+            success, frame = video.read()
+            if not success:
+                break
+            frames.append(frame)
+        frames = np.array(frames)
+        landmarks = landmarker.get_landmarks(frames)
+        for frame_landmarks in landmarks:
+            if frame_landmarks is None:
+                continue
+            ears_l = calculate_ear_batch(frame_landmarks[:, 0:6])
+            ears_r = calculate_ear_batch(frame_landmarks[:, 6:12])
+            ears_dataset.append((label, np.mean([ears_l, ears_r])))
+
+    ears_dataset = train_test_split(ears_dataset, train_size=0.8, random_state=42)
+
+    ear_analyser = EarAnalysis(None, ears_dataset, path_to_models)
+
+    return landmarker, ear_analyser
+
+def calculate_ear_batch(points: np.ndarray) -> np.ndarray:
+    """calcualte eye aspect ratio"""
+    p2_p6 = np.linalg.norm(points[:, 1] - points[:, 5])
+    p3_p5 = np.linalg.norm(points[:, 2] - points[:, 4])
+    p1_p4 = np.linalg.norm(points[:, 0] - points[:, 3])
+
+    return np.clip((p2_p6 + p3_p5) / (2.0 * p1_p4), 0, 1) # type: ignore
 
 
 def classify_video_custom(
@@ -42,12 +97,10 @@ def classify_video_custom(
     for frame_landmarks in landmarks:
         if frame_landmarks is None:
             continue
-        for landmark in frame_landmarks:
-            if len(landmark) != 12:  # noqa: PLR2004
-                continue
-            ear_l = calculate_ear(landmark[0:6])
-            ear_r = calculate_ear(landmark[6:12])
-            ears.append(min((ear_l + ear_r) / 2, 1))
+
+        ears_l = calculate_ear_batch(frame_landmarks[:, 0:6])
+        ears_r = calculate_ear_batch(frame_landmarks[:, 6:12])
+        ears.append(np.mean([ears_l, ears_r]))
 
     if len(ears) == 0:
         return False
@@ -198,34 +251,11 @@ def main(path_to_dataset: str, path_to_models: str) -> None:
     # generate dataset
     train_set, test_set = generate_datasets(path_to_dataset)
 
-    # load models
-    hrnet_config = {
-        "NUM_JOINTS": 68,
-        "FINAL_CONV_KERNEL": 1,
-        "STAGE2": {
-            "NUM_MODULES": 1,
-            "NUM_BRANCHES": 2,
-            "NUM_BLOCKS": [4, 4],
-            "NUM_CHANNELS": [18, 36],
-        },
-        "STAGE3": {
-            "NUM_MODULES": 4,
-            "NUM_BRANCHES": 3,
-            "NUM_BLOCKS": [4, 4, 4],
-            "NUM_CHANNELS": [18, 36, 72],
-        },
-        "STAGE4": {
-            "NUM_MODULES": 3,
-            "NUM_BRANCHES": 4,
-            "NUM_BLOCKS": [4, 4, 4, 4],
-            "NUM_CHANNELS": [18, 36, 72, 144],
-        },
-    }
-    landmarker = HRNet(hrnet_config, path_to_models + "hrnet.weights.h5")
-    ear_analyser = EarAnalysis(path_to_models + "fullyconvolutionalneuralnetwork.keras")
+    landmarker, ear_analyser = get_custom_model(True, train_set)
+
 
     models = train_detectors(
-        path_to_models, path_to_dataset.replace("/", "_"), train_set, path_to_dataset
+        path_to_models, path_to_dataset.replace("/", "_"), path_to_dataset
     )
 
     # initialise results

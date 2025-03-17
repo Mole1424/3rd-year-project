@@ -3,13 +3,13 @@ from pathlib import Path
 import joblib
 import numpy as np
 import tensorflow as tf
-from instance_normalization import InstanceNormalization
 from pyts.classification import (
     TSBF,
     KNeighborsClassifier,
     LearningShapelets,
     TimeSeriesForest,
 )
+from sklearn.base import BaseEstimator
 from tensorflow.keras import Layer, Model  # type: ignore
 from tensorflow.keras.callbacks import ReduceLROnPlateau  # type: ignore
 from tensorflow.keras.config import enable_unsafe_deserialization  # type: ignore
@@ -25,12 +25,7 @@ from tensorflow.keras.layers import (  # type: ignore
     Flatten,
     GlobalAveragePooling1D,
     Input,
-    Lambda,
-    MaxPooling1D,
-    Multiply,
-    PReLU,
     Reshape,
-    Softmax,
     add,
     concatenate,
 )
@@ -270,279 +265,113 @@ class ResNet(KerasTimeSeriesClassifier):
 
         return model
 
-
-class Encoder(KerasTimeSeriesClassifier):
-    def __init__(self, path: str | None = None) -> None:
-        self.model = load_model(path) if path else self.build_model()
-        super().__init__(self.model)
-
-    def build_model(self) -> Model:
-        input = Input(shape=(256, 1))
-
-        x = Conv1D(128, 5, padding="same")(input)
-        x = InstanceNormalization()(x)
-        x = PReLU(shared_axes=[1])(x)
-        x = Dropout(0.2)(x)
-        x = MaxPooling1D(2)(x)
-
-        x = Conv1D(256, 11, padding="same")(x)
-        x = InstanceNormalization()(x)
-        x = PReLU(shared_axes=[1])(x)
-        x = Dropout(0.2)(x)
-        x = MaxPooling1D(2)(x)
-
-        x = Conv1D(512, 21, padding="same")(x)
-        x = InstanceNormalization()(x)
-        x = PReLU(shared_axes=[1])(x)
-        x = Dropout(0.2)(x)
-
-        def attention_data_slice(x: tf.Tensor) -> tf.Tensor:
-            return x[:, :, :256]  # type: ignore
-
-        def attention_softmax_slice(x: tf.Tensor) -> tf.Tensor:
-            return x[:, :, 256:]  # type: ignore
-
-        attention_data = Lambda(
-            attention_data_slice, output_shape=lambda s: (s[1], 256)
-        )(x)
-        attention_softmax = Lambda(
-            attention_softmax_slice, output_shape=lambda s: (s[1], 256)
-        )(x)
-
-        atttention_softmax = Softmax()(attention_softmax)
-        x = Multiply()([attention_data, atttention_softmax])
-
-        x = Dense(256, activation="sigmoid")(x)
-        x = InstanceNormalization()(x)
-
-        x = Flatten()(x)
-        x = Dense(2, activation="softmax")(x)
-
-        model = Model(inputs=input, outputs=x)
-        model.compile(
-            optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"]
-        )
-
-        return model
-
-
-def generate_datasets(
-    tensorflow: bool,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    path_to_faceforensics = "/dcs/large/u2204489/faceforensics/"
-    path_to_train = path_to_faceforensics + "train/"
-    path_to_train_real = path_to_train + "real/"
-    path_to_train_fake = path_to_train + "fake/"
-    path_to_test = path_to_faceforensics + "test/"
-    path_to_test_real = path_to_test + "real/"
-    path_to_test_fake = path_to_test + "fake/"
-
-    X_train, y_train, X_test, y_test = [], [], [], []  # noqa: N806
-
-    for path, label in [
-        (path_to_train_real, 1),
-        (path_to_train_fake, 0),
-        (path_to_test_real, 1),
-        (path_to_test_fake, 0),
-    ]:
-        for file in Path(path).glob("*.npy"):
-            data = np.load(file)
-            if "train" in str(path):
-                X_train.append(data)
-                y_train.append(label)
-            else:
-                X_test.append(data)
-                y_test.append(label)
-
-    # pad or truncate time series to 256
-    X_train = pad_sequences(  # noqa: N806
-        X_train, maxlen=256, dtype="float32", padding="post"
-    )
-    X_test = pad_sequences(  # noqa: N806
-        X_test, maxlen=256, dtype="float32", padding="post"
-    )
-
-    if tensorflow:
-        X_train = np.expand_dims(X_train, axis=-1)  # noqa: N806
-        X_test = np.expand_dims(X_test, axis=-1)  # noqa: N806
-
-        y_train = to_categorical(y_train, num_classes=2)
-        y_test = to_categorical(y_test, num_classes=2)
-    else:
-        X_train = np.array(X_train)  # noqa: N806
-        y_train = np.array(y_train)
-        X_test = np.array(X_test)  # noqa: N806
-        y_test = np.array(y_test)
-
-    return X_train, y_train, X_test, y_test
-
-
-def compare_keras_models() -> None:  # noqa: PLR0912
-    enable_unsafe_deserialization()
-
-    X_train, y_train, X_test, y_test = generate_datasets(True)  # noqa: N806
-
-    models = [
-        LongShortTermMemory(),
-        LongShortTermMemory(attention=True),
-        MultiLayerPerceptron(),
-        FullyConvolutionalNeuralNetwork(),
-        ConvolutionalNeuralNetwork(),
-        ResNet(),
-        # Encoder(),
-    ]
-
-    epochs = [500, 500, 5000, 2000, 2000, 1500, 100]
-    batch_size = 16
-    resnet_batch_size = 64
-
-    results = []
-
-    for i, (model, epoch) in enumerate(zip(models, epochs)):
-        model_path = "/dcs/large/u2204489/" + model.__class__.__name__.lower()
-        if i == 1:
-            model_path += "_attention"
-        model_path += ".keras"
-
-        if Path(model_path).exists():
-            model = load_model(model_path)  # noqa: PLW2901
-        else:
-            print(f"Training {model.__class__.__name__}...")
-            if isinstance(model, ResNet):
-                model.fit(X_train, y_train, epoch, resnet_batch_size)
-            else:
-                model.fit(X_train, y_train, epoch, batch_size)
-
-            model.save(model_path)
-
-        false_positives = 0
-        false_negatives = 0
-        true_positives = 0
-        true_negatives = 0
-
-        y_pred = model.predict(X_test)
-
-        for pred, actual in zip(y_pred, y_test):
-            if pred[0] > pred[1]:
-                if np.argmax(actual) == 0:
-                    true_negatives += 1
-                else:
-                    false_negatives += 1
-            else:  # noqa: PLR5501
-                if np.argmax(actual) == 1:
-                    true_positives += 1
-                else:
-                    false_positives += 1
-
-        results.append(
-            {
-                "model": model.__class__.__name__,
-                "false_positives": false_positives,
-                "false_negatives": false_negatives,
-                "true_positives": true_positives,
-                "true_negatives": true_negatives,
-                "accuracy": (true_positives + true_negatives) / len(y_test),
-            }
-        )
-
-    for result in results:
-        print(result)
-
-    print("done :)")
-
-
-# MARK: Classical Methods
-
-
-def compare_classical_methods() -> None:
-    X_train, y_train, X_test, y_test = generate_datasets(False)  # noqa: N806
-
-    models = [
-        KNeighborsClassifier(metric="dtw", n_jobs=-1),
-        KNeighborsClassifier(metric="dtw_sakoechiba", n_jobs=-1),
-        KNeighborsClassifier(metric="dtw_itakura", n_jobs=-1),
-        KNeighborsClassifier(metric="dtw_fast", n_jobs=-1),
-        LearningShapelets(random_state=42, n_jobs=-1),
-        TimeSeriesForest(n_jobs=-1, random_state=42),
-        TSBF(n_jobs=-1, random_state=42),
-        # SAXVSM(), # cannot do due to sparse matrix
-        # BOSSVS(n_bins=2), # cannot do due to data being too similar
-    ]
-
-    names = [
-        "dtw",
-        "dtw_sakoechiba",
-        "dtw_itakura",
-        "dtw_fast",
-        "learning_shapelets",
-        "time_series_forest",
-        "tsbf",
-        # "saxvsm",
-        # "boss_vs",
-    ]
-
-    results = []
-
-    for model, name in zip(models, names):
-        print(f"Training {name}")
-        model.fit(X_train, y_train)
-
-        predictions = model.predict(X_test)
-
-        false_positives = 0
-        false_negatives = 0
-        true_positives = 0
-        true_negatives = 0
-
-        for pred, actual in zip(predictions, y_test):
-            if pred == 0:
-                if actual == 0:
-                    true_negatives += 1
-                else:
-                    false_negatives += 1
-            else:  # noqa: PLR5501
-                if actual == 1:
-                    true_positives += 1
-                else:
-                    false_positives += 1
-
-        results.append(
-            {
-                "model": name,
-                "false_positives": false_positives,
-                "false_negatives": false_negatives,
-                "true_positives": true_positives,
-                "true_negatives": true_negatives,
-                "accuracy": (true_positives + true_negatives) / len(y_test),
-            }
-        )
-
-        path = Path(f"/dcs/large/u2204489/{name}.joblib")
-        joblib.dump(model, path)
-
-    for result in results:
-        print(result)
-
-    print("done :)")
-
-
-if __name__ == "__main__":
-    compare_keras_models()
-    compare_classical_methods()
-
-
 # MARK: Main external class
 
 
 class EarAnalysis:
     """Analyses ear data to determine if it is real or fake."""
 
-    def __init__(self, path_to_model: str) -> None:
-        self.classifier = load_model(path_to_model)
+    def __init__(
+        self,
+        path: str | None, dataset: list[list[tuple[int, np.ndarray]]] | None,
+        base_path: str,
+    ) -> None:
+        if path is not None:
+            if path.endswith(".joblib"):
+                self.model = joblib.load(path)
+                self.tensorflow = False
+            else:
+                self.model = load_model(path)
+                self.tensorflow = True
+        elif dataset is not None:
+            self.model, self.tensorflow = self._get_model(dataset, base_path)
+        else:
+            raise ValueError("Either path or dataset must be provided.")
 
-    def predict(self, ears: np.ndarray) -> int:
-        """predicts the label of the given ear graph"""
-        ears = pad_sequences([ears], maxlen=256, dtype="float32", padding="post")
-        ears = np.expand_dims(ears, axis=-1)
-        prediction = self.classifier.predict(ears, verbose=0)
-        return int(np.argmax(prediction))
+    def _get_model(
+        self, dataset: list[list[tuple[int, np.ndarray]]], base_path: str
+    ) -> tuple[Model | BaseEstimator, bool]:
+        trainset, testset = dataset
+        y_train, X_train = zip(*trainset)  # noqa: N806
+        y_test, X_test = zip(*testset) # noqa: N806
+
+        # Define models
+        keras_models = [
+            LongShortTermMemory(),
+            LongShortTermMemory(attention=True),
+            MultiLayerPerceptron(),
+            FullyConvolutionalNeuralNetwork(),
+            ConvolutionalNeuralNetwork(),
+            ResNet(),
+        ]
+
+        classical_models = [
+            KNeighborsClassifier(metric="dtw", n_jobs=-1),
+            KNeighborsClassifier(metric="dtw_sakoechiba", n_jobs=-1),
+            KNeighborsClassifier(metric="dtw_itakura", n_jobs=-1),
+            KNeighborsClassifier(metric="dtw_fast", n_jobs=-1),
+            LearningShapelets(random_state=42, n_jobs=-1),
+            TimeSeriesForest(n_jobs=-1, random_state=42),
+            TSBF(n_jobs=-1, random_state=42)
+        ]
+
+        keras_epochs = [500, 500, 5000, 2000, 2000, 1500]
+        batch_size = 16
+        resnet_batch_size = 64
+
+        models = [(model, True) for model in keras_models] + [
+            (model, False) for model in classical_models
+        ]
+        epochs = keras_epochs + [None] * len(classical_models)
+
+        best_model, best_accuracy, best_tensorflow = None, 0, False
+
+        for (model, is_tensorflow), epoch in zip(models, epochs):
+            model_name = model.__class__.__name__.lower()
+            model_path = Path(
+                f"{base_path}/{model_name}.{"keras" if is_tensorflow else "joblib"}"
+            )
+            # Load model if it exists
+            if model_path.exists():
+                model = ( # noqa: PLW2901
+                    load_model(model_path) if is_tensorflow else joblib.load(model_path)
+                )
+            else:
+                print(f"Training {model_name}...")
+                if is_tensorflow:
+                    model.fit(
+                        np.expand_dims(X_train, axis=-1),
+                        to_categorical(y_train, num_classes=2),
+                        epoch,
+                        resnet_batch_size if isinstance(model, ResNet) else batch_size
+                    )
+                    model.save(str(model_path))
+                else:
+                    model.fit(X_train, y_train)
+                    joblib.dump(model, str(model_path))
+
+            # Evaluate model
+            y_pred = (
+                model.predict(np.expand_dims(X_test, axis=-1))
+                if is_tensorflow else model.predict(np.array(X_test))
+            )
+            y_pred_labels = np.argmax(y_pred, axis=1) if is_tensorflow else y_pred
+            accuracy = np.mean(y_pred_labels == y_test)
+
+            # Track best model
+            if accuracy > best_accuracy:
+                best_model = model
+                best_accuracy = accuracy
+                best_tensorflow = is_tensorflow
+
+        print(f"Best model: {best_model.__class__.__name__} with accuracy {best_accuracy}")  # noqa: E501
+        return best_model, best_tensorflow
+
+
+    def predict(self, data: np.ndarray) -> int:
+        data = pad_sequences([data], maxlen=256, dtype="float32", padding="post")
+        if self.tensorflow:
+            data = np.expand_dims(data, axis=-1)
+            return int(np.argmax(self.model.predict(data))) # type: ignore
+        else:  # noqa: RET505
+            return self.model.predict(np.array(data))[0] # type: ignore
