@@ -12,7 +12,6 @@ from pyts.classification import (
 from sklearn.base import BaseEstimator
 from tensorflow.keras import Layer, Model  # type: ignore
 from tensorflow.keras.callbacks import ReduceLROnPlateau  # type: ignore
-from tensorflow.keras.config import enable_unsafe_deserialization  # type: ignore
 from tensorflow.keras.layers import (  # type: ignore
     LSTM,
     Activation,
@@ -180,10 +179,10 @@ class ConvolutionalNeuralNetwork(KerasTimeSeriesClassifier):
         input = Input(shape=(256, 1))
 
         x = Conv1D(6, 7, padding="same", activation="sigmoid")(input)
-        x = AveragePooling1D(3)(x)
+        x = AveragePooling1D(3, padding="same")(x)
 
         x = Conv1D(12, 7, padding="same", activation="sigmoid")(x)
-        x = AveragePooling1D(3)(x)
+        x = AveragePooling1D(3, padding="same")(x)
 
         x = Flatten()(x)
         x = Dense(2, activation="softmax")(x)
@@ -273,8 +272,10 @@ class EarAnalysis:
 
     def __init__(
         self,
-        path: str | None, dataset: list[list[tuple[int, np.ndarray]]] | None,
-        base_path: str,
+        path: str | None,
+        dataset: list[list[tuple[np.ndarray, int]]] | None,
+        path_to_models: str,
+        dataset_name: str
     ) -> None:
         if path is not None:
             if path.endswith(".joblib"):
@@ -284,16 +285,21 @@ class EarAnalysis:
                 self.model = load_model(path)
                 self.tensorflow = True
         elif dataset is not None:
-            self.model, self.tensorflow = self._get_model(dataset, base_path)
+            self.model, self.tensorflow = self._get_model(
+                dataset, path_to_models, dataset_name
+            )
         else:
             raise ValueError("Either path or dataset must be provided.")
 
     def _get_model(
-        self, dataset: list[list[tuple[int, np.ndarray]]], base_path: str
+        self,
+        dataset: list[list[tuple[np.ndarray, int]]],
+        path_to_models: str,
+        dataset_name: str
     ) -> tuple[Model | BaseEstimator, bool]:
         trainset, testset = dataset
-        y_train, X_train = zip(*trainset)  # noqa: N806
-        y_test, X_test = zip(*testset) # noqa: N806
+        X_train, y_train = zip(*trainset)  # noqa: N806
+        X_test, y_test = zip(*testset) # noqa: N806
 
         # Define models
         keras_models = [
@@ -315,29 +321,46 @@ class EarAnalysis:
             TSBF(n_jobs=-1, random_state=42)
         ]
 
+        names = [
+            "lstm",
+            "lstm_attention",
+            "mlp",
+            "fcn",
+            "cnn",
+            "resnet",
+            "knn_dtw",
+            "knn_dtw_sakoechiba",
+            "knn_dtw_itakura",
+            "knn_dtw_fast",
+            "learning_shapelets",
+            "time_series_forest",
+            "tsbf"
+        ]
+
         keras_epochs = [500, 500, 5000, 2000, 2000, 1500]
         batch_size = 16
         resnet_batch_size = 64
 
-        models = [(model, True) for model in keras_models] + [
-            (model, False) for model in classical_models
-        ]
+        models = list(zip(keras_models, [True] * len(keras_models), names))
+        models += list(
+            zip(classical_models, [False] * len(classical_models), names[6:])
+        )
         epochs = keras_epochs + [None] * len(classical_models)
 
-        best_model, best_accuracy, best_tensorflow = None, 0, False
+        best_model, best_model_name, best_accuracy, best_tensorflow = None, "", 0, False
 
-        for (model, is_tensorflow), epoch in zip(models, epochs):
-            model_name = model.__class__.__name__.lower()
+        for (model, is_tensorflow, name), epoch in zip(models, epochs):
             model_path = Path(
-                f"{base_path}/{model_name}.{"keras" if is_tensorflow else "joblib"}"
+                f"{path_to_models}/{dataset_name}_{name}."
+                f"{'keras' if is_tensorflow else 'joblib'}"
             )
-            # Load model if it exists
+            print(f"Checking {model_path!s}...")
             if model_path.exists():
                 model = ( # noqa: PLW2901
                     load_model(model_path) if is_tensorflow else joblib.load(model_path)
                 )
             else:
-                print(f"Training {model_name}...")
+                print(f"Training {name}...")
                 if is_tensorflow:
                     model.fit(
                         np.expand_dims(X_train, axis=-1),
@@ -350,7 +373,6 @@ class EarAnalysis:
                     model.fit(X_train, y_train)
                     joblib.dump(model, str(model_path))
 
-            # Evaluate model
             y_pred = (
                 model.predict(np.expand_dims(X_test, axis=-1))
                 if is_tensorflow else model.predict(np.array(X_test))
@@ -358,13 +380,13 @@ class EarAnalysis:
             y_pred_labels = np.argmax(y_pred, axis=1) if is_tensorflow else y_pred
             accuracy = np.mean(y_pred_labels == y_test)
 
-            # Track best model
             if accuracy > best_accuracy:
                 best_model = model
+                best_model_name = name
                 best_accuracy = accuracy
                 best_tensorflow = is_tensorflow
 
-        print(f"Best model: {best_model.__class__.__name__} with accuracy {best_accuracy}")  # noqa: E501
+        print(f"Best model: {best_model_name} with accuracy {best_accuracy}")
         return best_model, best_tensorflow
 
 

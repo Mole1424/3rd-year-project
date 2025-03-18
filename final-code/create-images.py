@@ -6,7 +6,7 @@ import cv2 as cv
 from sklearn.model_selection import train_test_split
 
 
-def generate_datasets(path_to_dataset: str) -> tuple[list[tuple[str, int]]]:
+def generate_datasets(path_to_dataset: str) -> list[list[tuple[str, int]]]:
     """creates dataset of video paths and labels, splitting into train and test sets"""
     videos = Path(path_to_dataset).rglob("*.mp4")
 
@@ -20,7 +20,7 @@ def save_frames(
 ) -> None:
     """Extract and save frames from videos in a dataset."""
 
-    dataset = generate_datasets(path_to_dataset)
+    dataset = generate_datasets(path_to_dataset)[0]
 
     labels = ["fake", "real"]
     num_videos = [0, 0]
@@ -30,7 +30,7 @@ def save_frames(
         """Extract and save frames from a video."""
         nonlocal num_videos
         if num_videos[label] >= max_videos:
-            return []
+            return
 
         num_videos[label] += 1
         video = cv.VideoCapture(video_path)
@@ -46,7 +46,7 @@ def save_frames(
             frame_num += 1
 
         video.release()
-        return None
+        return
 
     # process videos in parallel
     with ThreadPoolExecutor() as executor:
