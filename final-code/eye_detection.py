@@ -5,7 +5,7 @@ from typing import Generator
 import cv2 as cv
 import numpy as np
 import tensorflow as tf
-from hrnet import HRNET, HRNet
+from eyes import HRNET, EyeLandmarker, auxiliary_net, pfld, pfld_loss
 from tensorflow.keras.losses import MeanSquaredError  # type: ignore
 from tensorflow.keras.optimizers import Adam  # type: ignore
 
@@ -37,6 +37,54 @@ def points_to_heatmap(
 
     return heatmap
 
+def get_angles(points: np.ndarray, image: np.ndarray) -> np.ndarray:
+    """converts facial landmarks to pitch, yaw, roll"""
+    # adapted from https://github.com/jerryhouuu/Face-Yaw-Roll-Pitch-from-Pose-Estimation-using-OpenCV/blob/master/pose_estimation.py
+
+    # 6 points for pose estimation
+    # nose, chin, left eye, right eye, left mouth, right mouth
+    image_points = np.array([
+        points[30], points[8], points[36], points[45], points[48], points[54]
+    ], dtype=np.float32)
+
+    # those points in a sample 3D model
+    model_points = np.array([
+        (0.0, 0.0, 0.0),
+        (0.0, -330.0, -65.0),
+        (-225.0, 170.0, -135.0),
+        (225.0, 170.0, -135.0),
+        (-150.0, -150.0, -125.0),
+        (150.0, -150.0, -125.0)
+    ])
+
+    # compute camera matrix
+    center = (image.shape[1]//2, image.shape[0]//2)
+    focal_length = center[0] / np.tan(60/2 * np.pi / 180)
+    camera_matrix = np.array([
+        [focal_length, 0, center[0]],
+        [0, focal_length, center[1]],
+        [0, 0, 1]
+    ], dtype=np.float32)
+
+    # solve pnp
+    dist_coeffs = np.zeros((4, 1))
+    (_, rotation_vector, translation_vector) = cv.solvePnP(
+        model_points,
+        image_points,
+        camera_matrix,
+        dist_coeffs,
+        flags=cv.SOLVEPNP_ITERATIVE
+    )
+
+    # calculate euler angles
+    rvec_matrix = cv.Rodrigues(rotation_vector)[0]
+    proj_matrix = np.hstack((rvec_matrix, translation_vector))
+    euler_angles = cv.decomposeProjectionMatrix(proj_matrix)[6]
+
+    pitch, yaw, roll = [angle[0] for angle in euler_angles]
+    return np.array([pitch, yaw, roll], dtype=np.float32)
+
+
 
 def dataset_generator(path: str, file_type: str, heatmap: bool) -> Generator:
     """generator for dataset"""
@@ -65,10 +113,10 @@ def dataset_generator(path: str, file_type: str, heatmap: bool) -> Generator:
         points[:, 0] = (points[:, 0] - x) / w * IMAGE_SIZE[0]
         points[:, 1] = (points[:, 1] - y) / h * IMAGE_SIZE[1]
 
-        # convert to heatmap
-        points = points_to_heatmap(points, (64, 64), 1.5) if heatmap else points
-
-        yield image, points
+        if heatmap:
+            yield image, points_to_heatmap(points, (64, 64), 1.5)
+        else:
+            yield image, points, get_angles(points, image)
 
 
 def load_dataset(path: str, file_type: str, heatmap: bool) -> tf.data.Dataset:
@@ -82,6 +130,7 @@ def load_dataset(path: str, file_type: str, heatmap: bool) -> tf.data.Dataset:
                 if heatmap
                 else tf.TensorSpec(shape=(68, 2), dtype=tf.float32)  # type: ignore
             ),
+            tf.TensorSpec(shape=(3,), dtype=tf.float32) if not heatmap else None, # type: ignore
         ),
     )
 
@@ -141,25 +190,72 @@ hrnet_config = {
 }
 
 
-def main(debug: bool) -> None:
+def main(debug: bool, hrnet: bool) -> None:
     path_to_large = "/dcs/large/u2204489/"
 
     gpus = tf.config.experimental.list_physical_devices("GPU")
     for gpu in gpus:
         tf.config.experimental.set_memory_growth(gpu, True)
 
-    batch_size = 16
-    epochs = 60
-    # steps per epoch = dataset/batch ~= 13000/16 ~= 812 ~= 1000
-    steps_per_epoch = 1000
+    if hrnet:
+        batch_size = 16
+        epochs = 60
+        # steps per epoch = dataset/batch ~= 13000/16 ~= 812 ~= 1000
+        steps_per_epoch = 1000
 
-    hrnet_dataset = load_datasets(path_to_large, batch_size, True, debug)
+        hrnet_dataset = load_datasets(path_to_large, batch_size, True, debug)
 
-    # create and train model
-    model = HRNET(hrnet_config)
-    model.compile(optimizer=Adam(0.001), loss=MeanSquaredError())
-    model.fit(hrnet_dataset, epochs=epochs, steps_per_epoch=steps_per_epoch)
-    model.save_weights(f"{path_to_large}hrnet.weights.h5")
+        # create and train model
+        model = HRNET(hrnet_config)
+        model.compile(optimizer=Adam(0.001), loss=MeanSquaredError())
+        model.fit(hrnet_dataset, epochs=epochs, steps_per_epoch=steps_per_epoch)
+        model.save_weights(f"{path_to_large}hrnet.weights.h5")
+    else:
+        batch_size = 128
+        epochs = 60
+
+        pfld_dataset = load_datasets(path_to_large, batch_size, False, debug)
+
+        pfld_model = pfld()
+        aux_model = auxiliary_net()
+
+        optimiser = Adam(1e-4)
+
+        @tf.function
+        def train_step(
+            images: tf.Tensor, points: tf.Tensor, angles: tf.Tensor
+        ) -> tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+            with tf.GradientTape() as tape:
+                out1, landmarks = pfld_model(images)
+                pred_angles = aux_model(out1)
+
+                landmarks = tf.reshape(landmarks, (-1, 68, 2))
+
+                loss, landmark_loss, angle_loss = pfld_loss(
+                    points, landmarks, pred_angles, angles
+                )
+
+            gradients = tape.gradient(
+                loss, pfld_model.trainable_variables + aux_model.trainable_variables
+            )
+            optimiser.apply_gradients(
+                zip(
+                    gradients, # type: ignore
+                    pfld_model.trainable_variables + aux_model.trainable_variables,
+                )
+            )
+
+            return loss, landmark_loss, angle_loss
+
+        for epoch in range(epochs):
+            for i, (images, points, angles) in enumerate(pfld_dataset):
+                loss, landmark_loss, angle_loss = train_step(images, points, angles) # type: ignore
+                print(f"Epoch: {epoch}, Batch: {i}, Loss: {loss}, Landmark Loss: {landmark_loss}, Angle Loss: {angle_loss}")
+            print("=" * 20)
+            print(f"Epoch: {epoch}, Loss: {loss}") # type: ignore
+            print("=" * 20)
+
+        pfld_model.save(f"{path_to_large}pfld.keras")
 
     print("done :)")
 
@@ -176,7 +272,7 @@ def test_model() -> None:
     # get 5 images from testset
     images = Path(path_to_testset).glob("*.png")
     images = [image for image, _ in zip(images, range(5))]
-    model = HRNet(hrnet_config, path_to_hrnet)
+    model = EyeLandmarker(hrnet_config, path_to_hrnet)
 
     for image in images:
         print("Processing image:", image)
@@ -220,7 +316,7 @@ def calculate_ears() -> None:
     path_to_hrnet = path_to_large + "hrnet.weights.h5"
     path_to_videos = path_to_large + "/faceforensics/"
 
-    model = HRNet(hrnet_config, path_to_hrnet)
+    model = EyeLandmarker(hrnet_config, path_to_hrnet)
 
     for video_path in Path(path_to_videos).rglob("*.mp4"):
         print("Processing video:", video_path)
@@ -281,4 +377,4 @@ if __name__ == "__main__":
     elif arg == "ear":
         calculate_ears()
     else:
-        main(arg == "debug")
+        main(arg == "debug", False)

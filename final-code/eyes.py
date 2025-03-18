@@ -8,10 +8,28 @@ from tensorflow.keras import Model, Sequential  # type: ignore
 from tensorflow.keras.layers import (  # type: ignore
     BatchNormalization,
     Conv2D,
+    Dense,
+    DepthwiseConv2D,
+    Flatten,
+    GlobalAveragePooling2D,
+    Input,
     Layer,
+    MaxPooling2D,
     ReLU,
     Softmax,
 )
+from tensorflow.keras.models import load_model  # type: ignore
+from tensorflow.keras.saving import register_keras_serializable  # type: ignore
+
+# MARK: HRNet
+
+# A tensorflow implementation of
+# "High-Resolution Representations for Labeling Pixels and Regions"
+# for facial landmark detection
+# Paper: https://arxiv.org/pdf/1904.04514v1
+
+# implmentation is adapted from https://github.com/HRNet/HRNet-Facial-Landmark-Detection
+# thanks to Yang Zhao, Tianheng Cheng, Jingdong Wang, and Ke Sun
 
 # momentum changed to reflect tensorflow's BatchNormalization implementation
 MOMENTUM = 0.99
@@ -477,19 +495,131 @@ class HRNET(Model):
         # apply final convolutions
         return self.head(x_cat)
 
+# MARK: PFLD
+# A tensorflow implementation of "PFLD: A Practical Facial Landmark Detector"
+# Paper: https://arxiv.org/abs/1902.10859
 
-class HRNet:
+# implmentation is adapted from https://github.com/polarisZhao/PFLD-pytorch
+# thanks to Zhichao Zhao, Harry Guo, and Andres
+
+def conv2d(filters: int, kernel_size: int, stride: int) -> Sequential:
+    """common convolutional layer for PFLD"""
+    return Sequential([
+        Conv2D(filters, kernel_size, stride, padding="same", use_bias=False),
+        BatchNormalization(),
+        ReLU(),
+    ])
+
+def inverted_residual(
+    input_channels: int,
+    output_channels: int,
+    stride: int,
+    skip: bool,
+    expand_ratio: int
+) -> Layer:
+    """inverted residual block for PFLD"""
+    hidden_dim = input_channels * expand_ratio
+
+    def layer(x: tf.Tensor) -> tf.Tensor:
+        out = Sequential([
+            Conv2D(hidden_dim, 1, 1, padding="same", use_bias=False),
+            BatchNormalization(),
+            ReLU(),
+            DepthwiseConv2D(3, stride, padding="same", use_bias=False),
+            BatchNormalization(),
+            ReLU(),
+            Conv2D(output_channels, 1, 1, padding="same", use_bias=False),
+            BatchNormalization()
+        ])(x)
+        return x + out if skip else out
+
+    return layer
+
+def pfld() -> Model:
+    """PFLD model"""
+    inputs = Input(shape=(256, 256, 3))
+
+    x = conv2d(64, 3, 2)(inputs)
+    x = conv2d(64, 3, 1)(x)
+
+    x = inverted_residual(64, 64, 2, False, 2)(x)
+    x = inverted_residual(64, 64, 1, True, 2)(x)
+    x = inverted_residual(64, 64, 1, True, 2)(x)
+    x = inverted_residual(64, 64, 1, True, 2)(x)
+    out1 = inverted_residual(64, 64, 1, True, 2)(x)
+
+    x = inverted_residual(64, 128, 2, False, 2)(out1)
+    x = inverted_residual(128, 128, 1, False, 4)(x)
+    x = inverted_residual(128, 128, 1, True, 4)(x)
+    x = inverted_residual(128, 128, 1, True, 4)(x)
+    x = inverted_residual(128, 128, 1, True, 4)(x)
+    x = inverted_residual(128, 128, 1, True, 4)(x)
+    x = inverted_residual(128, 128, 1, True, 4)(x)
+
+    x = inverted_residual(128, 16, 1, False, 2)(x)
+
+    x1 = GlobalAveragePooling2D()(x)
+    x2 = GlobalAveragePooling2D()(conv2d(32, 3, 2)(x))
+    x3 = ReLU()(BatchNormalization()(Conv2D(128, 7, strides=1, padding="valid")(x)))
+    x3 = Flatten()(x3)
+
+    @register_keras_serializable(package="Custom", name="MultiScaleLayer")
+    class MultiScaleLayer(Layer):
+        def call(self, x: tf.Tensor) -> tf.Tensor:
+            x1, x2, x3 = x
+            return tf.concat([x1, x2, x3], axis=1) # type: ignore
+
+    multi_scale = MultiScaleLayer()([x1, x2, x3])
+    landmarks = Dense(136)(multi_scale)
+
+    return Model(inputs, [out1, landmarks], name="PFLD")
+
+def auxiliary_net() -> Model:
+    """AuxiliaryNet for PFLD"""
+    inputs = Input((64, 64, 64))
+
+    x = conv2d(128, 3, 2)(inputs)
+    x = conv2d(128, 3, 1)(x)
+    x = conv2d(32, 3, 2)(x)
+    x = conv2d(128, 7, 1)(x)
+    x = MaxPooling2D(3)(x)
+    x = Flatten()(x)
+    x = Dense(32)(x)
+    output = Dense(3)(x)
+
+    return Model(inputs, output, name="AuxiliaryNet")
+
+def pfld_loss(
+    y_true: tf.Tensor, y_pred: tf.Tensor, angle_true: tf.Tensor, angle_pred: tf.Tensor
+) -> tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+    """PFLD loss function"""
+
+    angle_loss = tf.reduce_sum(1 - tf.cos(angle_true - angle_pred)) # type: ignore
+    landmark_loss = tf.reduce_sum(tf.square(y_true - y_pred)) # type: ignore
+
+    return tf.reduce_mean(landmark_loss * angle_loss), landmark_loss, angle_loss
+
+
+# MARK: EyeLandmarker
+
+class EyeLandmarker:
     """public interface for HRNet"""
 
-    def __init__(self, config: dict, path_to_weights: str) -> None:
+    def __init__(self, config: dict | None, path_to_weights: str) -> None:
         """initialises the HRNet model"""
         self.cropped_image_size = (256, 256)
 
-        self.model = HRNET(config)
-
-        # build the model and load the weights
-        self.model(tf.zeros((1, *self.cropped_image_size, 3)))
-        self.model.load_weights(path_to_weights)
+        if config is not None:
+            # if config is provided, hrnet
+            self.model = HRNET(config)
+            # build the model and load the weights
+            self.model(tf.zeros((1, *self.cropped_image_size, 3)))
+            self.model.load_weights(path_to_weights)
+            self.model_name = "hrnet"
+        else:
+            # otherwise, pfld
+            self.model = load_model(path_to_weights)
+            self.model_name = "pfld"
 
         # initialise the face detectors
         self.yunet = cv.FaceDetectorYN().create(
@@ -499,36 +629,55 @@ class HRNet:
         self.mtcnn = MTCNN("face_detection_only", "GPU:0")
 
     def get_landmarks(self, video: np.ndarray) -> list[np.ndarray]:
-        """gets landmarks from the image"""
-
-        face_crops, face_crop_vals, num_faces_per_frame = self._faces_from_frame(video)
-
+        """Gets landmarks from the video using either HRNet or PFLD backbone."""
+        face_crops, face_crop_vals, num_faces_per_frame = self._faces_from_video(video)
         multi_landmarks = []
-        batch_size = 128
+
+        # pfld is smaller so can handle larger batch sizes
+        batch_size = 128 if self.model_name == "hrnet" else 256
+
         for i in range(0, len(face_crops), batch_size):
             batch = face_crops[i : i + batch_size]
             batch = tf.cast(tf.convert_to_tensor(batch), tf.float32)
-            heatmaps = self.model(batch).numpy()
-            heatmap_size = heatmaps.shape[1:3]
+            predictions = self.model(batch).numpy()
 
-            for idx, (x, y, w, h) in enumerate(face_crop_vals[i : i + batch_size]):
-                heatmap = heatmaps[idx]
-                landmarks = [
-                    self._heatmap_to_landmark(heatmap[:, :, i])
-                    for i in range(36, 48)
-                ]
+            if self.model_name == "hrnet":
+                # HRNet outputs heatmaps.
+                heatmaps = predictions
+                heatmap_size = heatmaps.shape[1:3]
+                for idx, (x, y, w, h) in enumerate(face_crop_vals[i : i + batch_size]):
+                    heatmap = heatmaps[idx]
+                    # get eye landmarks from heatmaps
+                    landmarks = [
+                        self._heatmap_to_landmark(heatmap[:, :, j])
+                        for j in range(36, 48)
+                    ]
+                    # heatmap space to crop space
+                    landmarks = (
+                        np.array(landmarks)
+                        / np.array(heatmap_size)
+                        * np.array(self.cropped_image_size)
+                    )
+                    # crop space to image space
+                    landmarks = (
+                        np.array([x, y]) + landmarks * np.array([w, h])
+                        / np.array(self.cropped_image_size)
+                    )
+                    multi_landmarks.append(landmarks)
+            else:
+                # PFLD outputs direct landmark coordinates in crop space.
+                for idx, (x, y, w, h) in enumerate(face_crop_vals[i : i + batch_size]):
+                    landmarks = predictions[idx]
+                    # if landmarks.ndim == 1:
+                    #     landmarks = landmarks.reshape(-1, 2)
+                    # crop space to image space
+                    landmarks = (
+                        np.array([x, y]) + landmarks * np.array([w, h])
+                        / np.array(self.cropped_image_size)
+                    )
+                    multi_landmarks.append(landmarks)
 
-                landmarks = (
-                    np.array(landmarks)
-                    / np.array(heatmap_size)
-                    * np.array(self.cropped_image_size)
-                )
-                landmarks = np.array([x, y]) + landmarks * np.array([w, h]) / np.array(
-                    self.cropped_image_size
-                )
-                multi_landmarks.append(landmarks)
-
-        # convert to landmarks per frame
+        # Group landmarks per frame
         landmarks_per_frame = []
         idx = 0
         for num_faces in num_faces_per_frame:
@@ -537,12 +686,15 @@ class HRNet:
 
         return landmarks_per_frame
 
-    def _faces_from_frame(
+
+    def _faces_from_video(
         self, video: np.ndarray
     ) -> tuple[np.ndarray, list[list[int]], list[int]]:
         face_crop_vals = []
         face_crops = []
         num_faces_per_frame = []
+
+        self.yunet.setInputSize((video.shape[2], video.shape[1]))
 
         frames = [video[i] for i in range(len(video))]
 
@@ -568,7 +720,7 @@ class HRNet:
                 batch_frames = mtcnn_frames[i : i + batch_size]
                 mtcnn_results = self.mtcnn.detect_faces(batch_frames)
 
-                for j, result in enumerate(mtcnn_results):
+                for j, result in enumerate(mtcnn_results): # type: ignore
                     frame_idx = mtcnn_indices[i + j]
                     faces_per_frame[frame_idx] = result
 
@@ -588,7 +740,7 @@ class HRNet:
                 face_crops.append(face_crop)
                 face_crop_vals.append((x, y, w, h))
 
-        return face_crops, face_crop_vals, num_faces_per_frame
+        return np.array(face_crops), face_crop_vals, num_faces_per_frame
 
 
 

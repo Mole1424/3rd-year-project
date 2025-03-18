@@ -6,10 +6,9 @@ import cv2 as cv
 import numpy as np
 import tensorflow as tf
 from ear_analysis import EarAnalysis
+from eye_detection import EyeLandmarker
 from foolbox import TargetedMisclassification, TensorFlowModel  # type: ignore
 from foolbox.attacks import LinfPGD
-from hrnet import HRNet
-from pfld import PFLD
 from sklearn.model_selection import train_test_split
 from tensorflow.keras.models import Model  # type: ignore
 from traditional_detectors import train_detectors
@@ -24,8 +23,11 @@ def generate_datasets(path_to_dataset: str) -> list[list[tuple[str, int]]]:
     return train_test_split(dataset, train_size=0.8, random_state=42)
 
 def get_custom_model(
-    hrnet: bool, train_set: list[tuple[str, int]]
-) -> tuple[HRNet | PFLD, EarAnalysis]:
+    hrnet: bool,
+    train_set: list[tuple[str, int]],
+    path_to_models: str,
+    dataset_name: str,
+) -> tuple[EyeLandmarker, EarAnalysis]:
     if hrnet:
         hrnet_config = {
             "NUM_JOINTS": 68,
@@ -49,13 +51,14 @@ def get_custom_model(
                 "NUM_CHANNELS": [18, 36, 72, 144],
             },
         }
-        landmarker = HRNet(hrnet_config, path_to_models + "hrnet.weights.h5")
+        landmarker = EyeLandmarker(hrnet_config, path_to_models + "hrnet.weights.h5")
     else:
-        landmarker = PFLD(path_to_models + "pfld.weights.h5")
+        landmarker = EyeLandmarker(None, path_to_models + "pfld.weights.h5")
 
     ears_dataset = []
     for video in train_set:
         video_path, label = video
+        print(f"Processing {video_path}")
         video = cv.VideoCapture(video_path)  # noqa: PLW2901
         frames = []
         while video.isOpened():
@@ -68,27 +71,30 @@ def get_custom_model(
         for frame_landmarks in landmarks:
             if frame_landmarks is None:
                 continue
-            ears_l = calculate_ear_batch(frame_landmarks[:, 0:6])
-            ears_r = calculate_ear_batch(frame_landmarks[:, 6:12])
-            ears_dataset.append((label, np.mean([ears_l, ears_r])))
+            best_face = frame_landmarks[0]
+            if len(best_face) != 12:  # noqa: PLR2004
+                continue
+            ear_l = calculate_ear(best_face[0:6])
+            ear_r = calculate_ear(best_face[6:12])
+            ears_dataset.append((np.mean([ear_l, ear_r]), label))
 
     ears_dataset = train_test_split(ears_dataset, train_size=0.8, random_state=42)
 
-    ear_analyser = EarAnalysis(None, ears_dataset, path_to_models)
+    ear_analyser = EarAnalysis(None, ears_dataset, path_to_models, dataset_name)
 
     return landmarker, ear_analyser
 
-def calculate_ear_batch(points: np.ndarray) -> np.ndarray:
+def calculate_ear(points: np.ndarray) -> np.ndarray:
     """calcualte eye aspect ratio"""
-    p2_p6 = np.linalg.norm(points[:, 1] - points[:, 5])
-    p3_p5 = np.linalg.norm(points[:, 2] - points[:, 4])
-    p1_p4 = np.linalg.norm(points[:, 0] - points[:, 3])
+    p2_p6 = np.linalg.norm(points[1] - points[5])
+    p3_p5 = np.linalg.norm(points[2] - points[4])
+    p1_p4 = np.linalg.norm(points[0] - points[3])
 
     return np.clip((p2_p6 + p3_p5) / (2.0 * p1_p4), 0, 1) # type: ignore
 
 
 def classify_video_custom(
-    video: np.ndarray, landmarker: HRNet | PFLD, ear_analyser: EarAnalysis
+    video: np.ndarray, landmarker: EyeLandmarker, ear_analyser: EarAnalysis
 ) -> bool:
     """classifies a video using custom models (true real, false fake)"""
     ears = []
@@ -97,10 +103,12 @@ def classify_video_custom(
     for frame_landmarks in landmarks:
         if frame_landmarks is None:
             continue
-
-        ears_l = calculate_ear_batch(frame_landmarks[:, 0:6])
-        ears_r = calculate_ear_batch(frame_landmarks[:, 6:12])
-        ears.append(np.mean([ears_l, ears_r]))
+        best_face = frame_landmarks[0]
+        if len(best_face) != 12: # noqa: PLR2004
+            continue
+        ear_l = calculate_ear(best_face[0:6])
+        ear_r = calculate_ear(best_face[6:12])
+        ears.append(np.mean([ear_l, ear_r]))
 
     if len(ears) == 0:
         return False
@@ -185,7 +193,7 @@ def perturbate_frames(
 
 def process_video(
     video_info: tuple[str, int],
-    landmarker: HRNet | PFLD,
+    landmarker: EyeLandmarker,
     ear_analyser: EarAnalysis,
     **models: Model,
 ) -> tuple[int, ...]:
@@ -248,14 +256,17 @@ def main(path_to_dataset: str, path_to_models: str) -> None:
     for gpu in tf.config.experimental.list_physical_devices("GPU"):
         tf.config.experimental.set_memory_growth(gpu, True)
 
+    dataset_name = path_to_dataset.split("/")[-2]
+
     # generate dataset
     train_set, test_set = generate_datasets(path_to_dataset)
 
-    landmarker, ear_analyser = get_custom_model(True, train_set)
-
+    landmarker, ear_analyser = get_custom_model(
+        True, train_set, path_to_models, dataset_name
+    )
 
     models = train_detectors(
-        path_to_models, path_to_dataset.replace("/", "_"), path_to_dataset
+        path_to_models, dataset_name, path_to_dataset
     )
 
     # initialise results
