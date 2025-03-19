@@ -1,3 +1,5 @@
+import json
+import pickle
 import sys
 from pathlib import Path
 from typing import Any
@@ -27,7 +29,8 @@ def get_custom_model(
     train_set: list[tuple[str, int]],
     path_to_models: str,
     dataset_name: str,
-) -> tuple[EyeLandmarker, EarAnalysis]:
+    path_to_ear_anylyser: str,
+) -> tuple[EyeLandmarker, EarAnalysis, str]:
     if hrnet:
         hrnet_config = {
             "NUM_JOINTS": 68,
@@ -55,46 +58,66 @@ def get_custom_model(
     else:
         landmarker = EyeLandmarker(None, path_to_models + "pfld.keras")
 
-    ears_dataset = []
-    for video in train_set:
-        video_path, label = video
-        print(f"Processing {video_path}")
+    if path_to_ear_anylyser != "":
+        ear_analyser = EarAnalysis(path_to_ear_anylyser, None, "", "")
+        return landmarker, ear_analyser, ""
 
-        video = cv.VideoCapture(video_path)  # noqa: PLW2901
-        frames = []
-        max_frames = 256
-        while video.isOpened():
-            success, frame = video.read()
-            if not success or len(frames) >= max_frames:
-                break
-            frames.append(frame)
-        frames = np.array(frames)
+    path = Path(path_to_models + "ears_dataset.pkl")
+    if path.exists():
+        with path.open("rb") as file:
+            ears_dataset = pickle.load(file)
+    else:
+        ears_dataset = []
+        for video in train_set:
+            video_path, label = video
+            print(f"Processing {video_path}")
 
-        landmarks = landmarker.get_landmarks(frames)
+            video = cv.VideoCapture(video_path)  # noqa: PLW2901
+            frames = []
+            max_frames = 256
+            while video.isOpened():
+                success, frame = video.read()
+                if not success or len(frames) >= max_frames:
+                    break
+                frames.append(frame)
+            frames = np.array(frames)
 
-        valid_landmarks = [lm for lm in landmarks if lm is not None and len(lm) > 0]
+            landmarks = landmarker.get_landmarks(frames)
 
-        if len(valid_landmarks) == 0:
-            continue
+            valid_landmarks = [lm for lm in landmarks if lm is not None and len(lm) > 0]
 
-        previous_landmarks = valid_landmarks[0][0]
-        best_faces = [previous_landmarks]
+            if len(valid_landmarks) == 0:
+                continue
 
-        for frame_landmarks in valid_landmarks[1:]:
-            best_face = min(
-                frame_landmarks,
-                key=lambda x: np.linalg.norm(np.array(previous_landmarks) - np.array(x))
-            )
-            previous_landmarks = best_face
-            best_faces.append(best_face)
+            previous_landmarks = valid_landmarks[0][0]
+            best_faces = [previous_landmarks]
 
-        ears = calculate_ears(np.array(best_faces))
-        ears_dataset.append((ears, label))
+            for frame_landmarks in valid_landmarks[1:]:
+                best_face = min(
+                    frame_landmarks,
+                    key=lambda x: np.linalg.norm(
+                        np.array(previous_landmarks) - np.array(x)
+                    )
+                )
+                previous_landmarks = best_face
+                best_faces.append(best_face)
 
-    print(ears_dataset)
-    ears_dataset = train_test_split(ears_dataset, train_size=0.8, random_state=42)
+            ears = calculate_ears(np.array(best_faces))
+            desired_length = 256
+            if len(ears) < desired_length:
+                ears = np.pad(
+                    ears, (0, desired_length - len(ears)),
+                    "constant",
+                    constant_values=-1
+                )
+            ears_dataset.append((ears, label))
 
-    return landmarker, EarAnalysis(None, ears_dataset, path_to_models, dataset_name)
+        ears_dataset = train_test_split(ears_dataset, train_size=0.8, random_state=42)
+
+    ear_analyser = EarAnalysis(None, ears_dataset, path_to_models, dataset_name)
+    path = ear_analyser.get_best_path()
+
+    return landmarker, ear_analyser, path
 
 def calculate_ears(points: np.ndarray) -> np.ndarray:
     """calcualte eye aspect ratio"""
@@ -285,6 +308,10 @@ def main(path_to_dataset: str, path_to_models: str) -> None:
         tf.config.experimental.set_memory_growth(gpu, True)
 
     dataset_name = path_to_dataset.split("/")[-2]
+    path_to_save = f"{dataset_name}_results.txt"
+
+    # attempt to load progress
+    path_to_ear_anylyser, loaded_results = load_progress(path_to_save)
 
     # generate dataset
     print("Generating datasets")
@@ -293,10 +320,14 @@ def main(path_to_dataset: str, path_to_models: str) -> None:
 
     # get custom model
     print("Getting custom model")
-    landmarker, ear_analyser = get_custom_model(
-        False, train_set, path_to_models, dataset_name
+    # MARK: change to True to use HRNet
+    landmarker, ear_analyser, best_path = get_custom_model(
+        False, train_set, path_to_models, dataset_name, path_to_ear_anylyser
     )
     print("Custom model loaded")
+
+    # save ear analyser path
+    save_progress({}, best_path, path_to_save)
 
     # train traditional models
     print("Training traditional models")
@@ -308,15 +339,22 @@ def main(path_to_dataset: str, path_to_models: str) -> None:
     # initialise results
     traditional_models = ["vgg", "resnet", "xception", "efficientnet"]
     all_models = ["custom", *traditional_models]
-    results = {model: {"tp": 0, "tn": 0, "fp": 0, "fn": 0} for model in all_models}
-    results.update(
-        {f"{model}_{target}": {"tp": 0, "tn": 0, "fp": 0, "fn": 0}
-        for model in all_models for target in traditional_models}
-    )
+    if loaded_results == {}:
+        results = {model: {"tp": 0, "tn": 0, "fp": 0, "fn": 0} for model in all_models}
+        results.update(
+            {f"{model}_{target}": {"tp": 0, "tn": 0, "fp": 0, "fn": 0}
+            for model in all_models for target in traditional_models}
+        )
+    else:
+        results = loaded_results
+
+    num_vidoes_processed = sum(results["custom"].values())
 
     # process each video in the dataset
     print("Processing videos")
-    for video in test_set:
+    for i, video in enumerate(
+        test_set[num_vidoes_processed:], start=num_vidoes_processed + 1
+    ):
         label, *predictions = process_video(
             video, landmarker, ear_analyser, **dict(zip(traditional_models, models))
         )
@@ -329,6 +367,12 @@ def main(path_to_dataset: str, path_to_models: str) -> None:
                 results[model_name]["fp"] += 1
             elif label == 0 and not prediction:
                 results[model_name]["tn"] += 1
+
+        # save progress
+        if i % 100 == 0:
+            save_progress(results, best_path, path_to_save)
+
+    save_progress(results, best_path, path_to_save)
 
     # print final results
     for model_name, metrics in results.items():

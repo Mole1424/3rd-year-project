@@ -30,7 +30,7 @@ from tensorflow.keras.layers import (  # type: ignore
 )
 from tensorflow.keras.models import load_model  # type: ignore
 from tensorflow.keras.saving import register_keras_serializable  # type: ignore
-from tensorflow.keras.utils import pad_sequences, to_categorical  # type: ignore
+from tensorflow.keras.utils import to_categorical  # type: ignore
 
 
 class KerasTimeSeriesClassifier:
@@ -275,7 +275,7 @@ class EarAnalysis:
         path: str | None,
         dataset: list[list[tuple[np.ndarray, int]]] | None,
         path_to_models: str,
-        dataset_name: str
+        dataset_name: str,
     ) -> None:
         if path is not None:
             if path.endswith(".joblib"):
@@ -285,18 +285,21 @@ class EarAnalysis:
                 self.model = load_model(path)
                 self.tensorflow = True
         elif dataset is not None:
-            self.model, self.tensorflow = self._get_model(
+            self.model, self.tensorflow, self.best_path = self._get_model(
                 dataset, path_to_models, dataset_name
             )
         else:
             raise ValueError("Either path or dataset must be provided.")
+
+    def get_best_path(self) -> str:
+        return self.best_path
 
     def _get_model(
         self,
         dataset: list[list[tuple[np.ndarray, int]]],
         path_to_models: str,
         dataset_name: str
-    ) -> tuple[Model | BaseEstimator, bool]:
+    ) -> tuple[Model | BaseEstimator, bool, str]:
         trainset, testset = dataset
         X_train, y_train = zip(*trainset)  # noqa: N806
         X_test, y_test = zip(*testset) # noqa: N806
@@ -352,7 +355,7 @@ class EarAnalysis:
         for (model, is_tensorflow, name), epoch in zip(models, epochs):
             model_path = Path(
                 f"{path_to_models}/{dataset_name}_{name}."
-                f"{'keras' if is_tensorflow else 'joblib'}"
+                f"{"keras" if is_tensorflow else "joblib"}"
             )
             print(f"Checking {model_path!s}...")
             if model_path.exists():
@@ -387,11 +390,19 @@ class EarAnalysis:
                 best_tensorflow = is_tensorflow
 
         print(f"Best model: {best_model_name} with accuracy {best_accuracy}")
-        return best_model, best_tensorflow
+        best_path = f"{path_to_models}/{dataset_name}_{best_model_name}."
+        best_path += "keras" if best_tensorflow else "joblib"
+        return best_model, best_tensorflow, best_path
 
 
     def predict(self, data: np.ndarray) -> int:
-        data = pad_sequences([data], maxlen=256, dtype="float32", padding="post")
+        desired_length = 256
+        if len(data) < desired_length:
+            data = np.pad(
+                data, (0, desired_length - len(data)), "constant", constant_values=-1
+            )
+        elif len(data) > desired_length:
+            data = data[:desired_length]
         if self.tensorflow:
             data = np.expand_dims(data, axis=-1)
             return int(np.argmax(self.model.predict(data))) # type: ignore
