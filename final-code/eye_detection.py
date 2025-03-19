@@ -212,7 +212,7 @@ def main(debug: bool, hrnet: bool) -> None:
         model.save_weights(f"{path_to_large}hrnet.weights.h5")
     else:
         batch_size = 128
-        epochs = 60
+        epochs = 500
 
         pfld_dataset = load_datasets(path_to_large, batch_size, False, debug)
 
@@ -250,34 +250,43 @@ def main(debug: bool, hrnet: bool) -> None:
         for epoch in range(epochs):
             for i, (images, points, angles) in enumerate(pfld_dataset):
                 loss, landmark_loss, angle_loss = train_step(images, points, angles) # type: ignore
-                print(f"Epoch: {epoch}, Batch: {i}, Loss: {loss}, Landmark Loss: {landmark_loss}, Angle Loss: {angle_loss}")
+                print(
+                    f"Epoch: {epoch}, Batch: {i}, Loss: {loss} "
+                    f"Landmark Loss: {landmark_loss}, Angle Loss: {angle_loss}"
+                )
             print("=" * 20)
             print(f"Epoch: {epoch}, Loss: {loss}") # type: ignore
             print("=" * 20)
+            if epoch % 50 == 0:
+                pfld_model.save(f"{path_to_large}pfld.keras")
+                aux_model.save(f"{path_to_large}auxiliary.keras")
 
         pfld_model.save(f"{path_to_large}pfld.keras")
+        aux_model.save(f"{path_to_large}auxiliary.keras")
 
     print("done :)")
 
 
-def test_model() -> None:
+def test_model(hrnet: bool) -> None:
     # delete all files in test-images from previous runs
     for file in Path("test-images/").glob("*"):
         file.unlink()
 
     path_to_large = "/dcs/large/u2204489/"
-    path_to_hrnet = path_to_large + "hrnet.weights.h5"
+    path_to_model = (
+        path_to_large + "hrnet.weights.h5" if hrnet else path_to_large + "pfld.keras"
+    )
     path_to_testset = path_to_large + "eyes/lfpw/testset/"
 
     # get 5 images from testset
     images = Path(path_to_testset).glob("*.png")
     images = [image for image, _ in zip(images, range(5))]
-    model = EyeLandmarker(hrnet_config, path_to_hrnet)
+    model = EyeLandmarker(hrnet_config if hrnet else None, path_to_model)
 
     for image in images:
         print("Processing image:", image)
         img = cv.imread(str(image))
-        points = model.get_landmarks([img])[0] # type: ignore
+        points = model.get_landmarks(np.array([img]))[0]
 
         for i, face_points in enumerate(points):
             for j, (x, y) in enumerate(face_points):
@@ -295,9 +304,10 @@ def test_model() -> None:
 
         # save image for testing
         new_path = "test-images/" + str(image).split("/")[-1]
-        cv.imshow(new_path, img)
-    cv.waitKey(0)
-    cv.destroyAllWindows()
+        print("Saving image to:", new_path)
+        cv.imwrite(new_path, img)
+    # cv.waitKey(0)
+    # cv.destroyAllWindows()
 
     print("done :)")
 
@@ -373,7 +383,7 @@ if __name__ == "__main__":
         sys.exit(1)
 
     if arg == "test":
-        test_model()
+        test_model(False)
     elif arg == "ear":
         calculate_ears()
     else:

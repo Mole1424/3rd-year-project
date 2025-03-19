@@ -535,6 +535,12 @@ def inverted_residual(
 
     return layer
 
+@register_keras_serializable(package="Custom", name="MultiScaleLayer")
+class MultiScaleLayer(Layer):
+    def call(self, x: tf.Tensor) -> tf.Tensor:
+        x1, x2, x3 = x
+        return tf.concat([x1, x2, x3], axis=1) # type: ignore
+
 def pfld() -> Model:
     """PFLD model"""
     inputs = Input(shape=(256, 256, 3))
@@ -562,12 +568,6 @@ def pfld() -> Model:
     x2 = GlobalAveragePooling2D()(conv2d(32, 3, 2)(x))
     x3 = ReLU()(BatchNormalization()(Conv2D(128, 7, strides=1, padding="valid")(x)))
     x3 = Flatten()(x3)
-
-    @register_keras_serializable(package="Custom", name="MultiScaleLayer")
-    class MultiScaleLayer(Layer):
-        def call(self, x: tf.Tensor) -> tf.Tensor:
-            x1, x2, x3 = x
-            return tf.concat([x1, x2, x3], axis=1) # type: ignore
 
     multi_scale = MultiScaleLayer()([x1, x2, x3])
     landmarks = Dense(136)(multi_scale)
@@ -603,10 +603,10 @@ def pfld_loss(
 # MARK: EyeLandmarker
 
 class EyeLandmarker:
-    """public interface for HRNet"""
+    """public interface for EyeLandmarking"""
 
     def __init__(self, config: dict | None, path_to_weights: str) -> None:
-        """initialises the HRNet model"""
+        """initialises the model"""
         self.cropped_image_size = (256, 256)
 
         if config is not None:
@@ -618,7 +618,9 @@ class EyeLandmarker:
             self.model_name = "hrnet"
         else:
             # otherwise, pfld
-            self.model = load_model(path_to_weights)
+            self.model = load_model(
+                path_to_weights, custom_objects={"MultiScaleLayer": MultiScaleLayer}
+            )
             self.model_name = "pfld"
 
         # initialise the face detectors
@@ -634,12 +636,15 @@ class EyeLandmarker:
         multi_landmarks = []
 
         # pfld is smaller so can handle larger batch sizes
-        batch_size = 128 if self.model_name == "hrnet" else 256
+        batch_size = 128 if self.model_name == "hrnet" else 512
 
         for i in range(0, len(face_crops), batch_size):
             batch = face_crops[i : i + batch_size]
-            batch = tf.cast(tf.convert_to_tensor(batch), tf.float32)
-            predictions = self.model(batch).numpy()
+            batch = tf.convert_to_tensor(batch, dtype=tf.float32)
+            if self.model_name == "hrnet":
+                predictions = self.model(batch).numpy()
+            else:
+                predictions = self.model(batch)[1].numpy().reshape(-1, 68, 2)
 
             if self.model_name == "hrnet":
                 # HRNet outputs heatmaps.
@@ -694,7 +699,7 @@ class EyeLandmarker:
         face_crops = []
         num_faces_per_frame = []
 
-        self.yunet.setInputSize((video.shape[2], video.shape[1]))
+        self.yunet.setInputSize((video[0].shape[1], video[0].shape[0]))
 
         frames = [video[i] for i in range(len(video))]
 
