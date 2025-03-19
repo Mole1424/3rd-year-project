@@ -5,7 +5,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --time=2-00:00:00
 #
-##SBATCH --mail-type=END,FAIL
+#SBATCH --mail-type=END,FAIL
 #SBATCH --output=joboutput_%j.out
 #SBATCH --error=joboutput_%j.err
 

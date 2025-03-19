@@ -53,44 +53,63 @@ def get_custom_model(
         }
         landmarker = EyeLandmarker(hrnet_config, path_to_models + "hrnet.weights.h5")
     else:
-        landmarker = EyeLandmarker(None, path_to_models + "pfld.weights.h5")
+        landmarker = EyeLandmarker(None, path_to_models + "pfld.keras")
 
     ears_dataset = []
     for video in train_set:
         video_path, label = video
         print(f"Processing {video_path}")
+
         video = cv.VideoCapture(video_path)  # noqa: PLW2901
         frames = []
+        max_frames = 256
         while video.isOpened():
             success, frame = video.read()
-            if not success:
+            if not success or len(frames) >= max_frames:
                 break
             frames.append(frame)
         frames = np.array(frames)
-        landmarks = landmarker.get_landmarks(frames)
-        for frame_landmarks in landmarks:
-            if frame_landmarks is None:
-                continue
-            best_face = frame_landmarks[0]
-            if len(best_face) != 12:  # noqa: PLR2004
-                continue
-            ear_l = calculate_ear(best_face[0:6])
-            ear_r = calculate_ear(best_face[6:12])
-            ears_dataset.append((np.mean([ear_l, ear_r]), label))
 
+        landmarks = landmarker.get_landmarks(frames)
+
+        valid_landmarks = [lm for lm in landmarks if lm is not None and len(lm) > 0]
+
+        if len(valid_landmarks) == 0:
+            continue
+
+        previous_landmarks = valid_landmarks[0][0]
+        best_faces = [previous_landmarks]
+
+        for frame_landmarks in valid_landmarks[1:]:
+            best_face = min(
+                frame_landmarks,
+                key=lambda x: np.linalg.norm(np.array(previous_landmarks) - np.array(x))
+            )
+            previous_landmarks = best_face
+            best_faces.append(best_face)
+
+        ears = calculate_ears(np.array(best_faces))
+        ears_dataset.append((ears, label))
+
+    print(ears_dataset)
     ears_dataset = train_test_split(ears_dataset, train_size=0.8, random_state=42)
 
-    ear_analyser = EarAnalysis(None, ears_dataset, path_to_models, dataset_name)
+    return landmarker, EarAnalysis(None, ears_dataset, path_to_models, dataset_name)
 
-    return landmarker, ear_analyser
-
-def calculate_ear(points: np.ndarray) -> np.ndarray:
+def calculate_ears(points: np.ndarray) -> np.ndarray:
     """calcualte eye aspect ratio"""
-    p2_p6 = np.linalg.norm(points[1] - points[5])
-    p3_p5 = np.linalg.norm(points[2] - points[4])
-    p1_p4 = np.linalg.norm(points[0] - points[3])
+    p2_p6 = np.linalg.norm(points[1,:] - points[5,:], axis=1)
+    p3_p5 = np.linalg.norm(points[2,:] - points[4,:], axis=1)
+    p1_p4 = np.linalg.norm(points[0,:] - points[3,:], axis=1)
 
-    return np.clip((p2_p6 + p3_p5) / (2.0 * p1_p4), 0, 1) # type: ignore
+    p8_p12 = np.linalg.norm(points[7,:] - points[11,:], axis=1)
+    p9_p11 = np.linalg.norm(points[8,:] - points[10,:], axis=1)
+    p7_p10 = np.linalg.norm(points[6,:] - points[9,:], axis=1)
+
+    ear_l = np.clip((p2_p6 + p3_p5) / (2.0 * p1_p4), 0, 1)
+    ear_r = np.clip((p8_p12 + p9_p11) / (2.0 * p7_p10), 0, 1)
+
+    return np.mean(np.array([ear_l, ear_r]), axis=0)
 
 
 def classify_video_custom(
@@ -100,15 +119,24 @@ def classify_video_custom(
     ears = []
 
     landmarks = landmarker.get_landmarks(video)
-    for frame_landmarks in landmarks:
-        if frame_landmarks is None:
-            continue
-        best_face = frame_landmarks[0]
-        if len(best_face) != 12: # noqa: PLR2004
-            continue
-        ear_l = calculate_ear(best_face[0:6])
-        ear_r = calculate_ear(best_face[6:12])
-        ears.append(np.mean([ear_l, ear_r]))
+
+    valid_landmarks = [lm for lm in landmarks if lm is not None]
+
+    if len(valid_landmarks) == 0:
+        return False
+
+    previous_landmarks = valid_landmarks[0][0]
+    best_faces = [previous_landmarks]
+
+    for frame_landmarks in valid_landmarks[1:]:
+        best_face = min(
+            frame_landmarks,
+            key=lambda x: np.linalg.norm(np.array(previous_landmarks) - np.array(x)),
+        )
+        previous_landmarks = best_face
+        best_faces.append(best_face)
+
+    ears = calculate_ears(np.array(best_faces))
 
     if len(ears) == 0:
         return False
@@ -259,20 +287,27 @@ def main(path_to_dataset: str, path_to_models: str) -> None:
     dataset_name = path_to_dataset.split("/")[-2]
 
     # generate dataset
+    print("Generating datasets")
     train_set, test_set = generate_datasets(path_to_dataset)
+    print("Datasets generated")
 
+    # get custom model
+    print("Getting custom model")
     landmarker, ear_analyser = get_custom_model(
-        True, train_set, path_to_models, dataset_name
+        False, train_set, path_to_models, dataset_name
     )
+    print("Custom model loaded")
 
+    # train traditional models
+    print("Training traditional models")
     models = train_detectors(
         path_to_models, dataset_name, path_to_dataset
     )
+    print("Traditional models trained")
 
     # initialise results
     traditional_models = ["vgg", "resnet", "xception", "efficientnet"]
     all_models = ["custom", *traditional_models]
-
     results = {model: {"tp": 0, "tn": 0, "fp": 0, "fn": 0} for model in all_models}
     results.update(
         {f"{model}_{target}": {"tp": 0, "tn": 0, "fp": 0, "fn": 0}
@@ -280,6 +315,7 @@ def main(path_to_dataset: str, path_to_models: str) -> None:
     )
 
     # process each video in the dataset
+    print("Processing videos")
     for video in test_set:
         label, *predictions = process_video(
             video, landmarker, ear_analyser, **dict(zip(traditional_models, models))

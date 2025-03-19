@@ -632,6 +632,9 @@ class EyeLandmarker:
 
     def get_landmarks(self, video: np.ndarray) -> list[np.ndarray]:
         """Gets landmarks from the video using either HRNet or PFLD backbone."""
+        if len(video) == 0:
+            return []
+
         face_crops, face_crop_vals, num_faces_per_frame = self._faces_from_video(video)
         multi_landmarks = []
 
@@ -701,7 +704,7 @@ class EyeLandmarker:
 
         self.yunet.setInputSize((video[0].shape[1], video[0].shape[0]))
 
-        frames = [video[i] for i in range(len(video))]
+        frames = list(video)
 
         faces_per_frame = [None] * len(frames)
         mtcnn_indices = []

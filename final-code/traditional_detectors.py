@@ -160,7 +160,7 @@ def train_detectors(
     # train the models
 
     # check if the models already exist
-    if not Path(f"{path_to_models}efficientnet{name}.keras").exists():
+    if not Path(f"{path_to_models}efficientnet_{name}.keras").exists():
         # if not comile, train, and save with appropriate specs
         efficientnet = efficientnet_b4()
         efficientnet.compile(
@@ -170,11 +170,11 @@ def train_detectors(
             loss="binary_crossentropy",
         )
         efficientnet.fit(train_generator, epochs=60, validation_data=test_generator)
-        efficientnet.save(f"{path_to_models}efficientnet{name}.keras")
+        efficientnet.save(f"{path_to_models}efficientnet_{name}.keras")
     else:
-        efficientnet = load_model(f"{path_to_models}efficientnet{name}.keras")
+        efficientnet = load_model(f"{path_to_models}efficientnet_{name}.keras")
 
-    if not Path(f"{path_to_models}resnet{name}.keras").exists():
+    if not Path(f"{path_to_models}resnet_{name}.keras").exists():
         x_ception = xception()
         x_ception.compile(
             optimizer=Adam(
@@ -183,11 +183,11 @@ def train_detectors(
             loss="categorical_crossentropy",
         )
         x_ception.fit(train_generator, epochs=60, validation_data=test_generator)
-        x_ception.save(f"{path_to_models}xception{name}.keras")
+        x_ception.save(f"{path_to_models}xception_{name}.keras")
     else:
-        x_ception = load_model(f"{path_to_models}xception{name}.keras")
+        x_ception = load_model(f"{path_to_models}xception_{name}.keras")
 
-    if not Path(f"{path_to_models}vgg19{name}.keras").exists():
+    if not Path(f"{path_to_models}vgg19_{name}.keras").exists():
         vgg = vgg19()
         vgg.compile(
             optimizer=Adam(
@@ -197,11 +197,11 @@ def train_detectors(
             metrics=["accuracy"],
         )
         vgg.fit(train_generator, epochs=20, validation_data=test_generator)
-        vgg.save(f"{path_to_models}vgg19{name}.keras")
+        vgg.save(f"{path_to_models}vgg19_{name}.keras")
     else:
-        vgg = load_model(f"{path_to_models}vgg19{name}.keras")
+        vgg = load_model(f"{path_to_models}vgg19_{name}.keras")
 
-    if not Path(f"{path_to_models}resnet50{name}.keras").exists():
+    if not Path(f"{path_to_models}resnet50_{name}.keras").exists():
         resnet = resnet50()
         resnet.compile(
             optimizer=Adam(),
@@ -209,9 +209,9 @@ def train_detectors(
             metrics=["accuracy"],
         )
         resnet.fit(train_generator, epochs=20, validation_data=test_generator)
-        resnet.save(f"{path_to_models}resnet50{name}.keras")
+        resnet.save(f"{path_to_models}resnet50_{name}.keras")
     else:
-        resnet = load_model(f"{path_to_models}resnet50{name}.keras")
+        resnet = load_model(f"{path_to_models}resnet50_{name}.keras")
 
     print("Training Done :)")
 
