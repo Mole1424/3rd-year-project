@@ -7,7 +7,7 @@
 - [X] Research and implement custom model for eye landmark detection (cropping on eye, then some kind of pre-trained model?)
   - [X] Create and annotate dataset (email authors?)
   - [X] HRNet
-  - [ ] PFLD
+  - [X] PFLD
 - [X] Implement EAR analysis
   - [X] 1D CNN
   - [X] LSTM layers (bidirectional?)
@@ -25,7 +25,7 @@
 - [X] See if anyone has got access to Meta's DFDC or try and find an email
 - [ ] Look into complete deepfaked models (not changing the face with another clip, but changing the face with a generated face)
 - [X] Adapt script to be generalised (`python main.py <path_to_dataset>`)
-- [ ] Work on test script to make multithreaded and save progress as it goes (add buffer back in to speed up testing)
+- [X] Work on test script to make multithreaded and save progress as it goes (add buffer back in to speed up testing)
 
 ## Presentation
 - [X] Make presentation
