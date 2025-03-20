@@ -18,11 +18,44 @@ from traditional_detectors import train_detectors
 
 def generate_datasets(path_to_dataset: str) -> list[list[tuple[str, int]]]:
     """creates dataset of video paths and labels, splitting into train and test sets"""
-    videos = Path(path_to_dataset).rglob("*.mp4")
+    videos = list(Path(path_to_dataset).rglob("*.mp4"))
 
-    dataset = [(str(video), int("real" in str(video))) for video in videos]
+    real_videos = [str(video) for video in videos if "real" in str(video)]
+    fake_videos = [str(video) for video in videos if "fake" in str(video)]
 
-    return train_test_split(dataset, train_size=0.8, random_state=42)
+    train_size = int(0.8 * len(real_videos))
+
+    train_real, test_real = train_test_split(
+        real_videos, train_size=train_size, random_state=42
+    )
+    train_fake, test_fake = train_test_split(
+        fake_videos, train_size=train_size, random_state=42
+    )
+
+    train_data = (
+        [(video, 1) for video in train_real] + [(video, 0) for video in train_fake]
+    )
+    test_data = (
+        [(video, 1) for video in test_real] + [(video, 0) for video in test_fake]
+    )
+
+    return [train_data, test_data]
+
+
+def save_progress(results: dict, path_to_ear_anylyser: str, path_output: str) -> None:
+    with Path(path_output).open("w") as f:
+        f.write(path_to_ear_anylyser)
+        json.dump(results, f, indent=4)
+
+def load_progress(path_output: str) -> tuple[str, dict]:
+    path = Path(path_output)
+    if not path.exists():
+        return "", {}
+    with path.open("r") as f:
+        path_to_ear_anylyser = f.readline().strip()
+        results = json.load(f)
+    return path_to_ear_anylyser, results
+
 
 def get_custom_model(
     hrnet: bool,
