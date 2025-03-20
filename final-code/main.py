@@ -340,6 +340,8 @@ def main(path_to_dataset: str, path_to_models: str) -> None:
     for gpu in tf.config.experimental.list_physical_devices("GPU"):
         tf.config.experimental.set_memory_growth(gpu, True)
 
+    strategy = tf.distribute.MirroredStrategy()
+
     dataset_name = path_to_dataset.split("/")[-2]
     path_to_save = f"{dataset_name}_results.txt"
 
@@ -351,23 +353,24 @@ def main(path_to_dataset: str, path_to_models: str) -> None:
     train_set, test_set = generate_datasets(path_to_dataset)
     print("Datasets generated")
 
-    # get custom model
-    print("Getting custom model")
-    # MARK: change to True to use HRNet
-    landmarker, ear_analyser, best_path = get_custom_model(
-        False, train_set, path_to_models, dataset_name, path_to_ear_anylyser
-    )
-    print("Custom model loaded")
+    with strategy.scope():
+        # get custom model
+        print("Getting custom model")
+        # MARK: change to True to use HRNet
+        landmarker, ear_analyser, best_path = get_custom_model(
+            False, train_set, path_to_models, dataset_name, path_to_ear_anylyser
+        )
+        print("Custom model loaded")
 
-    # save ear analyser path
-    save_progress({}, best_path, path_to_save)
+        # save ear analyser path
+        save_progress({}, best_path, path_to_save)
 
-    # train traditional models
-    print("Training traditional models")
-    models = train_detectors(
-        path_to_models, dataset_name, path_to_dataset
-    )
-    print("Traditional models trained")
+        # train traditional models
+        print("Training traditional models")
+        models = train_detectors(
+            path_to_models, dataset_name, path_to_dataset
+        )
+        print("Traditional models trained")
 
     # initialise results
     traditional_models = ["vgg", "resnet", "xception", "efficientnet"]
@@ -388,9 +391,10 @@ def main(path_to_dataset: str, path_to_models: str) -> None:
     for i, video in enumerate(
         test_set[num_vidoes_processed:], start=num_vidoes_processed + 1
     ):
-        label, *predictions = process_video(
-            video, landmarker, ear_analyser, **dict(zip(traditional_models, models))
-        )
+        with strategy.scope():
+            label, *predictions = process_video(
+                video, landmarker, ear_analyser, **dict(zip(traditional_models, models))
+            )
         for model_name, prediction in zip(results.keys(), predictions):
             if label == 1 and prediction:
                 results[model_name]["tp"] += 1
