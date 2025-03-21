@@ -16,13 +16,17 @@ def points_to_heatmap(
     points: np.ndarray, heatmap_size: tuple[int, int], sigma: float
 ) -> np.ndarray:
     """converts points to heatmap"""
+
+    # create empty heatmap
     h, w = heatmap_size
     num_points = points.shape[0]
     heatmap = np.zeros((h, w, num_points), dtype=np.float32)
 
+    # scale points to heatmap size
     scale_x = w / IMAGE_SIZE[0]
     scale_y = h / IMAGE_SIZE[1]
 
+    # create grid for heatmap
     grid_x, grid_y = np.meshgrid(np.arange(w), np.arange(h))
 
     for i, (x, y) in enumerate(points):
@@ -81,6 +85,7 @@ def get_angles(points: np.ndarray, image: np.ndarray) -> np.ndarray:
     proj_matrix = np.hstack((rvec_matrix, translation_vector))
     euler_angles = cv.decomposeProjectionMatrix(proj_matrix)[6]
 
+    # extract pitch, yaw, roll
     pitch, yaw, roll = [angle[0] for angle in euler_angles]
     return np.array([pitch, yaw, roll], dtype=np.float32)
 
@@ -107,12 +112,14 @@ def dataset_generator(path: str, file_type: str, heatmap: bool) -> Generator:
         w = min(w, image.shape[1] - x)
         h = min(h, image.shape[0] - y)
 
+        # resize image
         image = cv.resize(image[int(y) : int(y + h), int(x) : int(x + w)], IMAGE_SIZE)
 
         # scale points
         points[:, 0] = (points[:, 0] - x) / w * IMAGE_SIZE[0]
         points[:, 1] = (points[:, 1] - y) / h * IMAGE_SIZE[1]
 
+        # return heatmap, or angles
         if heatmap:
             yield image, points_to_heatmap(points, (64, 64), 1.5)
         else:
@@ -120,17 +127,21 @@ def dataset_generator(path: str, file_type: str, heatmap: bool) -> Generator:
 
 
 def load_dataset(path: str, file_type: str, heatmap: bool) -> tf.data.Dataset:
-    """load dataset"""
+    """load dataset from path"""
+
     return tf.data.Dataset.from_generator(
         lambda: dataset_generator(path, file_type, heatmap),
         output_signature=(
+            # the image
             tf.TensorSpec(shape=(*IMAGE_SIZE, 3), dtype=tf.float32),  # type: ignore
             (
+                # the heatmap or points
                 tf.TensorSpec(shape=(64, 64, 68), dtype=tf.float32)  # type: ignore
                 if heatmap
                 else tf.TensorSpec(shape=(68, 2), dtype=tf.float32)  # type: ignore
             ),
-            tf.TensorSpec(shape=(3,), dtype=tf.float32) if not heatmap else None, # type: ignore
+            # pitch, yaw, roll if applicable
+            tf.TensorSpec(shape=(3,), dtype=tf.float32) if not heatmap else None, # type: ignore # angles
         ),
     )
 
@@ -142,7 +153,7 @@ def combine_datasets(
     full_dataset = datasets[0]
     for dataset in datasets[1:]:
         full_dataset = full_dataset.concatenate(dataset)
-    # shuffle only if not in debug mode to save times
+    # shuffle only if not in debug mode to save time
     full_dataset = full_dataset.shuffle(13000) if not debug else full_dataset
     return full_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
@@ -193,11 +204,13 @@ hrnet_config = {
 def main(debug: bool, hrnet: bool) -> None:
     path_to_large = "/dcs/large/u2204489/"
 
+    # allow memory growth on gpu
     gpus = tf.config.experimental.list_physical_devices("GPU")
     for gpu in gpus:
         tf.config.experimental.set_memory_growth(gpu, True)
 
     if hrnet:
+        # train hrnet
         batch_size = 16
         epochs = 60
         # steps per epoch = dataset/batch ~= 13000/16 ~= 812 ~= 1000
@@ -211,6 +224,7 @@ def main(debug: bool, hrnet: bool) -> None:
         model.fit(hrnet_dataset, epochs=epochs, steps_per_epoch=steps_per_epoch)
         model.save_weights(f"{path_to_large}hrnet.weights.h5")
     else:
+        # train pfld
         batch_size = 128
         epochs = 500
 
@@ -225,6 +239,7 @@ def main(debug: bool, hrnet: bool) -> None:
         def train_step(
             images: tf.Tensor, points: tf.Tensor, angles: tf.Tensor
         ) -> tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+            """custom training for pfld to allow for custom loss function"""
             with tf.GradientTape() as tape:
                 out1, landmarks = pfld_model(images)
                 pred_angles = aux_model(out1)
@@ -272,6 +287,7 @@ def test_model(hrnet: bool) -> None:
     for file in Path("test-images/").glob("*"):
         file.unlink()
 
+    # load model and testset
     path_to_large = "/dcs/large/u2204489/"
     path_to_model = (
         path_to_large + "hrnet.weights.h5" if hrnet else path_to_large + "pfld.keras"
@@ -320,60 +336,6 @@ def calculate_ear(points: np.ndarray) -> float:
 
     return float((p2_p6 + p3_p5) / (2.0 * p1_p4))
 
-
-def calculate_ears() -> None:
-    path_to_large = "/dcs/large/u2204489/"
-    path_to_hrnet = path_to_large + "hrnet.weights.h5"
-    path_to_videos = path_to_large + "/faceforensics/"
-
-    model = EyeLandmarker(hrnet_config, path_to_hrnet)
-
-    for video_path in Path(path_to_videos).rglob("*.mp4"):
-        print("Processing video:", video_path)
-
-        video = cv.VideoCapture(str(video_path))
-
-        ears = np.zeros(int(video.get(cv.CAP_PROP_FRAME_COUNT)))
-        previous_points = []
-        while video.isOpened():
-            success, frame = video.read()
-            if not success:
-                break
-
-            points = model.get_landmarks(frame)
-            if len(points) == 0:
-                continue
-
-            # for first frame choose first face
-            if len(previous_points) == 0:
-                points = points[0]
-                previous_points = points
-            else:
-                # otherwise choose face with the most overlap to previous frame
-                max_overlap = 0
-                max_index = 0
-                for i, face_points in enumerate(points):
-                    overlap = np.sum(
-                        np.linalg.norm(previous_points - face_points, axis=1)
-                    )
-                    if overlap > max_overlap:
-                        max_overlap = overlap
-                        max_index = i
-                previous_points = points[max_index]
-                points = previous_points
-
-            # ear is average of left and right eye
-            ear_l = calculate_ear(points[0:6])
-            ear_r = calculate_ear(points[6:12])
-            ear = (ear_l + ear_r) / 2
-            ears[int(video.get(cv.CAP_PROP_POS_FRAMES)) - 1] = ear
-
-        video.release()
-        np.save(str(video_path).replace("mp4", "npy"), ears)
-
-    print("done :)")
-
-
 if __name__ == "__main__":
     arg = None
     try:
@@ -384,7 +346,5 @@ if __name__ == "__main__":
 
     if arg == "test":
         test_model(False)
-    elif arg == "ear":
-        calculate_ears()
     else:
         main(arg == "debug", False)

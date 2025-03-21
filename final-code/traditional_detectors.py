@@ -22,6 +22,7 @@ from tensorflow.keras.utils import Sequence, to_categorical  # type: ignore
 
 
 class ImageDataGenerator(Sequence):
+    """Image data generator for training models"""
     def __init__(
         self,
         path_to_dataset: str,
@@ -31,6 +32,7 @@ class ImageDataGenerator(Sequence):
     ) -> None:
         super().__init__()
 
+        # get the real and fake images
         reals = list(Path(f"{path_to_dataset}real").rglob("*.jpg"))
         fakes = list(Path(f"{path_to_dataset}fake").rglob("*.jpg"))
 
@@ -46,9 +48,11 @@ class ImageDataGenerator(Sequence):
         self.reals = reals_train if train else reals_test
         self.fakes = fakes_train if train else fakes_test
 
+        # even sample of real and fake images
         self.batch_size = batch_size
         self.real_batch_size = batch_size // 2
         self.fake_batch_size = batch_size // 2
+
         self.image_size = image_size
         self.indices = np.arange(len(self.reals) + len(self.fakes))
         self.on_epoch_end()
@@ -57,10 +61,12 @@ class ImageDataGenerator(Sequence):
         return len(self.indices) // self.batch_size
 
     def __getitem__(self, index: int) -> tuple[np.ndarray, np.ndarray]:
+        # get the indices for the batch
         start = index * self.batch_size
         end = start + self.batch_size
         indices = self.indices[start:end]
 
+        # get the real and fake images for the batch
         real_batch = [self.reals[i] for i in indices if i < len(self.reals)]
         fake_batch = [
             self.fakes[i - len(self.reals)] for i in indices if i >= len(self.reals)
@@ -79,7 +85,7 @@ class ImageDataGenerator(Sequence):
                     # load the image, resize it, and flatten it
                     img_to_array(
                         load_img(img_path, target_size=self.image_size)
-                    ).flatten() / 255.0
+                    ).flatten() / 255.0 # load and normalise the image
                     for img_path in X
                 ]
             ).reshape(-1, self.image_size[0], self.image_size[1], 3) # reshape the image
@@ -107,6 +113,7 @@ def efficientnet_b4() -> Model:
     return Model(inputs=inputs, outputs=x)
 
 
+# MARK: Xception
 # FaceForensics++: Learning to Detect Manipulated Facial Images
 # https://arxiv.org/pdf/1901.08971v3
 
@@ -123,7 +130,10 @@ def xception() -> Model:
 
     return Model(inputs=inputs, outputs=x)
 
-# resnet50 and vgg19 models
+# MARK: VGG19
+# based on https://github.com/rahul9903/Deepfake/blob/main/Deepfake_detection.ipynb and https://www.kaggle.com/code/navneethkrishna23/deepfake-detection-vgg16
+# thanks to Pradyumna Yadav, Priyansh Sharma, and Sakshi Verma
+# and Navneeth Krishna, Darshan V Prasad, Haxrsxha, and Sanjay Tc
 
 def vgg19() -> Model:
     backbone = VGG19(include_top=False, input_shape=(256, 256, 3))
@@ -134,6 +144,10 @@ def vgg19() -> Model:
     x = Dense(2, activation="softmax")(x)
 
     return Model(inputs=inputs, outputs=x)
+
+# MARK: ResNet50
+# based on https://www.kaggle.com/code/lightningblunt/deepfake-image-detection-using-resnet50
+# thanks to Manas Tiwari
 
 def resnet50() -> Model:
     backbone = ResNet50(include_top=False, input_shape=(256, 256, 3))
@@ -159,7 +173,7 @@ def train_detectors(
 
     # train the models
 
-    # check if the models already exist
+    # check if the models already exist (have been trained)
     if not Path(f"{path_to_models}efficientnet_{name}.keras").exists():
         # if not comile, train, and save with appropriate specs
         efficientnet = efficientnet_b4()

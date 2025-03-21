@@ -4,6 +4,8 @@
 #SBATCH --partition=gecko
 #SBATCH --gres=gpu:3
 #SBATCH --time=2-00:00:00
+#SBATCH --output=slurm-%j.out
+#SBATCH --error=slurm-%j.err
 
 source /etc/profile.d/modules.sh
 source /etc/profile.d/conda.sh

@@ -34,6 +34,7 @@ from tensorflow.keras.utils import to_categorical  # type: ignore
 
 
 class KerasTimeSeriesClassifier:
+    """Interface for time series classifiers using Keras"""
     def __init__(self, model: Model) -> None:
         self.model = model
         self.callbacks = [
@@ -81,6 +82,7 @@ class LongShortTermMemory(KerasTimeSeriesClassifier):
         x1 = GlobalAveragePooling1D()(x1)
         x1 = Reshape((1, 128))(x1)
 
+        # custom layer to transpose input
         @register_keras_serializable(package="Custom", name="TransposeLayer")
         class TransposeLayer(Layer):
             def __init__(self, **kwargs: dict) -> None:
@@ -268,7 +270,7 @@ class ResNet(KerasTimeSeriesClassifier):
 
 
 class EarAnalysis:
-    """Analyses ear data to determine if it is real or fake."""
+    """Analyses EAR data to determine if it is real or fake."""
 
     def __init__(
         self,
@@ -278,13 +280,16 @@ class EarAnalysis:
         dataset_name: str,
     ) -> None:
         if path is not None:
+            #load model from path if given
             if path.endswith(".joblib"):
                 self.model = joblib.load(path)
                 self.tensorflow = False
             else:
                 self.model = load_model(path)
                 self.tensorflow = True
+            self.best_path = path
         elif dataset is not None:
+            # otherwise train a new models and get best one
             self.model, self.tensorflow, self.best_path = self._get_model(
                 dataset, path_to_models, dataset_name
             )
@@ -300,11 +305,14 @@ class EarAnalysis:
         path_to_models: str,
         dataset_name: str
     ) -> tuple[Model | BaseEstimator, bool, str]:
+        """train models on dataset and return best one"""
+
+        # extract train and test sets
         trainset, testset = dataset
         X_train, y_train = zip(*trainset)  # noqa: N806
         X_test, y_test = zip(*testset) # noqa: N806
 
-        # Define models
+        # define models
         keras_models = [
             LongShortTermMemory(),
             LongShortTermMemory(attention=True),
@@ -313,7 +321,6 @@ class EarAnalysis:
             ConvolutionalNeuralNetwork(),
             ResNet(),
         ]
-
         classical_models = [
             KNeighborsClassifier(metric="dtw", n_jobs=-1),
             KNeighborsClassifier(metric="dtw_sakoechiba", n_jobs=-1),
@@ -323,7 +330,6 @@ class EarAnalysis:
             TimeSeriesForest(n_jobs=-1, random_state=42),
             TSBF(n_jobs=-1, random_state=42)
         ]
-
         names = [
             "lstm",
             "lstm_attention",
@@ -340,10 +346,12 @@ class EarAnalysis:
             "tsbf"
         ]
 
+        # hyperparams for training
         keras_epochs = [500, 500, 5000, 2000, 2000, 1500]
         batch_size = 16
         resnet_batch_size = 64
 
+        # add models to central list for tracking
         models = list(zip(keras_models, [True] * len(keras_models), names))
         models += list(
             zip(classical_models, [False] * len(classical_models), names[6:])
@@ -352,7 +360,10 @@ class EarAnalysis:
 
         best_model, best_model_name, best_accuracy, best_tensorflow = None, "", 0, False
 
+        # foreach model
         for (model, is_tensorflow, name), epoch in zip(models, epochs):
+
+            # load model if it exists, otherwise train it
             model_path = Path(
                 f"{path_to_models}/{dataset_name}_{name}."
                 f"{"keras" if is_tensorflow else "joblib"}"
@@ -376,6 +387,7 @@ class EarAnalysis:
                     model.fit(X_train, y_train)
                     joblib.dump(model, str(model_path))
 
+            # evaluate model on accuracy
             y_pred = (
                 model.predict(np.expand_dims(X_test, axis=-1))
                 if is_tensorflow else model.predict(np.array(X_test))
@@ -383,12 +395,14 @@ class EarAnalysis:
             y_pred_labels = np.argmax(y_pred, axis=1) if is_tensorflow else y_pred
             accuracy = np.mean(y_pred_labels == y_test)
 
+            # promote model if it is the best
             if accuracy > best_accuracy:
                 best_model = model
                 best_model_name = name
                 best_accuracy = accuracy
                 best_tensorflow = is_tensorflow
 
+        # save and return best model
         print(f"Best model: {best_model_name} with accuracy {best_accuracy}")
         best_path = f"{path_to_models}/{dataset_name}_{best_model_name}."
         best_path += "keras" if best_tensorflow else "joblib"
@@ -396,6 +410,9 @@ class EarAnalysis:
 
 
     def predict(self, data: np.ndarray) -> int:
+        """predict if ear time series is real or fake"""
+
+        # pad or truncate data to desired length
         desired_length = 256
         if len(data) < desired_length:
             data = np.pad(
@@ -403,6 +420,8 @@ class EarAnalysis:
             )
         elif len(data) > desired_length:
             data = data[:desired_length]
+
+        # predict using model
         if self.tensorflow:
             data = np.expand_dims(data, axis=-1)
             return int(np.argmax(self.model.predict(data))) # type: ignore

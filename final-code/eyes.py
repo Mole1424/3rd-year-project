@@ -535,6 +535,7 @@ def inverted_residual(
 
     return layer
 
+# cutom layer to concatenate multi-scale features
 @register_keras_serializable(package="Custom", name="MultiScaleLayer")
 class MultiScaleLayer(Layer):
     def call(self, x: tf.Tensor) -> tf.Tensor:
@@ -552,6 +553,7 @@ def pfld() -> Model:
     x = inverted_residual(64, 64, 1, True, 2)(x)
     x = inverted_residual(64, 64, 1, True, 2)(x)
     x = inverted_residual(64, 64, 1, True, 2)(x)
+    # intermediate layer for auxiliary net to pick up from
     out1 = inverted_residual(64, 64, 1, True, 2)(x)
 
     x = inverted_residual(64, 128, 2, False, 2)(out1)
@@ -594,7 +596,9 @@ def pfld_loss(
 ) -> tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
     """PFLD loss function"""
 
+    # angle loss acting as multiplier
     angle_loss = tf.reduce_sum(1 - tf.cos(angle_true - angle_pred)) # type: ignore
+    # traditional l2 loss for landmarks
     landmark_loss = tf.reduce_sum(tf.square(y_true - y_pred)) # type: ignore
 
     return tf.reduce_mean(landmark_loss * angle_loss), landmark_loss, angle_loss
@@ -627,7 +631,6 @@ class EyeLandmarker:
         self.yunet = cv.FaceDetectorYN().create(
             "face_detection_yunet_2023mar.onnx", "", (1920, 1080), 0.7
         )
-
         self.mtcnn = MTCNN("face_detection_only", "GPU:0")
 
     def get_landmarks(self, video: np.ndarray) -> list[np.ndarray]:
@@ -635,15 +638,20 @@ class EyeLandmarker:
         if len(video) == 0:
             return []
 
+        # get faces from video
         face_crops, face_crop_vals, num_faces_per_frame = self._faces_from_video(video)
+
         multi_landmarks = []
 
         # pfld is smaller so can handle larger batch sizes
         batch_size = 128 if self.model_name == "hrnet" else 512
 
         for i in range(0, len(face_crops), batch_size):
+            # get the batch
             batch = face_crops[i : i + batch_size]
             batch = tf.convert_to_tensor(batch, dtype=tf.float32)
+
+            # get predictions
             if self.model_name == "hrnet":
                 predictions = self.model(batch).numpy()
             else:
@@ -698,46 +706,57 @@ class EyeLandmarker:
     def _faces_from_video(
         self, video: np.ndarray
     ) -> tuple[np.ndarray, list[list[int]], list[int]]:
-        face_crop_vals = []
-        face_crops = []
+        """Gets faces from the video"""
+
+        face_crop_vals = [] # the x, y, w, h of the face crop
+        face_crops = [] # the actual face crops
         num_faces_per_frame = []
 
+        # set the input size for yunet
         self.yunet.setInputSize((video[0].shape[1], video[0].shape[0]))
 
         frames = list(video)
 
         faces_per_frame = [None] * len(frames)
-        mtcnn_indices = []
-        mtcnn_frames = []
+        mtcnn_indices = [] # indices of frames where mtcnn is needed
+        mtcnn_frames = [] # frames where mtcnn is needed
 
         for i, frame in enumerate(frames):
+            # attempt to detect faces with yunet
             _, faces = self.yunet.detect(frame)
+
             if faces is not None:
+                # if face is detected, add to lists
                 face_list = []
                 for face in faces:
                     x, y, w, h = map(int, face[:4])
+                    # put in dict to align with mtcnn output
                     face_list.append({"box": [x, y, w, h]})
                 faces_per_frame[i] = face_list # type: ignore
             else:
+                # otherwise, tag to use mtcnn
                 mtcnn_indices.append(i)
                 mtcnn_frames.append(frame)
 
         if mtcnn_frames:
-            batch_size = 8
+            batch_size = 8 # batch mtcnn for speed
             for i in range(0, len(mtcnn_frames), batch_size):
                 batch_frames = mtcnn_frames[i : i + batch_size]
                 mtcnn_results = self.mtcnn.detect_faces(batch_frames)
 
+                # add mtcnn results to list
                 for j, result in enumerate(mtcnn_results): # type: ignore
                     frame_idx = mtcnn_indices[i + j]
                     faces_per_frame[frame_idx] = result
 
+        # create face crops
         for i, faces in enumerate(faces_per_frame):
             if faces is None:
                 faces = []  # noqa: PLW2901
             num_faces_per_frame.append(len(faces))
             for face in faces:
                 x, y, w, h = face["box"]
+                # clip face to frame
                 x = max(0, x)
                 y = max(0, y)
                 w = min(frames[i].shape[1] - x, w)
@@ -754,6 +773,8 @@ class EyeLandmarker:
 
     def _heatmap_to_landmark(self, heatmap: np.ndarray) -> np.ndarray:
         """converts a heatmap to a landmark with refinement from CoM7"""
+
+        # get initial max coords
         max_y, max_x = np.unravel_index(np.argmax(heatmap), heatmap.shape)
 
         # precompute and clamp 7x7 window
@@ -771,6 +792,7 @@ class EyeLandmarker:
         fy3 = heatmap[max_y + 3, max_x] if max_y + 3 < heatmap.shape[0] else 0
         fxy = heatmap[max_y, max_x]
 
+        # use centre of mass (7) to refine
         dx = (3 * fx3 + 2 * fx2 + fx1 - fx_1 - 2 * fx_2 - 3 * fx_3) / (
             fx3 + fx2 + fx1 + fxy + fx_1 + fx_2 + fx_3
         )
