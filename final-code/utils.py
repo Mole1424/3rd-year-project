@@ -249,6 +249,26 @@ def truncate_dataset(path: str) -> None:
             f.write(file_content)
 
 
+def move_files() -> None:
+    """collates fake images into one directory"""
+    path_to_fake = "/dcs/large/u2204489/faceforensics/fake/"
+
+    fake_paths = ["Deepfakes", "Face2Face", "FaceSwap", "NeuralTextures"]
+    fake_prefix_path = "/dcs/large/u2204489/faceforensics/manipulated_sequences/"
+    fake_suffix_path = "/c23/videos/"
+
+    for fake_path in fake_paths:
+        print(f"Getting {fake_path}...")
+        system(f"python ../datasets/faceforensics_download_v4.py -d {fake_path} --server EU2 -c c23 /dcs/large/u2204489/faceforensics")  # noqa: E501
+        print(f"Moving {fake_path}...")
+        complete_fake_path = fake_prefix_path + fake_path + fake_suffix_path
+        files = list(Path(complete_fake_path).glob("*.mp4"))
+
+        for file in files:
+            file_name = fake_path.lower() + file.name
+            system(f"mv {file} {path_to_fake + file_name}")
+
+
 if __name__ == "__main__":
     arg = None
     try:
@@ -271,6 +291,8 @@ if __name__ == "__main__":
         correct_reflections()
     elif arg == "truncate":
         truncate_datasets()
+    elif arg == "move":
+        move_files()
     else:
         print("invalid argument")
         sys.exit(1)
