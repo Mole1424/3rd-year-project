@@ -41,10 +41,8 @@ class KerasTimeSeriesClassifier:
             ReduceLROnPlateau(monitor="loss", factor=0.5, patience=50, min_lr=0.0001)
         ]
 
-    def fit(
-        self, X: np.ndarray, y: np.ndarray, epochs: int, batch_size: int  # noqa: N803
-    ) -> None:
-        self.model.fit(X, y, epochs=epochs, batch_size=batch_size)
+    def fit(self, data: tf.data.Dataset, epochs: int = 100) -> None:
+        self.model.fit(data, epochs=epochs, callbacks=self.callbacks)
 
     def predict(self, X: np.ndarray) -> np.ndarray:  # noqa: N803
         return self.model.predict(X)
@@ -376,12 +374,14 @@ class EarAnalysis:
             else:
                 print(f"Training {name}...")
                 if is_tensorflow:
-                    model.fit(
-                        np.expand_dims(X_train, axis=-1),
-                        to_categorical(y_train, num_classes=2),
-                        epoch,
-                        resnet_batch_size if isinstance(model, ResNet) else batch_size
+                    train_dataset = tf.data.Dataset.from_tensor_slices(
+                        (np.expand_dims(np.array(X_train), axis=-1),
+                        to_categorical(y_train, num_classes=2)),
+                    ).batch(
+                        resnet_batch_size if isinstance(model, ResNet) else batch_size,
+                        drop_remainder=True
                     )
+                    model.fit(train_dataset, epochs=epoch) # type: ignore
                     model.save(str(model_path))
                 else:
                     model.fit(X_train, y_train)

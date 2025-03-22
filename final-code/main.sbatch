@@ -6,6 +6,7 @@
 #SBATCH --time=2-00:00:00
 #SBATCH --output=slurm-%j.out
 #SBATCH --error=slurm-%j.err
+#SBATCH --mail-type=END,FAIL,TIME_LIMIT_80
 
 source /etc/profile.d/modules.sh
 source /etc/profile.d/conda.sh

@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import numpy as np
+import tensorflow as tf
 from sklearn.model_selection import train_test_split
 from tensorflow.keras import Input  # type: ignore
 from tensorflow.keras.applications import (  # type: ignore
@@ -164,7 +165,10 @@ def resnet50() -> Model:
 
 
 def train_detectors(
-    path_to_models: str, name: str, path_to_dataset: str
+    path_to_models: str,
+    name: str,
+    path_to_dataset: str,
+    strategy: tf.distribute.Strategy
 ) -> tuple[Model, Model, Model, Model]:
 
     # create the image data generator
@@ -173,59 +177,60 @@ def train_detectors(
 
     # train the models
 
-    # check if the models already exist (have been trained)
-    if not Path(f"{path_to_models}efficientnet_{name}.keras").exists():
-        # if not comile, train, and save with appropriate specs
-        efficientnet = efficientnet_b4()
-        efficientnet.compile(
-            optimizer=Adam(
-                learning_rate=0.00001, beta_1=0.9, beta_2=0.999, epsilon=1e-07
-            ),
-            loss="binary_crossentropy",
-        )
-        efficientnet.fit(train_generator, epochs=60, validation_data=test_generator)
-        efficientnet.save(f"{path_to_models}efficientnet_{name}.keras")
-    else:
-        efficientnet = load_model(f"{path_to_models}efficientnet_{name}.keras")
+    with strategy.scope():
+        # check if the models already exist (have been trained)
+        if not Path(f"{path_to_models}efficientnet_{name}.keras").exists():
+            # if not comile, train, and save with appropriate specs
+            efficientnet = efficientnet_b4()
+            efficientnet.compile(
+                optimizer=Adam(
+                    learning_rate=0.00001, beta_1=0.9, beta_2=0.999, epsilon=1e-07
+                ),
+                loss="binary_crossentropy",
+            )
+            efficientnet.fit(train_generator, epochs=60, validation_data=test_generator)
+            efficientnet.save(f"{path_to_models}efficientnet_{name}.keras")
+        else:
+            efficientnet = load_model(f"{path_to_models}efficientnet_{name}.keras")
 
-    if not Path(f"{path_to_models}resnet_{name}.keras").exists():
-        x_ception = xception()
-        x_ception.compile(
-            optimizer=Adam(
-                learning_rate=0.0002, beta_1=0.9, beta_2=0.999, epsilon=1e-07
-            ),
-            loss="categorical_crossentropy",
-        )
-        x_ception.fit(train_generator, epochs=60, validation_data=test_generator)
-        x_ception.save(f"{path_to_models}xception_{name}.keras")
-    else:
-        x_ception = load_model(f"{path_to_models}xception_{name}.keras")
+        if not Path(f"{path_to_models}resnet_{name}.keras").exists():
+            x_ception = xception()
+            x_ception.compile(
+                optimizer=Adam(
+                    learning_rate=0.0002, beta_1=0.9, beta_2=0.999, epsilon=1e-07
+                ),
+                loss="categorical_crossentropy",
+            )
+            x_ception.fit(train_generator, epochs=60, validation_data=test_generator)
+            x_ception.save(f"{path_to_models}xception_{name}.keras")
+        else:
+            x_ception = load_model(f"{path_to_models}xception_{name}.keras")
 
-    if not Path(f"{path_to_models}vgg19_{name}.keras").exists():
-        vgg = vgg19()
-        vgg.compile(
-            optimizer=Adam(
-                learning_rate=1e-5, beta_1=0.9, beta_2=0.999, epsilon=1e-7
-            ),
-            loss="binary_crossentropy",
-            metrics=["accuracy"],
-        )
-        vgg.fit(train_generator, epochs=20, validation_data=test_generator)
-        vgg.save(f"{path_to_models}vgg19_{name}.keras")
-    else:
-        vgg = load_model(f"{path_to_models}vgg19_{name}.keras")
+        if not Path(f"{path_to_models}vgg19_{name}.keras").exists():
+            vgg = vgg19()
+            vgg.compile(
+                optimizer=Adam(
+                    learning_rate=1e-5, beta_1=0.9, beta_2=0.999, epsilon=1e-7
+                ),
+                loss="binary_crossentropy",
+                metrics=["accuracy"],
+            )
+            vgg.fit(train_generator, epochs=20, validation_data=test_generator)
+            vgg.save(f"{path_to_models}vgg19_{name}.keras")
+        else:
+            vgg = load_model(f"{path_to_models}vgg19_{name}.keras")
 
-    if not Path(f"{path_to_models}resnet50_{name}.keras").exists():
-        resnet = resnet50()
-        resnet.compile(
-            optimizer=Adam(),
-            loss="binary_crossentropy",
-            metrics=["accuracy"],
-        )
-        resnet.fit(train_generator, epochs=20, validation_data=test_generator)
-        resnet.save(f"{path_to_models}resnet50_{name}.keras")
-    else:
-        resnet = load_model(f"{path_to_models}resnet50_{name}.keras")
+        if not Path(f"{path_to_models}resnet50_{name}.keras").exists():
+            resnet = resnet50()
+            resnet.compile(
+                optimizer=Adam(),
+                loss="binary_crossentropy",
+                metrics=["accuracy"],
+            )
+            resnet.fit(train_generator, epochs=20, validation_data=test_generator)
+            resnet.save(f"{path_to_models}resnet50_{name}.keras")
+        else:
+            resnet = load_model(f"{path_to_models}resnet50_{name}.keras")
 
     print("Training Done :)")
 
