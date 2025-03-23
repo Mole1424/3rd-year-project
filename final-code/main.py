@@ -70,13 +70,12 @@ def load_progress(path_output: str) -> tuple[str, dict]:
     return path_to_ear_anylyser, results
 
 
-def get_custom_model(  # noqa: PLR0913
+def get_custom_model(
     hrnet: bool,
     train_set: list[tuple[str, int]],
     path_to_models: str,
     dataset_name: str,
-    path_to_ear_anylyser: str,
-    strategy: tf.distribute.Strategy,
+    path_to_ear_anylyser: str
 ) -> tuple[EyeLandmarker, EarAnalysis, str]:
     """loads (and trains) models for custom classification"""
 
@@ -123,61 +122,60 @@ def get_custom_model(  # noqa: PLR0913
     else:
         # otherwise need to create from scratch
         ears_dataset = []
-        with strategy.scope():
-            for video in train_set:
-                video_path, label = video
-                print(f"Processing {video_path}")
+        for video in train_set:
+            video_path, label = video
+            print(f"Processing {video_path}")
 
-                # load middle 256 frames from video
-                video = cv.VideoCapture(video_path)  # noqa: PLW2901
-                total_frames = int(video.get(cv.CAP_PROP_FRAME_COUNT))
-                frames = []
-                max_frames = 256
-                start_frame = (total_frames - max_frames) // 2
-                video.set(cv.CAP_PROP_POS_FRAMES, start_frame)
-                for _ in range(max_frames):
-                    success, frame = video.read()
-                    if not success:
-                        break
-                    frames.append(frame)
-                frames = np.array(frames)
+            # load middle 256 frames from video
+            video = cv.VideoCapture(video_path)  # noqa: PLW2901
+            total_frames = int(video.get(cv.CAP_PROP_FRAME_COUNT))
+            frames = []
+            max_frames = 256
+            start_frame = (total_frames - max_frames) // 2
+            video.set(cv.CAP_PROP_POS_FRAMES, start_frame)
+            for _ in range(max_frames):
+                success, frame = video.read()
+                if not success:
+                    break
+                frames.append(frame)
+            frames = np.array(frames)
 
-                # get landmarks for each frame and filter out invalid
-                landmarks = landmarker.get_landmarks(frames)
-                valid_landmarks = [
-                    lm for lm in landmarks if lm is not None and len(lm) > 0
-                ]
+            # get landmarks for each frame and filter out invalid
+            landmarks = landmarker.get_landmarks(frames)
+            valid_landmarks = [
+                lm for lm in landmarks if lm is not None and len(lm) > 0
+            ]
 
-                if len(valid_landmarks) == 0:
-                    continue
+            if len(valid_landmarks) == 0:
+                continue
 
-                # get first best face is the first one in list
-                previous_landmarks = valid_landmarks[0][0]
-                best_faces = [previous_landmarks]
+            # get first best face is the first one in list
+            previous_landmarks = valid_landmarks[0][0]
+            best_faces = [previous_landmarks]
 
-                for frame_landmarks in valid_landmarks[1:]:
-                    # get best face by finding closest to previous
-                    best_face = min(
-                        frame_landmarks,
-                        key=lambda x: np.linalg.norm(
-                            np.array(previous_landmarks) - np.array(x)
-                        )
+            for frame_landmarks in valid_landmarks[1:]:
+                # get best face by finding closest to previous
+                best_face = min(
+                    frame_landmarks,
+                    key=lambda x: np.linalg.norm(
+                        np.array(previous_landmarks) - np.array(x)
                     )
-                    previous_landmarks = best_face
-                    best_faces.append(best_face)
+                )
+                previous_landmarks = best_face
+                best_faces.append(best_face)
 
-                # calculate ear aspect accross frames
-                ears = calculate_ears(np.array(best_faces))
-                desired_length = 256
-                # pad if necessary
-                if len(ears) < desired_length:
-                    ears = np.pad(
-                        ears,
-                        (0, desired_length - len(ears)),
-                        "constant",
-                        constant_values=-1
-                    )
-                ears_dataset.append((ears, label))
+            # calculate ear aspect accross frames
+            ears = calculate_ears(np.array(best_faces))
+            desired_length = 256
+            # pad if necessary
+            if len(ears) < desired_length:
+                ears = np.pad(
+                    ears,
+                    (0, desired_length - len(ears)),
+                    "constant",
+                    constant_values=-1
+                )
+            ears_dataset.append((ears, label))
 
         # split ears dataset into train and test
         ears_dataset = train_test_split(ears_dataset, train_size=0.8, random_state=42)
@@ -419,23 +417,24 @@ def main(path_to_dataset: str, path_to_models: str) -> None:
     train_set, test_set = generate_datasets(path_to_dataset)
     print("Datasets generated")
 
-    # get custom model
-    print("Getting custom model")
-    # MARK: change to True to use HRNet
-    landmarker, ear_analyser, best_path = get_custom_model(
-        False, train_set, path_to_models, dataset_name, path_to_ear_anylyser, strategy
-    )
-    print("Custom model loaded")
+    with strategy.scope():
+        # get custom model
+        print("Getting custom model")
+        # MARK: change to True to use HRNet
+        landmarker, ear_analyser, best_path = get_custom_model(
+            False, train_set, path_to_models, dataset_name, path_to_ear_anylyser
+        )
+        print("Custom model loaded")
 
-    # save ear analyser path
-    save_progress({}, best_path, path_to_save)
+        # save ear analyser path
+        save_progress({}, best_path, path_to_save)
 
-    # train traditional models
-    print("Training traditional models")
-    models = train_detectors(
-        path_to_models, dataset_name, path_to_dataset, strategy
-    )
-    print("Traditional models trained")
+        # train traditional models
+        print("Training traditional models")
+        models = train_detectors(
+            path_to_models, dataset_name, path_to_dataset
+        )
+        print("Traditional models trained")
 
     # initialise results
     traditional_models = ["vgg", "resnet", "xception", "efficientnet"]

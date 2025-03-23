@@ -346,8 +346,8 @@ class EarAnalysis:
 
         # hyperparams for training
         keras_epochs = [500, 500, 5000, 2000, 2000, 1500]
-        batch_size = 16
-        resnet_batch_size = 64
+        batch_size = 16 * tf.config.list_physical_devices("GPU")
+        resnet_batch_size = 64 * tf.config.list_physical_devices("GPU")
 
         # add models to central list for tracking
         models = list(zip(keras_models, [True] * len(keras_models), names))

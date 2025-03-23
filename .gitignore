@@ -11,5 +11,7 @@ demonstrations/images/
 
 final-code/test-images/
 
+*_results.txt
+
 *.err
 *.out

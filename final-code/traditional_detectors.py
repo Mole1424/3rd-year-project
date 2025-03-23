@@ -1,4 +1,6 @@
 from pathlib import Path
+from random import shuffle
+from typing import Generator
 
 import numpy as np
 import tensorflow as tf
@@ -19,82 +21,33 @@ from tensorflow.keras.layers import (  # type: ignore
 from tensorflow.keras.models import Model, load_model  # type: ignore
 from tensorflow.keras.optimizers import Adam  # type: ignore
 from tensorflow.keras.preprocessing.image import img_to_array, load_img  # type: ignore
-from tensorflow.keras.utils import Sequence, to_categorical  # type: ignore
+from tensorflow.keras.utils import to_categorical  # type: ignore
 
 
-class ImageDataGenerator(Sequence):
-    """Image data generator for training models"""
-    def __init__(
-        self,
-        path_to_dataset: str,
-        batch_size: int,
-        image_size: tuple[int, int],
-        train: bool = True
-    ) -> None:
-        super().__init__()
+def load_image(path: str, target_size: tuple[int, int]) -> np.ndarray:
+    """Load an image from path"""
+    image = load_img(path, target_size=target_size)
+    image = img_to_array(image)
+    return image / 255.0 # normalise
 
-        # get the real and fake images
-        reals = list(Path(f"{path_to_dataset}real").rglob("*.jpg"))
-        fakes = list(Path(f"{path_to_dataset}fake").rglob("*.jpg"))
+def image_generator(
+    paths: list, labels: list, target_size: tuple[int, int]
+) -> Generator:
+    """Generate images from a list of paths and labels."""
+    for path, label in zip(paths, labels):
+        yield load_image(path, target_size), to_categorical(label, 2) # type: ignore
 
-        # split real and fake images into train/test sets
-        reals_train, reals_test = train_test_split(
-            reals, train_size=0.8, random_state=42
+def get_dataset(
+    paths: list, labels: list, batch_size: int, target_size: tuple[int, int]
+) -> tf.data.Dataset:
+    """Create a tf.data.Dataset from a list of paths and labels."""
+    return tf.data.Dataset.from_generator(
+        lambda: image_generator(paths, labels, target_size),
+        output_signature=(
+            tf.TensorSpec(shape=(target_size[0], target_size[1], 3), dtype=tf.float32), # type: ignore
+            tf.TensorSpec(shape=(2,), dtype=tf.float32), # type: ignore
         )
-        fakes_train, fakes_test = train_test_split(
-            fakes, train_size=0.8, random_state=42
-        )
-
-        # select train or test set based on flag
-        self.reals = reals_train if train else reals_test
-        self.fakes = fakes_train if train else fakes_test
-
-        # even sample of real and fake images
-        self.batch_size = batch_size
-        self.real_batch_size = batch_size // 2
-        self.fake_batch_size = batch_size // 2
-
-        self.image_size = image_size
-        self.indices = np.arange(len(self.reals) + len(self.fakes))
-        self.on_epoch_end()
-
-    def __len__(self) -> int:
-        return len(self.indices) // self.batch_size
-
-    def __getitem__(self, index: int) -> tuple[np.ndarray, np.ndarray]:
-        # get the indices for the batch
-        start = index * self.batch_size
-        end = start + self.batch_size
-        indices = self.indices[start:end]
-
-        # get the real and fake images for the batch
-        real_batch = [self.reals[i] for i in indices if i < len(self.reals)]
-        fake_batch = [
-            self.fakes[i - len(self.reals)] for i in indices if i >= len(self.reals)
-        ]
-
-        return self.__data_generation(
-            real_batch + fake_batch, [1] * len(real_batch) + [0] * len(fake_batch)
-        )
-
-    def __data_generation(
-        self, X: list[str], Y: list[int]  # noqa: N803
-    ) -> tuple[np.ndarray, np.ndarray]:
-        return (
-            np.array(
-                [
-                    # load the image, resize it, and flatten it
-                    img_to_array(
-                        load_img(img_path, target_size=self.image_size)
-                    ).flatten() / 255.0 # load and normalise the image
-                    for img_path in X
-                ]
-            ).reshape(-1, self.image_size[0], self.image_size[1], 3) # reshape the image
-        , to_categorical(Y, num_classes=2))
-
-    def on_epoch_end(self) -> None:
-        np.random.shuffle(self.indices)
-
+    ).batch(batch_size, drop_remainder=True).prefetch(tf.data.AUTOTUNE)
 
 
 # Video Face Manipulation Detection Through Ensemble of CNNs
@@ -164,73 +117,108 @@ def resnet50() -> Model:
     return Model(inputs=inputs, outputs=x)
 
 
-def train_detectors(
+def train_detectors(  # noqa: PLR0915
     path_to_models: str,
     name: str,
     path_to_dataset: str,
-    strategy: tf.distribute.Strategy
 ) -> tuple[Model, Model, Model, Model]:
+    """Train the detectors and return the models."""
+    # load psths to images
+    reals = list(Path(f"{path_to_dataset}real").rglob("*.jpg"))
+    fakes = list(Path(f"{path_to_dataset}fake").rglob("*.jpg"))
 
-    # create the image data generator
-    train_generator = ImageDataGenerator(path_to_dataset, 32, (256, 256), True)
-    test_generator = ImageDataGenerator(path_to_dataset, 32, (256, 256), False)
+    # split into real and fake
+    real_train, real_test = train_test_split(reals, train_size=0.8, random_state=42)
+    fake_train, fake_test = train_test_split(fakes, train_size=0.8, random_state=42)
+
+    # set batch size (related to #GPUs to avoid errors)
+    batch_size = 32 * len(tf.config.list_physical_devices("GPU"))
+
+    # ensure train sizes are equal for fair training
+    train_size = min(len(real_train), len(fake_train)) // batch_size * batch_size
+    test_size = min(len(real_test), len(fake_test)) // batch_size * batch_size
+    real_train = real_train[:train_size]
+    fake_train = fake_train[:train_size]
+    real_test = real_test[:test_size]
+    fake_test = fake_test[:test_size]
+
+    # create labels
+    real_labels = [0] * len(real_train + real_test)
+    fake_labels = [1] * len(fake_train + fake_test)
+
+    # convert paths to strings
+    train_paths = [str(path) for path in real_train + fake_train]
+    test_paths = [str(path) for path in real_test + fake_test]
+    train_labels = real_labels[: len(real_train)] + fake_labels[: len(fake_train)]
+    test_labels = real_labels[len(real_train) :] + fake_labels[len(fake_train) :]
+
+    # shuffle data
+    zipped_train = list(zip(train_paths, train_labels))
+    shuffle(zipped_train)
+    train_paths, train_labels = zip(*zipped_train)
+    zipped_test = list(zip(test_paths, test_labels))
+    shuffle(zipped_test)
+    test_paths, test_labels = zip(*zipped_test)
+
+    # get datasets
+    train_generator = get_dataset(train_paths, train_labels, batch_size, (256, 256)) # type: ignore
+    test_generator = get_dataset(test_paths, test_labels, batch_size, (256, 256)) # type: ignore
 
     # train the models
 
-    with strategy.scope():
-        # check if the models already exist (have been trained)
-        if not Path(f"{path_to_models}efficientnet_{name}.keras").exists():
-            # if not comile, train, and save with appropriate specs
-            efficientnet = efficientnet_b4()
-            efficientnet.compile(
-                optimizer=Adam(
-                    learning_rate=0.00001, beta_1=0.9, beta_2=0.999, epsilon=1e-07
-                ),
-                loss="binary_crossentropy",
-            )
-            efficientnet.fit(train_generator, epochs=60, validation_data=test_generator)
-            efficientnet.save(f"{path_to_models}efficientnet_{name}.keras")
-        else:
-            efficientnet = load_model(f"{path_to_models}efficientnet_{name}.keras")
+    # check if the models already exist (have been trained)
+    if not Path(f"{path_to_models}efficientnet_{name}.keras").exists():
+        # if not comile, train, and save with appropriate specs
+        efficientnet = efficientnet_b4()
+        efficientnet.compile(
+            optimizer=Adam(
+                learning_rate=0.00001, beta_1=0.9, beta_2=0.999, epsilon=1e-07
+            ),
+            loss="binary_crossentropy",
+        )
+        efficientnet.fit(train_generator, epochs=60, validation_data=test_generator)
+        efficientnet.save(f"{path_to_models}efficientnet_{name}.keras")
+    else:
+        efficientnet = load_model(f"{path_to_models}efficientnet_{name}.keras")
 
-        if not Path(f"{path_to_models}resnet_{name}.keras").exists():
-            x_ception = xception()
-            x_ception.compile(
-                optimizer=Adam(
-                    learning_rate=0.0002, beta_1=0.9, beta_2=0.999, epsilon=1e-07
-                ),
-                loss="categorical_crossentropy",
-            )
-            x_ception.fit(train_generator, epochs=60, validation_data=test_generator)
-            x_ception.save(f"{path_to_models}xception_{name}.keras")
-        else:
-            x_ception = load_model(f"{path_to_models}xception_{name}.keras")
+    if not Path(f"{path_to_models}resnet_{name}.keras").exists():
+        x_ception = xception()
+        x_ception.compile(
+            optimizer=Adam(
+                learning_rate=0.0002, beta_1=0.9, beta_2=0.999, epsilon=1e-07
+            ),
+            loss="categorical_crossentropy",
+        )
+        x_ception.fit(train_generator, epochs=60, validation_data=test_generator)
+        x_ception.save(f"{path_to_models}xception_{name}.keras")
+    else:
+        x_ception = load_model(f"{path_to_models}xception_{name}.keras")
 
-        if not Path(f"{path_to_models}vgg19_{name}.keras").exists():
-            vgg = vgg19()
-            vgg.compile(
-                optimizer=Adam(
-                    learning_rate=1e-5, beta_1=0.9, beta_2=0.999, epsilon=1e-7
-                ),
-                loss="binary_crossentropy",
-                metrics=["accuracy"],
-            )
-            vgg.fit(train_generator, epochs=20, validation_data=test_generator)
-            vgg.save(f"{path_to_models}vgg19_{name}.keras")
-        else:
-            vgg = load_model(f"{path_to_models}vgg19_{name}.keras")
+    if not Path(f"{path_to_models}vgg19_{name}.keras").exists():
+        vgg = vgg19()
+        vgg.compile(
+            optimizer=Adam(
+                learning_rate=1e-5, beta_1=0.9, beta_2=0.999, epsilon=1e-7
+            ),
+            loss="binary_crossentropy",
+            metrics=["accuracy"],
+        )
+        vgg.fit(train_generator, epochs=20, validation_data=test_generator)
+        vgg.save(f"{path_to_models}vgg19_{name}.keras")
+    else:
+        vgg = load_model(f"{path_to_models}vgg19_{name}.keras")
 
-        if not Path(f"{path_to_models}resnet50_{name}.keras").exists():
-            resnet = resnet50()
-            resnet.compile(
-                optimizer=Adam(),
-                loss="binary_crossentropy",
-                metrics=["accuracy"],
-            )
-            resnet.fit(train_generator, epochs=20, validation_data=test_generator)
-            resnet.save(f"{path_to_models}resnet50_{name}.keras")
-        else:
-            resnet = load_model(f"{path_to_models}resnet50_{name}.keras")
+    if not Path(f"{path_to_models}resnet50_{name}.keras").exists():
+        resnet = resnet50()
+        resnet.compile(
+            optimizer=Adam(),
+            loss="binary_crossentropy",
+            metrics=["accuracy"],
+        )
+        resnet.fit(train_generator, epochs=20, validation_data=test_generator)
+        resnet.save(f"{path_to_models}resnet50_{name}.keras")
+    else:
+        resnet = load_model(f"{path_to_models}resnet50_{name}.keras")
 
     print("Training Done :)")
 
