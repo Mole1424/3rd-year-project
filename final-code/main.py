@@ -51,7 +51,7 @@ def save_progress(results: dict, path_to_ear_anylyser: str, path_output: str) ->
 
     with Path(path_output).open("w") as f:
         # the path to best ear analyser model
-        f.write(path_to_ear_anylyser)
+        f.write(path_to_ear_anylyser + "\n")
         # current stats for each model
         json.dump(results, f, indent=4)
 
@@ -112,7 +112,7 @@ def get_custom_model(  # noqa: PLR0913
     if path_to_ear_anylyser != "":
         # if path to ear analyser is provided, load it
         ear_analyser = EarAnalysis(path_to_ear_anylyser, None, "", "")
-        return landmarker, ear_analyser, ""
+        return landmarker, ear_analyser, path_to_ear_anylyser
 
     # otherwise check if pickle file for ears dataset exists
     path = Path(path_to_models + "ears_dataset.pkl")
