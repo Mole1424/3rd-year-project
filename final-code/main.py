@@ -357,6 +357,7 @@ def process_video(
         if not success:
             break
         frames.append(frame)
+    video.release()
     frames = np.array(frames)
 
     # get initial predictions
@@ -391,8 +392,7 @@ def process_video(
     # print results
     print(f"Finished processing {video_path}")
     print(f"Label: {bool(label)}")
-    for key, value in predictions.items():
-        print(f"{key.replace("_", " ").title()}: {value}")
+    print(f"Predictions: {predictions.values()}")
 
     return (label, *predictions.values())
 
@@ -427,7 +427,7 @@ def main(path_to_dataset: str, path_to_models: str) -> None:
         print("Custom model loaded")
 
         # save ear analyser path
-        save_progress({}, best_path, path_to_save)
+        save_progress(loaded_results, best_path, path_to_save)
 
         # train traditional models
         print("Training traditional models")
@@ -452,26 +452,27 @@ def main(path_to_dataset: str, path_to_models: str) -> None:
 
     # process each video in the dataset
     print("Processing videos")
-    for i, video in enumerate(
-        test_set[num_vidoes_processed:], start=num_vidoes_processed + 1
-    ):
-        with strategy.scope():
+    with strategy.scope():
+        for i, video in enumerate(
+            test_set[num_vidoes_processed:], start=num_vidoes_processed + 1
+        ):
+            print(f"{i}/{len(test_set)}")
             label, *predictions = process_video(
                 video, landmarker, ear_analyser, **dict(zip(traditional_models, models))
             )
-        for model_name, prediction in zip(results.keys(), predictions):
-            if label == 1 and prediction:
-                results[model_name]["tp"] += 1
-            elif label == 1 and not prediction:
-                results[model_name]["fn"] += 1
-            elif label == 0 and prediction:
-                results[model_name]["fp"] += 1
-            elif label == 0 and not prediction:
-                results[model_name]["tn"] += 1
+            for model_name, prediction in zip(results.keys(), predictions):
+                if label == 1 and prediction:
+                    results[model_name]["tp"] += 1
+                elif label == 1 and not prediction:
+                    results[model_name]["fn"] += 1
+                elif label == 0 and prediction:
+                    results[model_name]["fp"] += 1
+                elif label == 0 and not prediction:
+                    results[model_name]["tn"] += 1
 
-        # save progress every 100 videos
-        if i % 100 == 0:
-            save_progress(results, best_path, path_to_save)
+            # save progress every 100 videos
+            if i % 100 == 0:
+                save_progress(results, best_path, path_to_save)
 
     save_progress(results, best_path, path_to_save)
 

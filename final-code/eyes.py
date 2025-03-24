@@ -644,7 +644,7 @@ class EyeLandmarker:
         multi_landmarks = []
 
         # pfld is smaller so can handle larger batch sizes
-        batch_size = 128 if self.model_name == "hrnet" else 512
+        batch_size = 128 if self.model_name == "hrnet" else 256
 
         for i in range(0, len(face_crops), batch_size):
             # get the batch
