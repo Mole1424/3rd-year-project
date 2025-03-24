@@ -11,4 +11,4 @@ source /etc/profile.d/modules.sh
 source /etc/profile.d/conda.sh
 
 source ../venv/bin/activate
-python3.12 create-images.py /dcs/large/u2204489/faceforensics/
+python3.12 -u create-images.py /dcs/large/u2204489/faceforensics/

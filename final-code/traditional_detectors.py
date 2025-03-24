@@ -118,57 +118,45 @@ def resnet50() -> Model:
 
 
 def train_detectors(  # noqa: PLR0915
-    path_to_models: str,
-    name: str,
-    path_to_dataset: str,
+    path_to_models: str, name: str, path_to_dataset: str
 ) -> tuple[Model, Model, Model, Model]:
     """Train the detectors and return the models."""
-    # load psths to images
-    reals = list(Path(f"{path_to_dataset}real").rglob("*.jpg"))
-    fakes = list(Path(f"{path_to_dataset}fake").rglob("*.jpg"))
+    # this is cursed python code but i love it
+    batch_size = 32 * (len(tf.config.list_physical_devices("GPU")) or 1)
 
-    # split into real and fake
-    real_train, real_test = train_test_split(reals, train_size=0.8, random_state=42)
-    fake_train, fake_test = train_test_split(fakes, train_size=0.8, random_state=42)
+    # load paths to images
+    reals = list(map(str, Path(f"{path_to_dataset}real").rglob("*.jpg")))
+    fakes = list(map(str, Path(f"{path_to_dataset}fake").rglob("*.jpg")))
 
-    # set batch size (related to #GPUs to avoid errors)
-    batch_size = 32 * len(tf.config.list_physical_devices("GPU"))
+    # split the data
+    train_reals, test_reals = train_test_split(reals, train_size=0.8, random_state=42)
+    train_fakes, test_fakes = train_test_split(fakes, train_size=0.8, random_state=42)
 
-    # ensure train sizes are equal for fair training
-    train_size = min(len(real_train), len(fake_train)) // batch_size * batch_size
-    test_size = min(len(real_test), len(fake_test)) // batch_size * batch_size
-    real_train = real_train[:train_size]
-    fake_train = fake_train[:train_size]
-    real_test = real_test[:test_size]
-    fake_test = fake_test[:test_size]
+    # combine into train and test data
+    train_data = train_reals + train_fakes
+    train_labels = [1] * len(train_reals) + [0] * len(train_fakes)
+    test_data = test_reals + test_fakes
+    test_labels = [1] * len(test_reals) + [0] * len(test_fakes)
 
-    # create labels
-    real_labels = [0] * len(real_train + real_test)
-    fake_labels = [1] * len(fake_train + fake_test)
+    # shuffle the data
+    train_set = list(zip(train_data, train_labels))
+    shuffle(train_set)
+    train_data, train_labels = zip(*train_set)
+    test_set = list(zip(test_data, test_labels))
+    shuffle(test_set)
+    test_data, test_labels = zip(*test_set)
 
-    # convert paths to strings
-    train_paths = [str(path) for path in real_train + fake_train]
-    test_paths = [str(path) for path in real_test + fake_test]
-    train_labels = real_labels[: len(real_train)] + fake_labels[: len(fake_train)]
-    test_labels = real_labels[len(real_train) :] + fake_labels[len(fake_train) :]
-
-    # shuffle data
-    zipped_train = list(zip(train_paths, train_labels))
-    shuffle(zipped_train)
-    train_paths, train_labels = zip(*zipped_train)
-    zipped_test = list(zip(test_paths, test_labels))
-    shuffle(zipped_test)
-    test_paths, test_labels = zip(*zipped_test)
-
-    # get datasets
-    train_generator = get_dataset(train_paths, train_labels, batch_size, (256, 256)) # type: ignore
-    test_generator = get_dataset(test_paths, test_labels, batch_size, (256, 256)) # type: ignore
+    # create the datasets
+    train_generator = get_dataset(train_data, train_labels, batch_size, (256, 256)) # type: ignore
+    test_generator = get_dataset(test_data, test_labels, batch_size, (256, 256)) # type: ignore
 
     # train the models
 
     # check if the models already exist (have been trained)
+    print("Checking efficientnet")
     if not Path(f"{path_to_models}efficientnet_{name}.keras").exists():
         # if not comile, train, and save with appropriate specs
+        print("Training efficientnet")
         efficientnet = efficientnet_b4()
         efficientnet.compile(
             optimizer=Adam(
@@ -179,9 +167,13 @@ def train_detectors(  # noqa: PLR0915
         efficientnet.fit(train_generator, epochs=60, validation_data=test_generator)
         efficientnet.save(f"{path_to_models}efficientnet_{name}.keras")
     else:
+        print("Loading efficientnet")
         efficientnet = load_model(f"{path_to_models}efficientnet_{name}.keras")
+    print("Got efficientnet")
 
-    if not Path(f"{path_to_models}resnet_{name}.keras").exists():
+    print("Checking xception")
+    if not Path(f"{path_to_models}xception_{name}.keras").exists():
+        print("Training xception")
         x_ception = xception()
         x_ception.compile(
             optimizer=Adam(
@@ -192,9 +184,13 @@ def train_detectors(  # noqa: PLR0915
         x_ception.fit(train_generator, epochs=60, validation_data=test_generator)
         x_ception.save(f"{path_to_models}xception_{name}.keras")
     else:
+        print("Loading xception")
         x_ception = load_model(f"{path_to_models}xception_{name}.keras")
+    print("Got xception")
 
+    print("Checking vgg19")
     if not Path(f"{path_to_models}vgg19_{name}.keras").exists():
+        print("Training vgg19")
         vgg = vgg19()
         vgg.compile(
             optimizer=Adam(
@@ -206,9 +202,13 @@ def train_detectors(  # noqa: PLR0915
         vgg.fit(train_generator, epochs=20, validation_data=test_generator)
         vgg.save(f"{path_to_models}vgg19_{name}.keras")
     else:
+        print("Loading vgg19")
         vgg = load_model(f"{path_to_models}vgg19_{name}.keras")
+    print("Got vgg19")
 
+    print("Checking resnet50")
     if not Path(f"{path_to_models}resnet50_{name}.keras").exists():
+        print("Training resnet50")
         resnet = resnet50()
         resnet.compile(
             optimizer=Adam(),
@@ -218,8 +218,8 @@ def train_detectors(  # noqa: PLR0915
         resnet.fit(train_generator, epochs=20, validation_data=test_generator)
         resnet.save(f"{path_to_models}resnet50_{name}.keras")
     else:
+        print("Loading resnet50")
         resnet = load_model(f"{path_to_models}resnet50_{name}.keras")
-
-    print("Training Done :)")
+    print("Got resnet50")
 
     return efficientnet, x_ception, vgg, resnet

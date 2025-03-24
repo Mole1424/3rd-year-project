@@ -1,13 +1,13 @@
+import random
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import cv2 as cv
-from sklearn.model_selection import train_test_split
 
 
-def generate_datasets(path_to_dataset: str) -> list[list[tuple[str, int]]]:
-    """creates dataset of video paths and labels, splitting into train and test sets"""
+def generate_datasets(path_to_dataset: str) -> list[str]:
+    """creates dataset of video paths"""
 
     # get all video paths
     videos = list(Path(path_to_dataset).rglob("*.mp4"))
@@ -16,26 +16,13 @@ def generate_datasets(path_to_dataset: str) -> list[list[tuple[str, int]]]:
     real_videos = [str(video) for video in videos if "real" in str(video)]
     fake_videos = [str(video) for video in videos if "fake" in str(video)]
 
-    # real videos are the minority class, so balance the dataset
-    train_size = int(0.8 * len(real_videos))
+    # we want 450 videos of each class
+    # simulates training of https://arxiv.org/pdf/2004.07676v1
+    real_videos = real_videos[:450]
+    fake_videos = fake_videos[:450]
 
-    # split into train and test sets
-    train_real, test_real = train_test_split(
-        real_videos, train_size=train_size, random_state=42
-    )
-    train_fake, test_fake = train_test_split(
-        fake_videos, train_size=train_size, random_state=42
-    )
-
-    # combine real and fake videos into a single dataset
-    train_data = (
-        [(video, 1) for video in train_real] + [(video, 0) for video in train_fake]
-    )
-    test_data = (
-        [(video, 1) for video in test_real] + [(video, 0) for video in test_fake]
-    )
-
-    return [train_data, test_data]
+    # combine the two lists
+    return real_videos + fake_videos
 
 def save_frames(
     frame_size: tuple[int, int],
@@ -43,31 +30,33 @@ def save_frames(
 ) -> None:
     """Extract and save frames from videos in a dataset"""
 
-    train_set = generate_datasets(path_to_dataset)[0]
+    dataset = generate_datasets(path_to_dataset)
 
     def process_video(video_path: str) -> None:
         """Extract and save frames from a video."""
-
+        print(f"Processing {video_path}")
         video = cv.VideoCapture(video_path)
-        frame_num = 0
 
-        while video.isOpened():
+        # get 32 random frames from the video
+        num_frames = int(video.get(cv.CAP_PROP_FRAME_COUNT))
+        random.seed(42)
+        frames = sorted(random.sample(range(num_frames), 32))
+
+        # extract those 32 frames, resize, then save
+        frame_num = 0
+        for frame_id in frames:
+            video.set(cv.CAP_PROP_POS_FRAMES, frame_id)
             success, frame = video.read()
             if not success:
-                break
+                continue
             frame = cv.resize(frame, frame_size)
-            path = f"{video_path[:-4]}_{frame_num}.jpg"
-            cv.imwrite(path, frame)
+            cv.imwrite(f"{video_path[:-4]}_{frame_num}.jpg", frame)
             frame_num += 1
-
-        video.release()
 
     # process videos in parallel
     with ThreadPoolExecutor() as executor:
-        executor.map(
-            process_video,
-            [video for video, _ in train_set],
-        )
+        executor.map(process_video, dataset)
+    print("Done :)")
 
 if __name__ == "__main__":
     save_frames((256, 256), sys.argv[1])
