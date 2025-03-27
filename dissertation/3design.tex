@@ -1,0 +1,109 @@
+\chapter{Design \& Implementation}
+\label{ch:design-implementation}
+
+\section{Language \& Libraries}
+
+\begin{itemize}
+    \item Python as pre-existing machine learning frameworks
+    \item Tensorflow vs PyTorch (Tensorflow seemed nicer and more base code, first code seen for proof of concept was in tensorflow)
+    \item mutually exclusive due to CUDA implementations
+\end{itemize}
+
+\section{Proof of Concept}
+
+\begin{itemize}
+    \item Re-use oriented design
+    \item Quick and dirty
+    \item Test my theory
+    \item Explain methodologies
+\end{itemize}
+
+\section{Main Algorithm}
+
+\begin{itemize}
+    \item pseudocode of main algorithm
+    \item if at any point something fails, mark as fake (ensures resiliency)
+    \item emphasise each part is interchangeable
+\end{itemize}
+
+\subsection{Eye Landmark Detection}
+
+\begin{itemize}
+    \item EAR needs 6 points per eye so lets get them
+    \item Facial landmarking is a common superset problem
+    \item Introduce 68 landmarks and datasets
+    \item Most popular ones aren't viable as built to be small to fit in a package (dlib, opencv...) or to run on a phone (mediapipe)
+\end{itemize}
+
+\subsubsection{Face cropping}
+
+YuNet for first pass, MTCNN if yunet fails
+
+\subsubsection{Weakly Supervised Eye Landmarks Detection (WSELD)}
+
+\begin{itemize}
+    \item Looked promising
+    \item Most accurate according to landmarks in paper \& only model focussing specifically on eye landmarking
+    \item Has a ``good enough" implementation details
+    \item Had issues
+    \begin{itemize}
+        \item Landmarks from regions (mention other paper that managed it
+        \item difficulty implementing in tensorflow
+        \item after a month scrapped development
+    \end{itemize}
+\end{itemize}
+
+\subsubsection{Pre-implemented Models}
+
+\begin{itemize}
+    \item Re-use oriented design
+    \item papers with code
+    \item Used best models which had pre-existing implementations (one for fast, one more accurate)
+\end{itemize}
+
+\subsubsection{HRNet}
+
+explain it
+
+\subsubsection{PFLD}
+
+it go brrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+
+\subsubsection{Datasets}
+
+\begin{itemize}
+    \item 68 landmarks (upsampling and downsampling where necessary)
+    \item list all of them and give brief overview
+    \item didnt use aflw due to inaccurate landmarks or not enough landmarks
+\end{itemize}
+
+\subsubsection{Final model choice}
+
+Yunet + PFLD, then MTCNN and HRNET as backup (hope ear analysis can filter out idiosyncrasies of the model as will be consistent across real and fake)
+
+\subsection{EAR Analysis}
+
+\begin{itemize}
+    \item Can be abstracted to a univariative time series
+    \item Well researched
+    \item Classical methods exists (pyts library)
+    \item As do deep learning frameworks (the other papers)
+\end{itemize}
+
+\section{Adversarial Noise}
+
+\begin{itemize}
+    \item foolbox library (Targeted FGSM using the other thing)
+    \item chosen over cleverhans
+    \item cw-l2 attack too slow (3hrs per video)
+    \item need to still implement fakeretouch
+\end{itemize}
+
+\section{Final Code}
+
+\begin{itemize}
+    \item One codebase to do full training, splitting and evaluation
+    \item checkpointing where possible
+    \item run on either dcs compute clusters or avon
+    \item final speeds + hardware
+\end{itemize}

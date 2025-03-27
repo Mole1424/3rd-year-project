@@ -1,41 +1,24 @@
 % report template from https://www.overleaf.com/latex/templates/university-of-warwick-es327-cs351-report-template/nndyfbkvfvtm
-% and inspied by Edmund Goodman
+% and edits inspied by Edmund Goodman (https://github.com/EdmundGoodman/CS310-dissertation/blob/c9b2168154004e7c7f15549ca1d02e1c2b0dff7d/dissertation.tex)
 
-\documentclass[a4paper,fleqn,twoside,12pt]{report}
+\documentclass[a4paper,12pt]{report}
 
 \usepackage[]{geometry}
-\usepackage[latin1]{inputenc}
 \usepackage[UKenglish]{babel}
 \usepackage[UKenglish]{isodate}
-\usepackage{amsmath}
-\usepackage{amsfonts}
-\usepackage{amssymb}
-\usepackage{amsthm}
 \usepackage{graphicx}
-\usepackage{chngpage}
+\usepackage{changepage}
 \usepackage{calc}
-\PassOptionsToPackage{hyphens}{url}
 \usepackage{hyperref}
 \usepackage[nameinlink]{cleveref}
 \usepackage{fancyhdr}
-\usepackage{titletoc}
-\usepackage[explicit]{titlesec}
-\usepackage{natbib}
-\usepackage[dvipsnames]{xcolor}
-\usepackage[sc]{mathpazo}
-\linespread{1.05}
 \usepackage[T1]{fontenc}
 \usepackage{minted}
+\usemintedstyle{vs}
 \usepackage{graphicx}
 
-%%%%%%%%%%%%%%%%%%%%
 
-\hypersetup{
-	colorlinks=true,
-	linkcolor=black,
-	urlcolor=black,
-	citecolor=black
-}
+%%%%%%%%%%%%%%%%%%%%
 
 \setlength{\parindent}{0mm}
 \setlength{\parskip}{\medskipamount}
@@ -53,22 +36,21 @@
 \makeatletter
 
 \author{Joel Coulon}
-\title{Evaluating the Resiliency of Blink-Based DeepFake Detection Against\\Adversarial Noise}
+\title{Evaluating the Resiliency of Blink-Based DeepFake Detection Against Adversarial Noise}
 \supervisor{Long Tran-Thanh}
-\yearofstudy{3\textsuperscript{rd}}
+\yearofstudy{3\textsuperscript{rd} (2024-2025)}
 
 %%%%%%%%%%%%%%%%%%%%
 
 \pagestyle{plain}
-\renewcommand{\headrulewidth}{0.0pt}
+% \renewcommand{\headrulewidth}{0.0pt}
 
 \makeatletter
 \fancypagestyle{plain}{
 	\fancyhf{}
-	\fancyhead[LE]{\thepage}
-	\fancyhead[RE]{\textit{\@author}}
-	\fancyhead[RO]{\thepage}
-	\fancyhead[LO]{\textit{\@title}}
+	\fancyhead[R]{\textit{Joel Coulon}}
+	\fancyhead[L]{\textit{Evaluating the Resiliency of Blink-Based\\DeepFake DetectionAgainst Adversarial Noise}}
+    \fancyfoot[C]{\thepage}
 }
 \makeatother
 
@@ -76,7 +58,7 @@
 
 \begin{document}
 
-\input{../titlepage/titlepage.tex}
+\input{dissertation/titlepage}
 
 \pagestyle{plain}
 
@@ -101,16 +83,17 @@ Hi Mum! {\tiny are you proud of me now?}
 \newpage
 
 \pagenumbering{arabic}
-\input{1introduction.tex}
-\input{2background.tex}
-\input{3design.tex}
-\input{4evaluation.tex}
-\input{5conclusions.tex}
+\input{dissertation/1introduction}
+\input{dissertation/2litreview}
+\input{dissertation/3design}
+\input{dissertation/4evaluation}
+\input{dissertation/5projectmanagement}
+\input{dissertation/6conclusions}
 
-\bibliographystyle{ieeetran}
+\bibliographystyle{IEEEtran}
 \bibliography{bibliography.bib}
 
 \appendix
-\input{6appendix.tex}
+\input{dissertation/7appendix}
 
 \end{document}
