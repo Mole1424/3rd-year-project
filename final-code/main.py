@@ -203,7 +203,7 @@ def calculate_ears(points: np.ndarray) -> np.ndarray:
     ear_r = np.clip((p8_p12 + p9_p11) / (2.0 * p7_p10), 0, 1)
 
     # return mean of the 2
-    return np.mean(np.array([ear_l, ear_r]), axis=0)
+    return np.nanmean(np.array([ear_l, ear_r]), axis=0)
 
 
 def classify_video_custom(
@@ -214,7 +214,7 @@ def classify_video_custom(
 
     # get successful from video
     landmarks = landmarker.get_landmarks(video)
-    valid_landmarks = [lm for lm in landmarks if lm is not None]
+    valid_landmarks = [lm for lm in landmarks if lm is not None and len(lm) > 0]
 
     # if no valid landmarks, assume fake
     if len(valid_landmarks) == 0:
@@ -470,8 +470,8 @@ def main(path_to_dataset: str, path_to_models: str) -> None:
                 elif label == 0 and not prediction:
                     results[model_name]["tn"] += 1
 
-            # save progress every 100 videos
-            if i % 100 == 0:
+            # save progress every now and then
+            if i % 25 == 0:
                 save_progress(results, best_path, path_to_save)
 
     save_progress(results, best_path, path_to_save)
