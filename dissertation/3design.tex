@@ -59,15 +59,26 @@ YuNet for first pass, MTCNN if yunet fails
     \item Re-use oriented design
     \item papers with code
     \item Used best models which had pre-existing implementations (one for fast, one more accurate)
+    \item couldve optimised for 6 landmarks but didnt want to mess with model architectures that were known working (batch size probably meant nothing would change anyway)
 \end{itemize}
 
 \subsubsection{HRNet}
 
-explain it
+\begin{itemize}
+    \item modular sequences
+    \item keeps high resolution layers in context at all times
+    \item generic network but with a specific implementation for eye landmarking
+    \item Heatmap per landmark
+\end{itemize}
 
 \subsubsection{PFLD}
 
-it go brrrrrrrrrrrrrrrrrrrrrrrrrrrrr
+\begin{itemize}
+    \item speedy boi
+    \item uses mobilenet-techniques to reduce the size and increase the speed
+    \item still accurate tho
+    \item secret sauce is custom loss function
+\end{itemize}
 
 \subsubsection{Datasets}
 
@@ -84,17 +95,19 @@ Yunet + PFLD, then MTCNN and HRNET as backup (hope ear analysis can filter out i
 \subsection{EAR Analysis}
 
 \begin{itemize}
-    \item Can be abstracted to a univariative time series
+    \item Can be abstracted to a univariate time series
     \item Well researched
     \item Classical methods exists (pyts library)
+    \item explain each one and give simple summary (1 paragraph)
     \item As do deep learning frameworks (the other papers)
+    \item model diagrams for each one (maybe give a rough explenation as to the aims each one is doing?)
 \end{itemize}
 
 \section{Adversarial Noise}
 
 \begin{itemize}
     \item foolbox library (Targeted FGSM using the other thing)
-    \item chosen over cleverhans
+    \item chosen over cleverhans as cleverhans had meh documentation
     \item cw-l2 attack too slow (3hrs per video)
     \item need to still implement fakeretouch
 \end{itemize}
@@ -103,6 +116,8 @@ Yunet + PFLD, then MTCNN and HRNET as backup (hope ear analysis can filter out i
 
 \begin{itemize}
     \item One codebase to do full training, splitting and evaluation
+    \item just give overall flow diagram?
+    \item {\huge models only trained on non-noisy images}
     \item checkpointing where possible
     \item run on either dcs compute clusters or avon
     \item final speeds + hardware
