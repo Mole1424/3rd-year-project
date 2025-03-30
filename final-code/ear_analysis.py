@@ -376,7 +376,7 @@ class EarAnalysis:
 
             # load model if it exists, otherwise train it
             model_path = Path(
-                f"{path_to_models}/{dataset_name}_{name}."
+                f"{path_to_models}{dataset_name}_{name}."
                 f"{"keras" if is_tensorflow else "joblib"}"
             )
             print(f"Checking {model_path!s}...")
@@ -389,7 +389,7 @@ class EarAnalysis:
                 if is_tensorflow:
                     train_dataset = tf.data.Dataset.from_tensor_slices(
                         (np.expand_dims(np.array(tf_X_train), axis=-1),
-                        to_categorical(y_train, num_classes=2)),
+                        to_categorical(tf_y_train, num_classes=2)),
                     ).batch(
                         resnet_batch_size if isinstance(model, ResNet) else batch_size,
                         drop_remainder=True
