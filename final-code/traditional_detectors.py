@@ -1,5 +1,5 @@
+import random
 from pathlib import Path
-from random import shuffle
 from typing import Generator
 
 import numpy as np
@@ -139,11 +139,12 @@ def train_detectors(  # noqa: PLR0915
     test_labels = [1] * len(test_reals) + [0] * len(test_fakes)
 
     # shuffle the data
+    random.seed(42)
     train_set = list(zip(train_data, train_labels))
-    shuffle(train_set)
+    random.shuffle(train_set)
     train_data, train_labels = zip(*train_set)
     test_set = list(zip(test_data, test_labels))
-    shuffle(test_set)
+    random.shuffle(test_set)
     test_data, test_labels = zip(*test_set)
 
     # create the datasets
@@ -154,7 +155,7 @@ def train_detectors(  # noqa: PLR0915
 
     # check if the models already exist (have been trained)
     print("Checking efficientnet")
-    if not Path(f"{path_to_models}efficientnet_{name}.keras").exists():
+    if not Path(f"{path_to_models}{name}_efficientnet.keras").exists():
         # if not comile, train, and save with appropriate specs
         print("Training efficientnet")
         efficientnet = efficientnet_b4()
@@ -165,14 +166,14 @@ def train_detectors(  # noqa: PLR0915
             loss="binary_crossentropy",
         )
         efficientnet.fit(train_generator, epochs=60, validation_data=test_generator)
-        efficientnet.save(f"{path_to_models}efficientnet_{name}.keras")
+        efficientnet.save(f"{path_to_models}{name}_efficientnet.keras")
     else:
         print("Loading efficientnet")
-        efficientnet = load_model(f"{path_to_models}efficientnet_{name}.keras")
+        efficientnet = load_model(f"{path_to_models}{name}_efficientnet.keras")
     print("Got efficientnet")
 
     print("Checking xception")
-    if not Path(f"{path_to_models}xception_{name}.keras").exists():
+    if not Path(f"{path_to_models}{name}_xception.keras").exists():
         print("Training xception")
         x_ception = xception()
         x_ception.compile(
@@ -182,14 +183,14 @@ def train_detectors(  # noqa: PLR0915
             loss="categorical_crossentropy",
         )
         x_ception.fit(train_generator, epochs=60, validation_data=test_generator)
-        x_ception.save(f"{path_to_models}xception_{name}.keras")
+        x_ception.save(f"{path_to_models}{name}_xception.keras")
     else:
         print("Loading xception")
-        x_ception = load_model(f"{path_to_models}xception_{name}.keras")
+        x_ception = load_model(f"{path_to_models}{name}_xception.keras")
     print("Got xception")
 
     print("Checking vgg19")
-    if not Path(f"{path_to_models}vgg19_{name}.keras").exists():
+    if not Path(f"{path_to_models}{name}_vgg19.keras").exists():
         print("Training vgg19")
         vgg = vgg19()
         vgg.compile(
@@ -200,14 +201,14 @@ def train_detectors(  # noqa: PLR0915
             metrics=["accuracy"],
         )
         vgg.fit(train_generator, epochs=20, validation_data=test_generator)
-        vgg.save(f"{path_to_models}vgg19_{name}.keras")
+        vgg.save(f"{path_to_models}{name}_vgg19.keras")
     else:
         print("Loading vgg19")
-        vgg = load_model(f"{path_to_models}vgg19_{name}.keras")
+        vgg = load_model(f"{path_to_models}{name}_vgg19.keras")
     print("Got vgg19")
 
     print("Checking resnet50")
-    if not Path(f"{path_to_models}resnet50_{name}.keras").exists():
+    if not Path(f"{path_to_models}{name}_resnet50.keras").exists():
         print("Training resnet50")
         resnet = resnet50()
         resnet.compile(
@@ -216,10 +217,10 @@ def train_detectors(  # noqa: PLR0915
             metrics=["accuracy"],
         )
         resnet.fit(train_generator, epochs=20, validation_data=test_generator)
-        resnet.save(f"{path_to_models}resnet50_{name}.keras")
+        resnet.save(f"{path_to_models}{name}_resnet50.keras")
     else:
         print("Loading resnet50")
-        resnet = load_model(f"{path_to_models}resnet50_{name}.keras")
+        resnet = load_model(f"{path_to_models}{name}_resnet50.keras")
     print("Got resnet50")
 
     return efficientnet, x_ception, vgg, resnet

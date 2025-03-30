@@ -114,7 +114,7 @@ def get_custom_model(
         return landmarker, ear_analyser, path_to_ear_anylyser
 
     # otherwise check if pickle file for ears dataset exists
-    path = Path(path_to_models + "ears_dataset.pkl")
+    path = Path(path_to_models + dataset_name + "_ears_dataset.pkl")
     if path.exists():
         # if it does, load it
         with path.open("rb") as file:
