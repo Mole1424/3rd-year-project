@@ -10,6 +10,7 @@ from pyts.classification import (
     TimeSeriesForest,
 )
 from sklearn.base import BaseEstimator
+from sklearn.model_selection import train_test_split
 from tensorflow.keras import Layer, Model  # type: ignore
 from tensorflow.keras.callbacks import ReduceLROnPlateau  # type: ignore
 from tensorflow.keras.layers import (  # type: ignore
@@ -41,8 +42,15 @@ class KerasTimeSeriesClassifier:
             ReduceLROnPlateau(monitor="loss", factor=0.5, patience=50, min_lr=0.0001)
         ]
 
-    def fit(self, data: tf.data.Dataset, epochs: int = 100) -> None:
-        self.model.fit(data, epochs=epochs, callbacks=self.callbacks)
+    def fit(
+        self, train_data: tf.data.Dataset, validation_data: tf.data.Dataset, epochs: int
+    ) -> None:
+        self.model.fit(
+            train_data,
+            epochs=epochs,
+            validation_data=validation_data,
+            callbacks=self.callbacks
+        )
 
     def predict(self, X: np.ndarray) -> np.ndarray:  # noqa: N803
         return self.model.predict(X)
@@ -310,6 +318,11 @@ class EarAnalysis:
         X_train, y_train = zip(*trainset)  # noqa: N806
         X_test, y_test = zip(*testset) # noqa: N806
 
+        # further split train set into train and validation sets
+        tf_X_train, tf_X_val, tf_y_train, tf_y_val = train_test_split(  # noqa: N806
+            X_train, y_train, train_size=0.8, random_state=42
+        )
+
         # define models
         keras_models = [
             LongShortTermMemory(),
@@ -375,13 +388,21 @@ class EarAnalysis:
                 print(f"Training {name}...")
                 if is_tensorflow:
                     train_dataset = tf.data.Dataset.from_tensor_slices(
-                        (np.expand_dims(np.array(X_train), axis=-1),
+                        (np.expand_dims(np.array(tf_X_train), axis=-1),
                         to_categorical(y_train, num_classes=2)),
                     ).batch(
                         resnet_batch_size if isinstance(model, ResNet) else batch_size,
                         drop_remainder=True
                     ).prefetch(tf.data.AUTOTUNE)
-                    model.fit(train_dataset, epochs=epoch) # type: ignore
+                    val_dataset = tf.data.Dataset.from_tensor_slices(
+                        (np.expand_dims(np.array(tf_X_val), axis=-1),
+                        to_categorical(tf_y_val, num_classes=2)),
+                    ).batch(
+                        resnet_batch_size if isinstance(model, ResNet) else batch_size,
+                        drop_remainder=True
+                    ).prefetch(tf.data.AUTOTUNE)
+
+                    model.fit(train_dataset, val_dataset, epoch) # type: ignore
                     model.save(str(model_path))
                 else:
                     model.fit(X_train, y_train)
