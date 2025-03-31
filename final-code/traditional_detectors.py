@@ -118,7 +118,10 @@ def resnet50() -> Model:
 
 
 def train_detectors(  # noqa: PLR0915
-    path_to_models: str, name: str, path_to_dataset: str
+    path_to_models: str,
+    name: str,
+    path_to_dataset: str,
+    strategy: tf.distribute.Strategy,
 ) -> tuple[Model, Model, Model, Model]:
     """Train the detectors and return the models."""
     # this is cursed python code but i love it
@@ -158,15 +161,17 @@ def train_detectors(  # noqa: PLR0915
     if not Path(f"{path_to_models}{name}_efficientnet.keras").exists():
         # if not comile, train, and save with appropriate specs
         print("Training efficientnet")
-        efficientnet = efficientnet_b4()
-        efficientnet.compile(
-            optimizer=Adam(
-                learning_rate=0.00001, beta_1=0.9, beta_2=0.999, epsilon=1e-07
-            ),
-            loss="binary_crossentropy",
-        )
-        efficientnet.fit(train_generator, epochs=60, validation_data=test_generator)
-        efficientnet.save(f"{path_to_models}{name}_efficientnet.keras")
+        with strategy.scope():
+            efficientnet = efficientnet_b4()
+            efficientnet.compile(
+                optimizer=Adam(
+                    learning_rate=0.00001, beta_1=0.9, beta_2=0.999, epsilon=1e-07
+                ),
+                loss="categorical_crossentropy",
+            )
+            efficientnet.fit(train_generator, epochs=60, validation_data=test_generator)
+            efficientnet.save(f"{path_to_models}{name}_efficientnet.keras")
+        tf.keras.backend.clear_session() # type: ignore
     else:
         print("Loading efficientnet")
         efficientnet = load_model(f"{path_to_models}{name}_efficientnet.keras")
@@ -175,15 +180,17 @@ def train_detectors(  # noqa: PLR0915
     print("Checking xception")
     if not Path(f"{path_to_models}{name}_xception.keras").exists():
         print("Training xception")
-        x_ception = xception()
-        x_ception.compile(
-            optimizer=Adam(
-                learning_rate=0.0002, beta_1=0.9, beta_2=0.999, epsilon=1e-07
-            ),
-            loss="categorical_crossentropy",
-        )
-        x_ception.fit(train_generator, epochs=60, validation_data=test_generator)
-        x_ception.save(f"{path_to_models}{name}_xception.keras")
+        with strategy.scope():
+            x_ception = xception()
+            x_ception.compile(
+                optimizer=Adam(
+                    learning_rate=0.0002, beta_1=0.9, beta_2=0.999, epsilon=1e-07
+                ),
+                loss="categorical_crossentropy",
+            )
+            x_ception.fit(train_generator, epochs=60, validation_data=test_generator)
+            x_ception.save(f"{path_to_models}{name}_xception.keras")
+        tf.keras.backend.clear_session() # type: ignore
     else:
         print("Loading xception")
         x_ception = load_model(f"{path_to_models}{name}_xception.keras")
@@ -192,16 +199,18 @@ def train_detectors(  # noqa: PLR0915
     print("Checking vgg19")
     if not Path(f"{path_to_models}{name}_vgg19.keras").exists():
         print("Training vgg19")
-        vgg = vgg19()
-        vgg.compile(
-            optimizer=Adam(
-                learning_rate=1e-5, beta_1=0.9, beta_2=0.999, epsilon=1e-7
-            ),
-            loss="binary_crossentropy",
-            metrics=["accuracy"],
-        )
-        vgg.fit(train_generator, epochs=20, validation_data=test_generator)
-        vgg.save(f"{path_to_models}{name}_vgg19.keras")
+        with strategy.scope():
+            vgg = vgg19()
+            vgg.compile(
+                optimizer=Adam(
+                    learning_rate=1e-5, beta_1=0.9, beta_2=0.999, epsilon=1e-7
+                ),
+                loss="categorical_crossentropy",
+                metrics=["accuracy"],
+            )
+            vgg.fit(train_generator, epochs=20, validation_data=test_generator)
+            vgg.save(f"{path_to_models}{name}_vgg19.keras")
+        tf.keras.backend.clear_session() # type: ignore
     else:
         print("Loading vgg19")
         vgg = load_model(f"{path_to_models}{name}_vgg19.keras")
@@ -210,14 +219,16 @@ def train_detectors(  # noqa: PLR0915
     print("Checking resnet50")
     if not Path(f"{path_to_models}{name}_resnet50.keras").exists():
         print("Training resnet50")
-        resnet = resnet50()
-        resnet.compile(
-            optimizer=Adam(),
-            loss="binary_crossentropy",
-            metrics=["accuracy"],
-        )
-        resnet.fit(train_generator, epochs=20, validation_data=test_generator)
-        resnet.save(f"{path_to_models}{name}_resnet50.keras")
+        with strategy.scope():
+            resnet = resnet50()
+            resnet.compile(
+                optimizer=Adam(),
+                loss="categorical_crossentropy",
+                metrics=["accuracy"],
+            )
+            resnet.fit(train_generator, epochs=20, validation_data=test_generator)
+            resnet.save(f"{path_to_models}{name}_resnet50.keras")
+        tf.keras.backend.clear_session() # type: ignore
     else:
         print("Loading resnet50")
         resnet = load_model(f"{path_to_models}{name}_resnet50.keras")

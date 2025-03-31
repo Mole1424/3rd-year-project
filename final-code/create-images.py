@@ -37,12 +37,12 @@ def save_frames(
         print(f"Processing {video_path}")
         video = cv.VideoCapture(video_path)
 
-        # get 32 random frames from the video
+        # get n random frames from the video
         num_frames = int(video.get(cv.CAP_PROP_FRAME_COUNT))
         random.seed(42)
-        frames = sorted(random.sample(range(num_frames), 32))
+        frames = sorted(random.sample(range(num_frames), 100))
 
-        # extract those 32 frames, resize, then save
+        # extract those n frames, resize, then save
         frame_num = 0
         for frame_id in frames:
             video.set(cv.CAP_PROP_POS_FRAMES, frame_id)

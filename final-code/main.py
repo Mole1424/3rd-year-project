@@ -37,10 +37,10 @@ def generate_datasets(path_to_dataset: str) -> list[list[tuple[str, int]]]:
 
     # aggregate into 2 datasets
     train_data = (
-        [(video, 1) for video in train_real] + [(video, 0) for video in train_fake]
+        [(video, 0) for video in train_fake] + [(video, 1) for video in train_real]
     )
     test_data = (
-        [(video, 1) for video in test_real] + [(video, 0) for video in test_fake]
+        [(video, 0) for video in test_fake] + [(video, 1) for video in test_real]
     )
 
     return [train_data, test_data]
@@ -390,9 +390,12 @@ def process_video(
                 predictions[f"{model_name}_{target_model}"] = predictions[target_model]
 
     # print results
-    print(f"Finished processing {video_path}")
-    print(f"Label: {bool(label)}")
-    print(f"Predictions: {predictions.values()}")
+    print("Finished processing:", video_path)
+    print("Label:", bool(label))
+    print("Correct?:")
+    for name, prediction in predictions.items():
+        print(f"{name}: {prediction == bool(label)}")
+    print("=" * 20)
 
     return (label, *predictions.values())
 
@@ -426,15 +429,18 @@ def main(path_to_dataset: str, path_to_models: str) -> None:
         )
         print("Custom model loaded")
 
-        # save ear analyser path
-        save_progress(loaded_results, best_path, path_to_save)
+    # save ear analyser path
+    save_progress(loaded_results, best_path, path_to_save)
+    tf.keras.backend.clear_session() # type: ignore
 
-        # train traditional models
-        print("Training traditional models")
-        models = train_detectors(
-            path_to_models, dataset_name, path_to_dataset
-        )
-        print("Traditional models trained")
+    # train traditional models
+    print("Training traditional models")
+    models = train_detectors(
+        path_to_models, dataset_name, path_to_dataset, strategy
+    )
+    print("Traditional models trained")
+
+    tf.keras.backend.clear_session() # type: ignore
 
     # initialise results
     traditional_models = ["vgg", "resnet", "xception", "efficientnet"]
