@@ -16,7 +16,14 @@
 \usemintedstyle{vs}
 \usepackage{graphicx}
 
-
+\usepackage[
+    style=numeric,
+    minbibnames=99 % include all names in bibliography
+]{biblatex}
+\renewbibmacro{in:}{} % remove in so that not hanging if journal name missing
+\DeclareNameAlias{default}{last-first} % order names in lastname -firstname
+\addbibresource{bibliography.bib}
+     
 %%%%%%%%%%%%%%%%%%%%
 
 \setlength{\parindent}{0mm}
@@ -44,14 +51,12 @@
 \pagestyle{plain}
 % \renewcommand{\headrulewidth}{0.0pt}
 
-\makeatletter
 \fancypagestyle{plain}{
 	\fancyhf{}
 	\fancyhead[R]{\textit{Joel Coulon}}
 	\fancyhead[L]{\textit{Evaluating the Resiliency of Blink-Based\\DeepFake Detection Against Adversarial Noise}}
     \fancyfoot[C]{\thepage}
 }
-\makeatother
 
 %%%%%%%%%%%%%%%%%%%%
 
@@ -90,8 +95,7 @@ Hi Mum! {\tiny are you proud of me now?}
 \input{dissertation/6conclusions}
 
 \addcontentsline{toc}{chapter}{Bibliography}
-\bibliographystyle{IEEEtran}
-\bibliography{dissertation/bibliography}
+\printbibliography
 
 \appendix
 \input{dissertation/7appendix}
