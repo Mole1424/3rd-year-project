@@ -1,48 +1,105 @@
 \chapter{Introduction}
 \label{ch:introduction}
 
-\begin{itemize}
-    \item Introduction to deepfakes and a brief history
-    \item Mention things like initially coined on reddit, and their rise to popularity
-    \item can be used for a variety of illegal activities, misinformation, etc
-    \item adversarial noise
-    \item deepfake detection via CNNs
-    \item the aim of the project
-    \begin{itemize}
-        \item the title but looong
-    \end{itemize}
-    \item objectives
-    \begin{itemize}
-        \item First objectives
-        \begin{enumerate}
-            \item Identify a methodology for detecting DeepFakes
-            \item Identify how to implement such a methodology
-            \item Implement such a methodology
-            \item Evaluate the feasibility of the produced method through standardised benchmarks
-        \end{enumerate}
-        \item{Optional (Extensions)}
-        Should all the essential objectives be completed the following could be implemented given sufficient time:
-        \begin{enumerate}
-            \item Enhance the chosen methodology through speed improvements, accuracy, etc.
-            \item Test the benefit of any potential improvement using standardised benchmarks
-        \end{enumerate}
-        \item New Objectives
-        \begin{enumerate}
-            \item Implement eye landmark detection
-            \item Calculate ear over time
-            \item analysis of ear graph to determine real or fake
-            \item implement a control set of models (state-of-the-art)
-            \item investigate and implement methods of adding adversarial noise
-            \item compare and benchmark over dataset(s)
-        \end{enumerate}
-        \item New Objectives (further)
-        \begin{enumerate}
-            \item Evaluate transferability of blink-detection across different datasets
-        \end{enumerate}
-    \end{itemize}
-    \item Unique contributions
-    \begin{itemize}
-        \item First use of time series analysis on EAR graph
-        \item Evaluation of blink detection on standard datasets
-    \end{itemize}
-\end{itemize}
+% \begin{itemize}
+%     \item Introduction to deepfakes and a brief history
+%     \item Mention things like initially coined on reddit, and their rise to popularity
+%     \item can be used for a variety of illegal activities, misinformation, etc
+%     \item adversarial noise
+%     \item deepfake detection via CNNs 
+%     \item the aim of the project
+%     \begin{itemize}
+%         \item the title but looong
+%     \end{itemize}
+%     \item objectives
+%     \begin{itemize}
+%         \item First objectives
+%         \begin{enumerate}
+%             \item Identify a methodology for detecting DeepFakes
+%             \item Identify how to implement such a methodology
+%             \item Implement such a methodology
+%             \item Evaluate the feasibility of the produced method through standardised benchmarks
+%         \end{enumerate}
+%         \item{Optional (Extensions)}
+%         Should all the essential objectives be completed the following could be implemented given sufficient time:
+%         \begin{enumerate}
+%             \item Enhance the chosen methodology through speed improvements, accuracy, etc.
+%             \item Test the benefit of any potential improvement using standardised benchmarks
+%         \end{enumerate}
+%         \item New Objectives
+%         \begin{enumerate}
+%             \item Implement eye landmark detection
+%             \item Calculate ear over time
+%             \item analysis of ear graph to determine real or fake
+%             \item implement a control set of models (state-of-the-art)
+%             \item investigate and implement methods of adding adversarial noise
+%             \item compare and benchmark over dataset(s)
+%         \end{enumerate}
+%         \item New Objectives (further)
+%         \begin{enumerate}
+%             \item Evaluate transferability of blink-detection across different datasets
+%         \end{enumerate}
+%     \end{itemize}\
+%     \item Unique contributions
+%     \begin{itemize}
+%         \item First use of time series analysis on EAR graph
+%         \item Evaluation of blink detection on standard datasets
+%     \end{itemize}
+% \end{itemize}
+
+\section{Project Overview}
+\label{sec:project-review}
+
+DeepFakes are defined as ``manipulated or synthetic media the realness of which are not easily recognisable by the human eye"\cite{altuncu2024deepfake}. In simpler terms, a DeepFake is a video, image, or audio clip that has been digitally altered or created, often using Artificial Intelligence (AI). Concerningly, it is incredibly hard for humans to determine whether or not a particular video has been DeepFaked or not. In a 2024 study, 86,155 volunteers attempted to detect DeepFakes, the final accuracy access all DeepFake types was 55.54\%\cite{diel2024human}. Furthermore, a Europol report revealed 72\% of the UK population were unaware of DeepFakes and their potential impact\cite{europol2022facing}.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.5\linewidth]{dissertation//figures/thispersondoesnotexist.jpg}
+    \caption{A DeepFake generated with \url{https://thispersondoesnotexist.com}}
+    \label{fig:enter-label}
+\end{figure}
+
+Because they are so realistic, DeepFakes have garnered a wide usage for various nefarious activities. Scams, misinformation, and fraud are all possible illegal uses for DeepFakes and all pose a real threat to society\cite{sensity2024state}.
+
+It is therefore obvious that a mechanism to reliably detect DeepFakes would be incredibly useful.
+
+Convolutional Neural Networks (CNNs) are powerful neural network models that learn kernels (sometimes also called filters) in a feed-forward manner\cite{lecun2015deep}. They consist of sequences of layers which gradually take more and more general view of an input to produce final classification. They have a wide variety of applications in various fields of deep learning, such as computer vision and recommendation algorithms. Crucially, they can also be used to create accurate DeepFake detectors. When trained on a specific dataset, they can become extremely accurate achieving consistent accuracies of over 90\% when trained correctly\cite{papersiwthcodedeepfakedetection}.
+
+However, recent studies has shown that CNNs are vulnerable to adversarial noise attacks. Noise, imperceptible to humans, is added to images which causes misclassification\cite{gandhi2020adversarial}. This becomes dangerous when noise is added to fake images causing them to be misclassified as real. A 90\% accurate classifier is going to be implicitly trusted to be correct and a simple and invisible method to fool classifiers is worrying.
+
+A promising new method of DeepFake detection focusses on blinking. DeepFakes, and other AI generated content, suffer from various temporal inconsistencies. Videos are a sequence of images moving through time. When this video is of real life there are certain aspects that can be predicted between frames, however AI struggles to replicate these aspects. Blink-based DeepFake detection exploits blinking inconsistencies. Human blinking is a subconscious action and hence periodic: the average period between blinks is 2.8 seconds and a blink takes around 0.1-0.4 seconds\cite{schiffman1990sensation}. Other eye-based temporal inconsistencies exist such as the shape of an eye and how far open the eye can be. It is possible to leverage this for DeepFake detection, by analysing how far open the eye is over time.
+
+\section{Aim}
+\label{sec:aim}
+
+This paper aims to implement blink-based DeepFake detection and show that such a method is competitively resistant to adversarial noise attacks.
+
+\section{Objectives}
+\label{sec:objectives}
+
+To achieve the aim as laid out in Section \ref{sec:aim} the project can be decomposed into the following objectives:
+
+\begin{enumerate}
+    \item Produce a method to reliably track how ``open" an eye is over time
+    \item Analyse the resulting data to determine whether a video is fake or not, accurately
+    \item Evaluate the performance of the model on standardised benchmarks
+    \item Implement state-of-the-art traditional models
+    \item Implement a variety of methods of adversarial noise to target those models
+    \item Evaluate how responsive blink-based detection is to adversarial noise
+\end{enumerate}
+
+The above objectives must be completed for the project to be a success. If they have all been successfully achieved then the following objectives could be implemented given sufficient time:
+
+\begin{enumerate}
+    \item Evaluate the transferability of blink-based detection to datasets it has not been trained on
+    \item Review possible noise reduction methods for DeepFake detection
+\end{enumerate}
+
+\section{Novel Contributions}
+
+The project has the following novel contributions to the field of DeepFakes:
+
+\begin{enumerate}
+    \item First use of complex time series analysis for blink-based DeepFake detection
+    \item First evaluation of blink-based DeepFake detection on common datasets
+\end{enumerate}

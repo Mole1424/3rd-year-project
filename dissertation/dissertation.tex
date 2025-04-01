@@ -1,9 +1,9 @@
 % report template from https://www.overleaf.com/latex/templates/university-of-warwick-es327-cs351-report-template/nndyfbkvfvtm
 % and edits inspied by Edmund Goodman (https://github.com/EdmundGoodman/CS310-dissertation/blob/c9b2168154004e7c7f15549ca1d02e1c2b0dff7d/dissertation.tex)
 
-\documentclass[a4paper,12pt]{report}
+\documentclass[a4paper]{report}
 
-\usepackage[]{geometry}
+\usepackage[margin=1in]{geometry}
 \usepackage[UKenglish]{babel}
 \usepackage[UKenglish]{isodate}
 \usepackage{graphicx}
@@ -12,7 +12,6 @@
 \usepackage{hyperref}
 \usepackage[nameinlink]{cleveref}
 \usepackage{fancyhdr}
-\usepackage[T1]{fontenc}
 \usepackage{minted}
 \usemintedstyle{vs}
 \usepackage{graphicx}
@@ -49,7 +48,7 @@
 \fancypagestyle{plain}{
 	\fancyhf{}
 	\fancyhead[R]{\textit{Joel Coulon}}
-	\fancyhead[L]{\textit{Evaluating the Resiliency of Blink-Based\\DeepFake DetectionAgainst Adversarial Noise}}
+	\fancyhead[L]{\textit{Evaluating the Resiliency of Blink-Based\\DeepFake Detection Against Adversarial Noise}}
     \fancyfoot[C]{\thepage}
 }
 \makeatother
@@ -90,8 +89,9 @@ Hi Mum! {\tiny are you proud of me now?}
 \input{dissertation/5projectmanagement}
 \input{dissertation/6conclusions}
 
+\addcontentsline{toc}{chapter}{Bibliography}
 \bibliographystyle{IEEEtran}
-\bibliography{bibliography.bib}
+\bibliography{dissertation/bibliography}
 
 \appendix
 \input{dissertation/7appendix}
