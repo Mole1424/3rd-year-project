@@ -359,8 +359,8 @@ class EarAnalysis:
 
         # hyperparams for training
         keras_epochs = [500, 500, 5000, 2000, 2000, 1500]
-        batch_size = 16 * (len(tf.config.list_physical_devices("GPU")) or 1)
-        resnet_batch_size = 64 * (len(tf.config.list_physical_devices("GPU")) or 1)
+        batch_size = 16
+        resnet_batch_size = 64
 
         # add models to central list for tracking
         models = list(zip(keras_models, [True] * len(keras_models), names))
@@ -391,15 +391,13 @@ class EarAnalysis:
                         (np.expand_dims(np.array(tf_X_train), axis=-1),
                         to_categorical(tf_y_train, num_classes=2)),
                     ).batch(
-                        resnet_batch_size if isinstance(model, ResNet) else batch_size,
-                        drop_remainder=True
+                        resnet_batch_size if isinstance(model, ResNet) else batch_size
                     ).prefetch(tf.data.AUTOTUNE)
                     val_dataset = tf.data.Dataset.from_tensor_slices(
                         (np.expand_dims(np.array(tf_X_val), axis=-1),
                         to_categorical(tf_y_val, num_classes=2)),
                     ).batch(
-                        resnet_batch_size if isinstance(model, ResNet) else batch_size,
-                        drop_remainder=True
+                        resnet_batch_size if isinstance(model, ResNet) else batch_size
                     ).prefetch(tf.data.AUTOTUNE)
 
                     model.fit(train_dataset, val_dataset, epoch) # type: ignore

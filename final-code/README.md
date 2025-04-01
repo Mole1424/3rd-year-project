@@ -5,10 +5,10 @@ The script is designed to run on any dataset. The dataset can be in any location
 
 ```
 <name_of_dataset>/
-  |-- real/
-  |     |-- <video_1>.mp4
-  |-- fake/
-        |-- <video_1>.mp4
+|--real/
+|  |--<video_1>.mp4
+|--fake/
+   |--<video_1>.mp4
 ```
 
 ## To run
@@ -41,11 +41,11 @@ python3.12 -u create_images.py <path_to_dataset>
 This is not in the main loop because it does not benefit from GPU acceleration (shoulod be run as CPU) and thus should be either run locally or on a CPU partition of batch compute.
 
 3. Main loop  
-The main loop trains all the models, finds the best ones, provesses the entire dataset, saving the results. It can scale to multiple GPUs and is designed to be run on a batch compute system.
+The main loop trains all the models, finds the best ones, processes the entire dataset, saving the results. It is designed to be run on a slurm batch compute system. Whilst CPU training is possible, it is reccomended to run on a gpu partition.
 ```bash
 sbatch main.sbatch
 ```
-The line `--gres=gpu:3` in the `main.sbatch` file can be changed to the number of GPUs you want to use. The script will automatically scale to the number of GPUs available. The line `python3.12 -u main.py` in the `main.sbatch` should be changed to `python3.12 -u main.py <path_to_dataset> <path_to_models>`, the results will be saved to the current directory. The script has checkpointing, and so all trained models will be put and loaded from `<path_to_models>` along with the EARdataset created, the ongoing results file will be saved to the current directory. Models will be saves as `<dataset_name>_<model_name>` to allow for easy identification. The script will also save the best model for each dataset and model type, along with the results of the analysis.
+The line `python3.12 -u main.py` in the `main.sbatch` should be changed to `python3.12 -u main.py <path_to_dataset> <path_to_models>`, the results will be saved to the current directory. The script has checkpointing, and so all trained models will be put and loaded from `<path_to_models>` along with the EARs dataset created, the ongoing results file will be saved to the current directory. Models will be saves as `<dataset_name>_<model_name>` to allow for easy identification. The script will also save the best model for each dataset and model type, along with the results of the analysis.
 
 ## File Structure
 
@@ -83,4 +83,4 @@ Trains and saves models for traiditional detectors, models are trained on frames
 
 #### `main.py`
 
-Main file for this project. Ct=reates ear dataset, trains models, evaluates them, and then saves the results, all with checkpointing so it can pick up from where it left off.  
+Main file for this project. Creates ear dataset, trains models, evaluates them, and then saves the results, all with checkpointing so it can pick up from where it left off.  

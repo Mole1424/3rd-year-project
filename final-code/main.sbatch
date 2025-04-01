@@ -1,8 +1,8 @@
 #!/bin/bash
 #
 #SBATCH --job-name=main_loop
-#SBATCH --partition=gecko
-#SBATCH --gres=gpu:3
+#SBATCH --partition=gecko,falcon
+#SBATCH --gres=gpu:1
 #SBATCH --time=2-00:00:00
 #SBATCH --output=slurm-%j.out
 #SBATCH --error=slurm-%j.err
