@@ -263,6 +263,8 @@ def pre_process_frames(frames: np.ndarray) -> np.ndarray:
         batch = batch.reshape((256, 256, channels, num_frames))
         batch = batch.transpose((3, 0, 1, 2))
 
+        batch = batch[...,::-1] # BGR to RGB
+
         # normalise frames
         batch = batch / 255.0
         processed_frames.extend(batch)
@@ -286,8 +288,8 @@ def classify_video_classical(video: np.ndarray, model: Model) -> bool:
 
 def post_process_frames(frames: Any, height: int, width: int) -> np.ndarray:  # noqa: ANN401
     """post-process frames from noise attacks"""
-    # convert back to uint8
-    frames = np.clip(frames.numpy(), 0, 1) * 255
+    # convert back to uint8 and to rgb
+    frames = np.clip(frames.numpy()[..., ::-1], 0, 1)
     frames = frames.astype(np.uint8)
 
     # resize frames back to original size

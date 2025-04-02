@@ -446,6 +446,6 @@ class EarAnalysis:
         # predict using model
         if self.tensorflow:
             data = np.expand_dims(np.array(data), axis=-1)
-            return int(np.argmax(self.model.predict(data, verbose=0))) # type: ignore
+            return int(np.argmax(self.model.predict(data))) # type: ignore
         else:  # noqa: RET505
             return self.model.predict(np.array([data]))[0] # type: ignore
