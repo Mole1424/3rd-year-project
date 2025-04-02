@@ -166,7 +166,9 @@ def train_detectors(  # noqa: PLR0915
             ),
             loss="categorical_crossentropy",
         )
-        efficientnet.fit(train_generator, epochs=60, validation_data=test_generator)
+        efficientnet.fit(
+            train_generator, epochs=60, validation_data=test_generator, verbose=2
+        )
         efficientnet.save(efficientnet_path)
         tf.keras.backend.clear_session() # type: ignore
     else:
@@ -185,7 +187,9 @@ def train_detectors(  # noqa: PLR0915
             ),
             loss="categorical_crossentropy",
         )
-        x_ception.fit(train_generator, epochs=60, validation_data=test_generator)
+        x_ception.fit(
+            train_generator, epochs=60, validation_data=test_generator, verbose=2
+        )
         x_ception.save(xception_path)
         tf.keras.backend.clear_session() # type: ignore
     else:
@@ -205,7 +209,9 @@ def train_detectors(  # noqa: PLR0915
             loss="categorical_crossentropy",
             metrics=["accuracy"],
         )
-        vgg.fit(train_generator, epochs=20, validation_data=test_generator)
+        vgg.fit(
+            train_generator, epochs=20, validation_data=test_generator, verbose=2
+        )
         vgg.save(vgg19_path)
         tf.keras.backend.clear_session() # type: ignore
     else:
@@ -223,7 +229,9 @@ def train_detectors(  # noqa: PLR0915
             loss="categorical_crossentropy",
             metrics=["accuracy"],
         )
-        resnet.fit(train_generator, epochs=20, validation_data=test_generator)
+        resnet.fit(
+            train_generator, epochs=20, validation_data=test_generator, verbose=2
+        )
         resnet.save(resnet_path)
         tf.keras.backend.clear_session() # type: ignore
     else:

@@ -50,11 +50,12 @@ class KerasTimeSeriesClassifier:
             train_data,
             epochs=epochs,
             validation_data=validation_data,
-            callbacks=self.callbacks
+            callbacks=self.callbacks,
+            verbose=2,
         )
 
     def predict(self, X: np.ndarray) -> np.ndarray:  # noqa: N803
-        return self.model.predict(X)
+        return self.model.predict(X, verbose=0)
 
     def save(self, path: str) -> None:
         self.model.save(path)
@@ -444,7 +445,7 @@ class EarAnalysis:
 
         # predict using model
         if self.tensorflow:
-            data = np.expand_dims(data, axis=-1)
-            return int(np.argmax(self.model.predict(data))) # type: ignore
+            data = np.expand_dims(np.array(data), axis=-1)
+            return int(np.argmax(self.model.predict(data, verbose=0))) # type: ignore
         else:  # noqa: RET505
             return self.model.predict(np.array([data]))[0] # type: ignore

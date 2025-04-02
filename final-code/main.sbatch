@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 #SBATCH --job-name=main_loop
-#SBATCH --partition=gecko,falcon
+#SBATCH --partition=gecko,falcon,eagle,kestrel
 #SBATCH --gres=gpu:1
 #SBATCH --time=2-00:00:00
 #SBATCH --output=slurm-%j.out

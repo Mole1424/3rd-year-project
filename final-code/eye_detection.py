@@ -221,7 +221,9 @@ def main(debug: bool, hrnet: bool) -> None:
         # create and train model
         model = HRNET(hrnet_config)
         model.compile(optimizer=Adam(0.001), loss=MeanSquaredError())
-        model.fit(hrnet_dataset, epochs=epochs, steps_per_epoch=steps_per_epoch)
+        model.fit(
+            hrnet_dataset, epochs=epochs, steps_per_epoch=steps_per_epoch, verbose=2
+        )
         model.save_weights(f"{path_to_large}hrnet.weights.h5")
     else:
         # train pfld
