@@ -63,6 +63,15 @@ class KerasTimeSeriesClassifier:
 # MARK: LSTM
 # https://ieeexplore.ieee.org/document/8141873
 
+# custom layer to transpose input
+@register_keras_serializable(package="Custom", name="TransposeLayer")
+class TransposeLayer(Layer):
+    def __init__(self, **kwargs: dict) -> None:
+        super(TransposeLayer, self).__init__(**kwargs)
+
+    def call(self, inputs: tf.Tensor) -> tf.Tensor:
+        return tf.transpose(inputs, perm=[0, 2, 1])
+
 
 class LongShortTermMemory(KerasTimeSeriesClassifier):
     def __init__(self, path: str | None = None, attention: bool = False) -> None:
@@ -88,15 +97,6 @@ class LongShortTermMemory(KerasTimeSeriesClassifier):
 
         x1 = GlobalAveragePooling1D()(x1)
         x1 = Reshape((1, 128))(x1)
-
-        # custom layer to transpose input
-        @register_keras_serializable(package="Custom", name="TransposeLayer")
-        class TransposeLayer(Layer):
-            def __init__(self, **kwargs: dict) -> None:
-                super(TransposeLayer, self).__init__(**kwargs)
-
-            def call(self, inputs: tf.Tensor) -> tf.Tensor:
-                return tf.transpose(inputs, perm=[0, 2, 1])
 
         x2 = TransposeLayer()(input)
 
@@ -292,7 +292,9 @@ class EarAnalysis:
                 self.model = joblib.load(path)
                 self.tensorflow = False
             else:
-                self.model = load_model(path)
+                self.model = load_model(
+                    path, custom_objects={"TransposeLayer": TransposeLayer}
+                )
                 self.tensorflow = True
             self.best_path = path
         elif dataset is not None:
