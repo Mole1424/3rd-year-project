@@ -126,18 +126,21 @@ def get_custom_model(
             video_path, label = video
             print(f"Processing {video_path}")
 
-            # load middle 256 frames from video
+            # load middle 512 frames from video
             video = cv.VideoCapture(video_path)  # noqa: PLW2901
             total_frames = int(video.get(cv.CAP_PROP_FRAME_COUNT))
             frames = []
-            max_frames = 256
-            start_frame = (total_frames - max_frames) // 2
+            max_frames = 512
+            start_frame = (
+                (total_frames - max_frames) // 2 if total_frames > max_frames else 0
+            )
             video.set(cv.CAP_PROP_POS_FRAMES, start_frame)
             for _ in range(max_frames):
                 success, frame = video.read()
                 if not success:
                     break
                 frames.append(frame)
+            video.release()
             frames = np.array(frames)
 
             # get landmarks for each frame and filter out invalid
@@ -166,12 +169,11 @@ def get_custom_model(
 
             # calculate ear aspect accross frames
             ears = calculate_ears(np.array(best_faces))
-            desired_length = 256
             # pad if necessary
-            if len(ears) < desired_length:
+            if len(ears) < max_frames:
                 ears = np.pad(
                     ears,
-                    (0, desired_length - len(ears)),
+                    (0, max_frames - len(ears)),
                     "constant",
                     constant_values=-1
                 )
@@ -345,12 +347,12 @@ def process_video(
 
     print(f"Processing {video_path}")
 
-    # get central 256 frames from video
+    # get central 512 frames from video
     video = cv.VideoCapture(video_path)
     total_frames = int(video.get(cv.CAP_PROP_FRAME_COUNT))
     frames = []
-    max_frames = 256
-    start_frame = (total_frames - max_frames) // 2
+    max_frames = 512
+    start_frame = (total_frames - max_frames) // 2 if total_frames > max_frames else 0
     video.set(cv.CAP_PROP_POS_FRAMES, start_frame)
     for _ in range(max_frames):
         success, frame = video.read()

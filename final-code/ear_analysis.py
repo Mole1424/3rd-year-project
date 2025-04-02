@@ -33,6 +33,7 @@ from tensorflow.keras.models import load_model  # type: ignore
 from tensorflow.keras.saving import register_keras_serializable  # type: ignore
 from tensorflow.keras.utils import to_categorical  # type: ignore
 
+INPUT_LENGTH = 512
 
 class KerasTimeSeriesClassifier:
     """Interface for time series classifiers using Keras"""
@@ -71,7 +72,7 @@ class LongShortTermMemory(KerasTimeSeriesClassifier):
         super().__init__(self.model)
 
     def build_model(self) -> Model:
-        input = Input(shape=(256, 1))
+        input = Input(shape=(INPUT_LENGTH, 1))
 
         x1 = Conv1D(128, 8, padding="same")(input)
         x1 = BatchNormalization()(x1)
@@ -110,7 +111,7 @@ class LongShortTermMemory(KerasTimeSeriesClassifier):
 
         model = Model(inputs=input, outputs=x)
         model.compile(
-            optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"]
+            optimizer="adam", loss="categorical_crossentropy", metrics=["accuracy"]
         )
 
         return model
@@ -127,7 +128,7 @@ class MultiLayerPerceptron(KerasTimeSeriesClassifier):
         super().__init__(self.model)
 
     def build_model(self) -> Model:
-        input = Input(shape=(256, 1))
+        input = Input(shape=(INPUT_LENGTH, 1))
 
         x = Dropout(0.1)(input)
         x = Dense(500, activation="relu")(x)
@@ -141,7 +142,7 @@ class MultiLayerPerceptron(KerasTimeSeriesClassifier):
 
         model = Model(inputs=input, outputs=x)
         model.compile(
-            optimizer="adadelta", loss="binary_crossentropy", metrics=["accuracy"]
+            optimizer="adadelta", loss="categorical_crossentropy", metrics=["accuracy"]
         )
 
         return model
@@ -153,7 +154,7 @@ class FullyConvolutionalNeuralNetwork(KerasTimeSeriesClassifier):
         super().__init__(self.model)
 
     def build_model(self) -> Model:
-        input = Input(shape=(256, 1))
+        input = Input(shape=(INPUT_LENGTH, 1))
 
         x = Conv1D(128, 8, padding="same")(input)
         x = BatchNormalization()(x)
@@ -172,7 +173,7 @@ class FullyConvolutionalNeuralNetwork(KerasTimeSeriesClassifier):
 
         model = Model(inputs=input, outputs=x)
         model.compile(
-            optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"]
+            optimizer="adam", loss="categorical_crossentropy", metrics=["accuracy"]
         )
 
         return model
@@ -184,7 +185,7 @@ class ConvolutionalNeuralNetwork(KerasTimeSeriesClassifier):
         super().__init__(self.model)
 
     def build_model(self) -> Model:
-        input = Input(shape=(256, 1))
+        input = Input(shape=(INPUT_LENGTH, 1))
 
         x = Conv1D(6, 7, padding="same", activation="sigmoid")(input)
         x = AveragePooling1D(3, padding="same")(x)
@@ -209,7 +210,7 @@ class ResNet(KerasTimeSeriesClassifier):
     def build_model(self) -> Model:
         n_feature_maps = 64
 
-        input = Input(shape=(256, 1))
+        input = Input(shape=(INPUT_LENGTH, 1))
 
         x = Conv1D(n_feature_maps, 8, padding="same")(input)
         x = BatchNormalization()(x)
@@ -267,7 +268,7 @@ class ResNet(KerasTimeSeriesClassifier):
 
         model = Model(inputs=input, outputs=x)
         model.compile(
-            optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"]
+            optimizer="adam", loss="categorical_crossentropy", metrics=["accuracy"]
         )
 
         return model
@@ -432,13 +433,12 @@ class EarAnalysis:
         """predict if ear time series is real or fake"""
 
         # pad or truncate data to desired length
-        desired_length = 256
-        if len(data) < desired_length:
+        if len(data) < INPUT_LENGTH:
             data = np.pad(
-                data, (0, desired_length - len(data)), "constant", constant_values=-1
+                data, (0, INPUT_LENGTH - len(data)), "constant", constant_values=-1
             )
-        elif len(data) > desired_length:
-            data = data[:desired_length]
+        elif len(data) > INPUT_LENGTH:
+            data = data[:INPUT_LENGTH]
 
         # predict using model
         if self.tensorflow:
