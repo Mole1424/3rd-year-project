@@ -683,9 +683,8 @@ class EyeLandmarker:
             else:
                 # PFLD outputs direct landmark coordinates in crop space.
                 for idx, (x, y, w, h) in enumerate(face_crop_vals[i : i + batch_size]):
-                    landmarks = predictions[idx]
-                    # if landmarks.ndim == 1:
-                    #     landmarks = landmarks.reshape(-1, 2)
+                    # get eye landmarks from predictions
+                    landmarks = predictions[idx][36:48]
                     # crop space to image space
                     landmarks = (
                         np.array([x, y]) + landmarks * np.array([w, h])

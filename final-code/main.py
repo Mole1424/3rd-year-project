@@ -194,14 +194,14 @@ def get_custom_model(
 def calculate_ears(points: np.ndarray) -> np.ndarray:
     """calcualte eye aspect ratio"""
     # calculate for each eye
-    p2_p6 = np.linalg.norm(points[1,:] - points[5,:], axis=1)
-    p3_p5 = np.linalg.norm(points[2,:] - points[4,:], axis=1)
-    p1_p4 = np.linalg.norm(points[0,:] - points[3,:], axis=1)
+    p2_p6 = np.linalg.norm(points[:,1] - points[:,5], axis=1)
+    p3_p5 = np.linalg.norm(points[:,2] - points[:,4], axis=1)
+    p1_p4 = np.linalg.norm(points[:,0] - points[:,3], axis=1)
     ear_l = np.clip((p2_p6 + p3_p5) / (2.0 * p1_p4), 0, 1)
 
-    p8_p12 = np.linalg.norm(points[7,:] - points[11,:], axis=1)
-    p9_p11 = np.linalg.norm(points[8,:] - points[10,:], axis=1)
-    p7_p10 = np.linalg.norm(points[6,:] - points[9,:], axis=1)
+    p8_p12 = np.linalg.norm(points[:,7] - points[:,11], axis=1)
+    p9_p11 = np.linalg.norm(points[:,8] - points[:,10], axis=1)
+    p7_p10 = np.linalg.norm(points[:,6] - points[:,9], axis=1)
     ear_r = np.clip((p8_p12 + p9_p11) / (2.0 * p7_p10), 0, 1)
 
     # return mean of the 2
