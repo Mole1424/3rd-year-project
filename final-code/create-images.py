@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import cv2 as cv
+from sklearn.model_selection import train_test_split
 
 
 def generate_datasets(path_to_dataset: str) -> list[str]:
@@ -15,6 +16,16 @@ def generate_datasets(path_to_dataset: str) -> list[str]:
     # split videos into real and fake
     real_videos = [str(video) for video in videos if "real" in str(video)]
     fake_videos = [str(video) for video in videos if "fake" in str(video)]
+
+    # reals are the limiting factor
+    train_size = int(len(real_videos) * 0.8)
+
+    real_videos, _ = train_test_split(
+        real_videos, train_size=train_size, random_state=42
+    )
+    fake_videos, _ = train_test_split(
+        fake_videos, train_size=train_size, random_state=42
+    )
 
     # we want 450 videos of each class
     # simulates training of https://arxiv.org/pdf/2004.07676v1

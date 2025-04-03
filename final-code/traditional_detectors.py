@@ -2,7 +2,7 @@ import random
 from pathlib import Path
 from typing import Generator
 
-import numpy as np
+import cv2 as cv
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
 from tensorflow.keras import Input  # type: ignore
@@ -20,22 +20,15 @@ from tensorflow.keras.layers import (  # type: ignore
 )
 from tensorflow.keras.models import Model, load_model  # type: ignore
 from tensorflow.keras.optimizers import Adam  # type: ignore
-from tensorflow.keras.preprocessing.image import img_to_array, load_img  # type: ignore
 from tensorflow.keras.utils import to_categorical  # type: ignore
 
-
-def load_image(path: str, target_size: tuple[int, int]) -> np.ndarray:
-    """Load an image from path"""
-    image = load_img(path, target_size=target_size)
-    image = img_to_array(image)
-    return image / 255.0 # normalise
 
 def image_generator(
     paths: list, labels: list, target_size: tuple[int, int]
 ) -> Generator:
     """Generate images from a list of paths and labels."""
     for path, label in zip(paths, labels):
-        yield load_image(path, target_size), to_categorical(label, 2) # type: ignore
+        yield cv.resize(cv.imread(path), target_size), to_categorical(label, 2)
 
 def get_dataset(
     paths: list, labels: list, batch_size: int, target_size: tuple[int, int]
