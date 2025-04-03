@@ -10,18 +10,21 @@
 \usepackage{changepage}
 \usepackage{calc}
 \usepackage{hyperref}
-\usepackage[nameinlink]{cleveref}
 \usepackage{fancyhdr}
 \usepackage{minted}
 \usemintedstyle{vs}
 \usepackage{graphicx}
+\usepackage{float}
+\usepackage{subcaption}
+\usepackage{tikz}
+\usepackage{amsmath}
 
 \usepackage[
     style=numeric,
-    minbibnames=99 % include all names in bibliography
+    maxbibnames=99 % include all names in bibliography
 ]{biblatex}
 \renewbibmacro{in:}{} % remove in so that not hanging if journal name missing
-\DeclareNameAlias{default}{last-first} % order names in lastname -firstname
+\DeclareNameAlias{default}{family-given} % order names in lastname-firstname
 \addbibresource{bibliography.bib}
      
 %%%%%%%%%%%%%%%%%%%%
@@ -62,6 +65,7 @@
 
 \begin{document}
 
+%TC:ignore
 \input{dissertation/titlepage}
 
 \pagestyle{plain}
@@ -80,12 +84,9 @@ Hi Mum! {\tiny are you proud of me now?}
 \tableofcontents
 \listoffigures
 \addcontentsline{toc}{chapter}{List of Figures}
-\listoftables
-\addcontentsline{toc}{chapter}{List of Tables}
-\listoflistings
-\addcontentsline{toc}{chapter}{List of Listings}
 \newpage
 
+%TC:endignore
 \pagenumbering{arabic}
 \input{dissertation/1introduction}
 \input{dissertation/2litreview}
@@ -97,7 +98,9 @@ Hi Mum! {\tiny are you proud of me now?}
 \addcontentsline{toc}{chapter}{Bibliography}
 \printbibliography
 
+%TC:ignore
 \appendix
 \input{dissertation/7appendix}
+%TC:endignore
 
 \end{document}
