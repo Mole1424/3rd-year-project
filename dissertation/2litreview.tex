@@ -241,6 +241,42 @@ Traditionally, finding an optimal learning rate has been a hard problem and thus
 
 Adam combines the ideas of adaptive learning rate, and momentum. A per-parameter learning rate was first proposed in AdaGrad\cite{duchi2011adaptive} which implements a greater learning rate for sparser parameters (when the majority of weights are near 0) and lesser rates for denser parameters. Momentum fine tunes the learning rate for each parameter by combining it with the magnitude of the previous gradients.
 
+When training, the above process will be done for every learnable parameter for every item in the trainset. Often the trainset will be too small to allow for meaningful learning. To combat this the dataset will be iterated over multiple times. One iteration over the entire dataset is referred to as an epoch\cite{begmann-backpropagation}. Often training will be done for a set number of epochs or until the loss function stabilises. 
+
+\subsubsection{Generative Artificial Intelligence}
+
+Whilst editing an image was easy, adding original content to an image was more difficult, requiring specialist expertise. The difficulty is further increased when trying to edit a video as more images need to be edited and be stitched seamlessly together. Generative AI (GenAI) is a form of neural network that can generate content. In images, they can adapt large amount of images to fit a specific goal or, in more recent works, convert written prompts into completely original images and videos.
+
+The first notable GenAI was Generative Adversarial Networks (GANs)\cite{goodfellow2014generative}. GANs are two neural networks working together, a generator and a discriminator. The training process is ``a minimax two-player game": when one model looses by a certain amount, the other model gains an equal amount. In the context of image generation, the generator creates novel images based on a dataset; the discriminator is fed a combination of the dataset and the generator's images, attempting to determine the origin of them. A diagram of a GAN network is shown in Figure \ref{fig:gan-diagram}. Over time, the generator becomes better and better at generating convincing images that fool the discriminator, eventually resulting in images that are nearly undetectable. The discriminator is a CNN, whereas the generator is a deconvolutional neural network\cite{zeiler2011adaptive}. Deconvolutional neural networks are CNNs but in reverse, where deconvolution layers convert a single value into an $n \times n$ square of new values.
+
+\begin{figure}[h]
+    \centering
+    \begin{tikzpicture}[
+        rect/.style={rectangle, draw=black, thick, minimum width=2.5cm, minimum height=1cm},
+        bigrect/.style={rectangle, draw=black, thick, minimum width=6cm, minimum height=1cm}
+    ]
+        \node[rect] (nois) {noise};
+        \node[rect] (gene) [above=of nois] {generator};
+        \node[rect] (data) [above right=of nois] {dataset};
+        \path (gene) -- (data) coordinate[midway] (midpoint);
+        \coordinate (abovemid) at ($(midpoint) + (0,2cm)$);
+        \node[bigrect] (disc) at (abovemid) {discriminator};
+
+        \draw[->] (nois.north) -- (gene.south);
+        \draw[->] (data.west) -- (gene.east);
+        \draw[->] (gene.north) -- (disc.south -| gene.north);
+        \draw[->] (data.north) -- (disc.south -| data.north);
+    \end{tikzpicture}
+    \caption{A diagram of the network structure of a Generative Adversarial Network}
+    \label{fig:gan-diagram}
+\end{figure}
+
+Even in the original paper, GANs were being used to generate images of humans\cite{goodfellow2014generative}. In 2017, the technology would expand out of the realm of academia and into the public eye. A user named \verb|u/deepfakes| and others on the internet forum site Reddit\footnote{\url{https://reddit.com}} were discovered to be sharing pornographic material, edited to contain popular celebrities using GANs\cite{cole2018reddit}. Users were taking ``conventional" pornographic videos and using GANs to swap the faces to famous individuals without their consent. By only generating the face, these networks required less computational power and thus videos could be generated quickly. Following legal pressure, Reddit would delete the forum two months later\cite{cole2018reddit}, but the damage was done: it had been proven that AI could generate realistic videos of humans semi-autonomously. The media soon caught on to the story using the subreddit's name to coin the new types of videos as ``DeepFakes", a portmanteau of ``Deep Leaning" and ``fake".
+
+% add stuff like diffusion, dalle, transformers, and sora here
+
+\subsection{DeepFakes for Malicious Purposes}
+
 \section{DeepFake Detection}
 
 \subsection{Traditional Detection Methods}
