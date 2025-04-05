@@ -50,7 +50,7 @@ Computer Generated Imagery (CGI) is a technique primarily used in movies to add 
 
 \subsection{Artificial Intelligence for Manipulating Media}
 
-\subsubsection{Convolutional Neural Networks}
+\subsubsection{Neural Networks}
 
 DeepFakes are a type of AI known as neural networks. As described in Section \ref{sec:project-review}, neural networks are a subsection of AI designed of the structure of the human brain\cite{islam2019overview}. Traditional computation manipulates binary, whereas neural networks manipulate the connections between computational elements. Work on simulating the brain using mathematical functions began in 1920\cite{brush1967history}, 37 years before the academic formalisation of AI in 1957 at the Dartmouth Workshop\cite{crevier1993ai}. The field would remain relatively stagnant until the proposal of the Multi-Layer Perceptron (MLP) in 1958\cite{rosenblatt1958perceptron} and how it could ``learn" in 1967\cite{ivakhnenko1967cybernetics}.
 
@@ -96,18 +96,20 @@ Neural networks contain a collection of neurons organised into layers, each laye
             \node[draw=none] (bias) at (3,-2.5) {\(b\)};
             \draw[->] (bias) -- (neuron.south);
         \end{tikzpicture}
-        \subcaption{Structure of a single artificial neuron}
+        \caption{Structure of a single artificial neuron}
         \label{fig:neuron}
     \end{subfigure}
     \begin{subfigure}[t]{0.45\textwidth}
         \centering
         \includegraphics[width=0.75\textwidth]{dissertation//figures/generic-neural-diagram.png}
-        \subcaption{A network of neurons split into layers}
+        \caption{A network of neurons split into layers}
         \label{fig:full-neural-network}
     \end{subfigure}
     \caption{A neural network}
     \label{fig:neural-network}
 \end{figure}
+
+\subsubsection{Convolutional Neural Networks}
 
 Whilst MLPs are exceptionally powerful they can suffer from overfitting. Overfitting is where a machine learning model learns the training data, becoming exceptionally accurate in the training data but underperforms on any test data. With every neuron in an MLP layer being connected to all the neurons in the layers ahead and behind it, the network is prone to overfit\cite{o2015introduction}. A variety of methods can be employed to reduce overfitting, but the most common way removes connections from the network by reshaping the layers, this also has the attractive benefit of quicker computations as there are less weights to sum resulting in faster training and inference times. A number of methods to reduce connections have been proposed but the most successful are Convolutional Neural Networks (CNNs).
 
@@ -139,7 +141,105 @@ A sequence of these layers are then combined to produce a network. The exact seq
     \label{fig:sample-cnn}
 \end{figure}
 
-{\huge add stuff to train here (stochastic graident descent and adam)}
+\subsubsection{Learning}
+
+The process of learning is similar across any kind of neural network. Every network will have trainable parameters (the kernel in a convolutional layer or the weights and biases in an MLP), these will be initialised randomly as hyperparameters. All learnable parameters are then trained in CNNs via a method called backward propagation of error (commonly shorted to backpropagation)\cite{rojas2013neural}.
+
+This method of training requires a train set: a set of inputs and correct outputs. The backpropagation algorithm proceeds as follows:
+
+\begin{enumerate}
+    \item Each input is passed through the network in the forward pass. This produces one or more outputs
+    \item The outputs are compared to the known truth outputs. A user-defined loss function evaluates how ``correct" the network's prediction is. The output of the loss function is a single value. Common loss functions are categorical cross entropy for classification tasks and Mean Squared Error (MSE) for location problems\cite{begmann-backpropagation}
+    \item A backwards pass is then performed to differentiate the loss function and determine how much each learnable parameter contributes to the overall error. Every parameter $x$ in the network is connected to the output by a function $f(x)$, a composite function containing all of the activation functions and weights that combine with $x$ to reach the final output. By computing the partial derivative with respect to the loss function ($\frac{\partial L}{\partial x}$ where $L$ is the loss function), you can ascertain what the gradient for that particular value of parameter.
+\end{enumerate}
+
+For every parameter, the gradients over a set of inputs would like Figure \ref{fig:loss-graph} which indicated how much each parameter influences the final loss function. By minimising this graph, the loss function is minimised, resulting in an overall improvement to the network. Note the graph will often be a lot more complex compromising of a variety of hills, valleys, and plateaus.
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}
+        % graph axis
+        \draw[->] (0,0)--(3,0) node[midway,below]{$x$};
+        \draw[->] (0,0)--(0,3) node[midway,left]{loss};
+        %line
+        \draw[domain=0.1:2.9] plot(\x,{(\x-1.5)^2+0.5});
+    \end{tikzpicture}
+    \caption{A sample plot of the value of the loss function over varying values of a parameter $x$}
+    \label{fig:loss-graph}
+\end{figure}
+
+A variety of methods exist to find the minimum of the graph in the least possible steps. The most commonly used is Stochastic Gradient Descent (SGD)\cite{robbins1951stochastic}, first applied to neural networks in 1967\cite{shunichi1967theory}. SGD follows the following formula:
+
+\begin{equation}
+    x_n=x_{n-1}-\alpha l(x)
+\end{equation}
+
+$x_n$ is the new value of the parameter $x$ which has previous value $x_{n-1}$. This value is altered by $l(x)$, the gradient produced for that parameter by backpropagation. $\alpha$ is a hyperparameter representing the learning rate. Often a number close to 0, this limits how much the value can vary within the graph. Too low of learning rate results in slow learning and the potential to get stuck in local minima or plateaus. A high learning rate leads to the possibility of divergence and the minimum never being found.
+
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}{0.3\textwidth}
+        \centering
+        \begin{tikzpicture}
+            % graph axis
+            \draw[->] (0,0)--(3,0) node[midway,below]{$x$};
+            \draw[->] (0,0)--(0,3) node[midway,left]{loss};
+            % loss curve
+            \draw[domain=0.1:2.9,smooth] plot(\x,{(\x-1.5)^2+0.5});
+            % small steps
+            \draw[->,red,thick] (0.5,1.5) -- (0.6,1.3);
+            \draw[->,red,thick] (0.6,1.3) -- (0.7,1.1);
+            \draw[->,red,thick] (0.7,1.1) -- (0.8,0.99);
+            \draw[->,red,thick] (0.8,0.99) -- (0.9,0.86);
+            \draw[->,red,thick] (0.9,0.86) -- (1.0,0.75);
+            \draw[->,red,thick] (1.0,0.75) -- (1.1,0.66);
+            \draw[->,red,thick] (1.1,0.66) -- (1.2,0.59);
+            \draw[->,red,thick] (1.2,0.59) -- (1.3,0.54);
+            \draw[->,red,thick] (1.3,0.54) -- (1.4,0.51);
+            \draw[->,red,thick] (1.4,0.51) -- (1.5,0.5);
+        \end{tikzpicture}
+        \caption{Too low learning rate}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.3\textwidth}
+        \centering
+        \begin{tikzpicture}
+            % graph axis
+            \draw[->] (0,0)--(3,0) node[midway,below]{$x$};
+            \draw[->] (0,0)--(0,3) node[midway,left]{loss};
+            % loss curve
+            \draw[domain=0.1:2.9,smooth] plot(\x,{(\x-1.5)^2+0.5});
+            % optimal steps
+            \draw[->,red,thick] (0.5,1.5) -- (0.8,0.99);
+            \draw[->,red,thick] (0.8,0.99) -- (1.1,0.66);
+            \draw[->,red,thick] (1.1,0.66) -- (1.5,0.5);
+        \end{tikzpicture}
+        \caption{Optimal learning rate}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.3\textwidth}
+        \centering
+        \begin{tikzpicture}
+            % graph axis
+            \draw[->] (0,0)--(3,0) node[midway,below]{$x$};
+            \draw[->] (0,0)--(0,3) node[midway,left]{loss};
+            % loss curve
+            \draw[domain=0.1:2.9,smooth] plot(\x,{(\x-1.5)^2+0.5});
+            % large steps
+            \draw[->,red,thick] (0.5,1.5) -- (2.6,1.71);
+            \draw[->,red,thick] (2.6,1.71) -- (0.3,1.94);
+            \draw[->,red,thick] (0.3,1.94) -- (2.85,2.3225);
+        \end{tikzpicture}
+        \caption{Too high learning rate}
+    \end{subfigure}
+    \caption{Effect of different learning rates on loss function optimisation}
+    \label{fig:learning-rates}
+\end{figure}
+
+Traditionally, finding an optimal learning rate has been a hard problem and thus a variety of methods have been introduced to give a larger safety net when choosing parameters. The most popular of these is the Adaptive Moment Estimator (commonly shortened to Adam)\cite{kingma2014adam}.
+
+Adam combines the ideas of adaptive learning rate, and momentum. A per-parameter learning rate was first proposed in AdaGrad\cite{duchi2011adaptive} which implements a greater learning rate for sparser parameters (when the majority of weights are near 0) and lesser rates for denser parameters. Momentum fine tunes the learning rate for each parameter by combining it with the magnitude of the previous gradients.
 
 \section{DeepFake Detection}
 
