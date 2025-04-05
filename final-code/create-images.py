@@ -27,11 +27,6 @@ def generate_datasets(path_to_dataset: str) -> list[str]:
         fake_videos, train_size=train_size, random_state=42
     )
 
-    # we want 450 videos of each class
-    # simulates training of https://arxiv.org/pdf/2004.07676v1
-    real_videos = real_videos[:450]
-    fake_videos = fake_videos[:450]
-
     # combine the two lists
     return real_videos + fake_videos
 

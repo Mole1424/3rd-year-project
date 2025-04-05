@@ -412,7 +412,7 @@ class EarAnalysis:
 
             # evaluate model on accuracy
             y_pred = (
-                model.predict(np.expand_dims(X_test, axis=-1))
+                model.predict(np.expand_dims(X_test, axis=-1), verbose=0) # type: ignore
                 if is_tensorflow else model.predict(np.array(X_test))
             )
             y_pred_labels = np.argmax(y_pred, axis=1) if is_tensorflow else y_pred
@@ -446,6 +446,6 @@ class EarAnalysis:
         # predict using model
         if self.tensorflow:
             data = np.expand_dims(np.array(data), axis=-1)
-            return int(np.argmax(self.model.predict(data))) # type: ignore
+            return int(np.argmax(self.model.predict(data, verbose=0))) # type: ignore
         else:  # noqa: RET505
             return self.model.predict(np.array([data]))[0] # type: ignore

@@ -309,7 +309,7 @@ def perturbate_frames(
 
     # intialise attack (FGSM)
     attack = LinfPGD(steps=1)
-    epsilon = 0.02
+    epsilon = 0.05
     batch_size = 16
 
     # set frames in tensorflow dataset

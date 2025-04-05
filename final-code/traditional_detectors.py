@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Generator
 
 import cv2 as cv
+import numpy as np
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
 from tensorflow.keras import Input  # type: ignore
@@ -28,7 +29,9 @@ def image_generator(
 ) -> Generator:
     """Generate images from a list of paths and labels."""
     for path, label in zip(paths, labels):
-        yield cv.resize(cv.imread(path), target_size), to_categorical(label, 2)
+        image = cv.resize(cv.imread(path), target_size).astype(np.float32) / 255.0
+        label_one_hot = to_categorical(label, 2)
+        yield image, label_one_hot
 
 def get_dataset(
     paths: list, labels: list, batch_size: int, target_size: tuple[int, int]
