@@ -503,4 +503,4 @@ if __name__ == "__main__":
     except (IndexError, ValueError):
         print("Please provide the path to the dataset, models, and epsilon value")
         sys.exit(1)
-    main(path_to_dataset, path_to_models)
+    main(path_to_dataset, path_to_models, epsilon)
