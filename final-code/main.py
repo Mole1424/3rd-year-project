@@ -300,7 +300,7 @@ def post_process_frames(frames: Any, height: int, width: int) -> np.ndarray:  # 
 
 
 def perturbate_frames(
-    frames: np.ndarray, **models: Model
+    frames: np.ndarray, epsilon: float, **models: Model
 ) -> tuple[np.ndarray, ...]:
     """Add adversarial noise to video frames for multiple models."""
 
@@ -309,7 +309,6 @@ def perturbate_frames(
 
     # intialise attack (FGSM)
     attack = LinfPGD(steps=1)
-    epsilon = 0.05
     batch_size = 16
 
     # set frames in tensorflow dataset
@@ -337,6 +336,7 @@ def perturbate_frames(
 
 def process_video(
     video_info: tuple[str, int],
+    epsilon: float,
     landmarker: EyeLandmarker,
     ear_analyser: EarAnalysis,
     **models: Model,
@@ -369,7 +369,7 @@ def process_video(
 
     # if video is fake, perturbate frames and classify them
     if label == 0:
-        perturbed_frames = perturbate_frames(frames, **models)
+        perturbed_frames = perturbate_frames(frames, epsilon, **models)
 
         for i, model_name in enumerate(models.keys()):
             adv_frames = perturbed_frames[i]
@@ -402,14 +402,14 @@ def process_video(
     return (label, *predictions.values())
 
 
-def main(path_to_dataset: str, path_to_models: str) -> None:
+def main(path_to_dataset: str, path_to_models: str, epsilon: float) -> None:
     # allow for memory growth on GPU
     for gpu in tf.config.experimental.list_physical_devices("GPU"):
         tf.config.experimental.set_memory_growth(gpu, True)
 
     # get dataset name
     dataset_name = path_to_dataset.split("/")[-2]
-    path_to_save = f"{dataset_name}_results.txt"
+    path_to_save = f"{dataset_name}_{epsilon}_results.txt"
 
     # attempt to load progress
     path_to_ear_anylyser, loaded_results = load_progress(path_to_save)
@@ -459,7 +459,11 @@ def main(path_to_dataset: str, path_to_models: str) -> None:
     ):
         print(f"{i}/{len(test_set)}")
         label, *predictions = process_video(
-            video, landmarker, ear_analyser, **dict(zip(traditional_models, models))
+            video,
+            epsilon,
+            landmarker,
+            ear_analyser,
+            **dict(zip(traditional_models, models))
         )
         for model_name, prediction in zip(results.keys(), predictions):
             if label == 1 and prediction:
@@ -495,7 +499,8 @@ if __name__ == "__main__":
     try:
         path_to_dataset = sys.argv[1]
         path_to_models = sys.argv[2]
-    except IndexError:
-        print("Please provide the path to the dataset and models")
+        epsilon = float(sys.argv[3])
+    except (IndexError, ValueError):
+        print("Please provide the path to the dataset, models, and epsilon value")
         sys.exit(1)
     main(path_to_dataset, path_to_models)

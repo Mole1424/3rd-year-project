@@ -15,4 +15,4 @@ module load CUDA
 export TF_GPU_ALLOCATOR=cuda_malloc_async
 
 source ../venv/bin/activate
-python3.12 -u main.py /dcs/large/u2204489/faceforensics/ /dcs/large/u2204489/
+python3.12 -u main.py /dcs/large/u2204489/faceforensics/ /dcs/large/u2204489/ 0.05
