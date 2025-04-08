@@ -340,7 +340,7 @@ A more subtle but ever present temporal inconsistency is blinking. Humans blink 
 
 \subsubsection{Eye Aspect Ratio}
 
-To determine when an individual is blinking or not, the most common approach is the Eye Aspect Ratio (EAR)\cite{soukupova2016eye}. The EAR is a ratio of the distance between 6 eye landmarks (Figure \ref{fig:ear}). 2 landmarks are labelled in caranucle and lateral canthus ($p_1$ and $p_4$, respectively) and the others are equidistant around the eyelid, labelled clockwise. The EAR is the ratio between the height and width of the eye (Equation \ref{eq:ear}) and is relatively constant when the eye is open but verges close to 0 when closed. It is partially consistent between people and variations in poses. The modal person has 2 eyes and so the total EAR is taken as the average of the 2 eyes. When plotted as an EAR-time graph\ref{fig:ear-graph}, a blink is evident as a steep drop in the graph. 
+To determine when an individual is blinking or not, the most common approach is the Eye Aspect Ratio (EAR)\cite{soukupova2016eye}. The EAR is a ratio of the distance between 6 eye landmarks (Figure \ref{fig:ear}). 2 landmarks are labelled in caranucle and lateral canthus ($p_1$ and $p_4$, respectively) and the others are equidistant around the eyelid, labelled clockwise. The EAR is the ratio between the height and width of the eye (Equation \ref{eq:ear}) and is relatively constant when the eye is open but verges close to 0 when closed. It is partially consistent between people and variations in poses. The modal person has 2 eyes and so the total EAR is taken as the average of the 2 eyes. When plotted as an EAR-time graph (Figure \ref{fig:ear-graph}), a blink is evident as a steep drop in the graph. 
 
 \begin{figure}[h]
     \centering
@@ -365,6 +365,7 @@ To determine when an individual is blinking or not, the most common approach is 
         \caption{A graph of EAR over time with a blink in the final third}
         \label{fig:ear-graph}
     \end{subfigure}
+    \caption{The points and resulting graph for the Eeye Aspect Ratio}
 \end{figure}
 
 \begin{equation}
@@ -374,7 +375,42 @@ To determine when an individual is blinking or not, the most common approach is 
 
 \subsubsection{DeepVision}
 
+DeepVision\cite{jung2020deepvision} is a detection model that utilises the $EAR$ and other environmental factors to determine whether a video is DeepFaked or not by comparing their blink patterns to a database of known ``good" blinking patterns.
+
+DeepVision's input not only includes the video to be checked but a number of environmental factors. A user must manually estimate the: gender, age, time, and activity (whether the subject is moving or stationary) of the main subject of the video. 
+
+Two algorithms are used to detect a blink. The first algorith is a target detector that uses Fast-HyperFace\cite{ranjan2017hyperface} which is a pretrained CNN that can identify subjects of a video and produce basic landmarks. If the detection confidence is over 70\%, the subject is identified as the target and a basic crop of their face is calculated from the landmarks and forwarded to the next algorithm.
+
+A second algorithm takes the face crops and calculates $p_{1-6}$ for the $EAR$, whilst the exact algorithm is not defined, it is assumed to be the algorithm used in the original $EAR$ paper, Intraface\cite{xiong2013supervised}. From these 6 points, the $EAR$ is calculated for each eye and then averaged across the two. A blink is defined as when the $EAR$ drops below a certain threshold for multiple consecutive frames. DeepVision sets this threshold as 2 standard deviations below the mean. Data such as when the blink occurred in time, the period of blink, and frequency are then used as features for the next step.
+
+DeepVision compares these features with known good features from a database. The database was created using known good data from the Eye Blinking Prediction Dataset\cite{turing2018eye}. The database is queried for individuals in the same environment as the subject and the corresponding features of blinking accross the video are returned. The database's features are compared to the video's and if they are ``within an allowable" range the video is declared as real, otherwise fake. DeepVision achieves an overall accuracy of 87.5\%.
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}{0.45\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{dissertation//figures/deepvision-flow.png}
+        \caption{A flow diagram for DeepVision\cite{jung2020deepvision}}
+        \label{fig:deepvision-flow}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.45\textwidth}
+        \centering
+        \raisebox{1.2cm}{\includegraphics[width=\linewidth]{dissertation//figures/deepvision-database.png}}
+        \caption{A sample database query for DeepVision\cite{jung2020deepvision}}
+        \label{fig:deepvision-database}
+    \end{subfigure}
+    \caption{DeepVision's architecture and database queries}
+    \label{fig:deepvision}
+\end{figure}
+
+DeepVision's primary advantage is that it is easy to compute and program. Fast-HyperFace is a pre-trained model and therefore is a simple drag-and-drop implementation. Once $p_{1-6}$ are located in a frame, it is a simple calculation to determine the EAR. The following statistical analysis to determine whether blinking is consistent with real videos is also relatively simple and non-computationally intensive as it is a database query. Therefore, any methodology involving DeepVision would be fast to implement and relatively easy to debug. It also benefits from more granularity in eye state data which could enable more complex analysis.
+
+The primary downside to DeepVision is the potential obstruction of the eye(s). EAR requires the entire eye to be visible in the frame of a video to identify all of the points. A partial $EAR$ can be calculated with a single eye but the accuracy of this is going to be less than if two eyes were visible. The second disadvantage is the database required to determine whether blinking is consistent with normal blinking. The database requires many labelled examples which would be time-consuming to produce. Furthermore, the exact methodology for determining whether video's data is similar enough to the dataset's is never explained, nor is the ``allowable" range, resulting in DeepVision's accuracy being impossible to replicate
+
 \subsubsection{Ictu Oculi}
+
+
 
 \section{Adversarial Noise}
 
