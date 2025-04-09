@@ -18,16 +18,18 @@ Humans have been manipulating photographs since the 1860s when a composite of Un
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.5\linewidth]{dissertation//figures/lincoln1960.jpg}
-    \caption{A spliced portrait of Abraham Lincoln (left) with the original (right)\cite{singh2018art}}
-    \label{fig:lincoln}
-\end{figure}
-
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=0.5\linewidth]{dissertation//figures/stalin.png}
-    \caption{A photo of Stalin and Yezhov which was subsequently edited to remove Yezhov}
-    \label{fig:stalin-yezhov}
+    \begin{subfigure}[t]{0.45\textwidth}
+            \includegraphics[width=\textwidth]{dissertation//figures/lincoln1960.jpg}
+            \caption{A spliced portrait of Abraham Lincoln (left) with the original (right)\cite{singh2018art}}
+            \label{fig:lincoln}
+    \end{subfigure}
+    \begin{subfigure}[t]{0.45\textwidth}
+        \includegraphics[width=\textwidth]{dissertation//figures/stalin.png}
+        \caption{A photo of Stalin and Yezhov (left) which was subsequently edited to remove Yezhov (right)}
+        \label{fig:stalin-yezhov}
+    \end{subfigure}
+    \caption{Examples of historical images that were edited}
+    \label{fig:edited-images}
 \end{figure}
 
 With the advent of digital photography and computers, it photo manipulation became mainstream. Suddenly, images were not physical items but data stored on a computer which could be easily manipulated. Changes could be viewed instantly, reversed, and shared easily. Programs to edit images soon became possible such as Adobe Photoshop\footnote{\url{https://www.adobe.com/uk/products/photoshop.html}} and GIMP\footnote{\url{https://www.gimp.org/}}. Whilst these tools made photo editing cheap and accessible, they still required time, effort, and skill from humans in order to produce; an original image is also required for manipulation.
@@ -36,16 +38,18 @@ Computer Generated Imagery (CGI) is a technique primarily used in movies to add 
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.5\linewidth]{dissertation//figures/grandmoff-tarkin.jpg}
-    \caption{A digital recreation of Peter Cushing for the film ``Rogue One: A Star Wars Story"\cite{rogueone}}
-    \label{fig:tarkin}
-\end{figure}
-
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=0.5\linewidth]{dissertation//figures/blurring.png}
-    \caption{An original image (left) blurred to remove skin blemishes (right)\cite{corcoran2014digital}}
-    \label{fig:beauty-filter}
+    \begin{subfigure}[t]{0.45\textwidth}
+        \includegraphics[width=\linewidth]{dissertation//figures/grandmoff-tarkin.jpg}
+        \caption{A digital recreation of Peter Cushing for the film ``Rogue One: A Star Wars Story"\cite{rogueone}}
+        \label{fig:tarkin}
+    \end{subfigure}
+    \begin{subfigure}[t]{0.45\textwidth}
+        \includegraphics[width=\linewidth]{dissertation//figures/blurring.png}
+        \caption{An original image (left) blurred to remove skin blemishes (right)\cite{corcoran2014digital}}
+        \label{fig:beauty-filter}
+    \end{subfigure}
+    \caption{Examples of digital image manipulation}
+    \label{fig:digital-manipulation}
 \end{figure}
 
 \subsection{Artificial Intelligence for Manipulating Media}
@@ -105,11 +109,12 @@ Neural networks contain a collection of neurons organised into layers, each laye
         \caption{A network of neurons split into layers}
         \label{fig:full-neural-network}
     \end{subfigure}
-    \caption{A neural network}
+    \caption{A structure of a neural network and the individual neurons within it}
     \label{fig:neural-network}
 \end{figure}
 
 \subsubsection{Convolutional Neural Networks}
+\label{sec:cnns}
 
 Whilst MLPs are exceptionally powerful they can suffer from overfitting. Overfitting is where a machine learning model learns the training data, becoming exceptionally accurate in the training data but underperforms on any test data. With every neuron in an MLP layer being connected to all the neurons in the layers ahead and behind it, the network is prone to overfit\cite{o2015introduction}. A variety of methods can be employed to reduce overfitting, but the most common way removes connections from the network by reshaping the layers, this also has the attractive benefit of quicker computations as there are less weights to sum resulting in faster training and inference times. A number of methods to reduce connections have been proposed but the most successful are Convolutional Neural Networks (CNNs).
 
@@ -247,7 +252,7 @@ When training, the above process will be done for every learnable parameter for 
 
 Whilst editing an image was easy, adding original content to an image was more difficult, requiring specialist expertise. The difficulty is further increased when trying to edit a video as more images need to be edited and be stitched seamlessly together. Generative AI (GenAI) is a form of neural network that can generate content. In images, they can adapt large amount of images to fit a specific goal or, in more recent works, convert written prompts into completely original images and videos.
 
-The first notable GenAI was Generative Adversarial Networks (GANs)\cite{goodfellow2014generative}. GANs are two neural networks working together, a generator and a discriminator. The training process is ``a minimax two-player game": when one model looses by a certain amount, the other model gains an equal amount. In the context of image generation, the generator creates novel images based on a dataset; the discriminator is fed a combination of the dataset and the generator's images, attempting to determine the origin of them. A diagram of a GAN network is shown in Figure \ref{fig:gan-diagram}. Over time, the generator becomes better and better at generating convincing images that fool the discriminator, eventually resulting in images that are nearly undetectable. The discriminator is a CNN, whereas the generator is a deconvolutional neural network\cite{zeiler2011adaptive}. Deconvolutional neural networks are CNNs but in reverse, where deconvolution layers convert a single value into an $n \times n$ square of new values.
+The first notable GenAI was Generative Adversarial Networks (GANs)\cite{goodfellow2014generative}. GANs are two neural networks working together, a generator and a discriminator. The training process is ``a minimax two-player game": when one model looses by a certain amount, the other model gains an equal amount. In the context of image generation, the generator creates novel images based on a dataset from initial noise; the discriminator is fed a combination of the dataset and the generator's images, attempting to determine the origin of them. A diagram of a GAN network is shown in Figure \ref{fig:gan-diagram}. Over time, the generator becomes better and better at generating convincing images that fool the discriminator, eventually resulting in images that are nearly undetectable. The discriminator is a CNN, whereas the generator is a deconvolutional neural network\cite{zeiler2011adaptive}. Deconvolutional neural networks are CNNs but in reverse, where deconvolution layers convert a single value into an $n \times n$ square of new values.
 
 \begin{figure}[h]
     \centering
@@ -271,35 +276,141 @@ The first notable GenAI was Generative Adversarial Networks (GANs)\cite{goodfell
     \label{fig:gan-diagram}
 \end{figure}
 
-Even in the original paper, GANs were being used to generate images of humans\cite{goodfellow2014generative}. In 2017, the technology would expand out of the realm of academia and into the public eye. A user named \verb|u/deepfakes| and others on the internet forum site Reddit\footnote{\url{https://reddit.com}} were discovered to be sharing pornographic material, edited to contain popular celebrities using GANs\cite{cole2018reddit}. Users were taking ``conventional" pornographic videos and using GANs to swap the faces to famous individuals without their consent. By only generating the face, these networks required less computational power and thus videos could be generated quickly. Following legal pressure, Reddit would delete the forum two months later\cite{cole2018reddit}, but the damage was done: it had been proven that AI could generate realistic videos of humans semi-autonomously. The media soon caught on to the story using the subreddit's name to coin the new types of videos as ``DeepFakes", a portmanteau of ``Deep Leaning" and ``fake".
+Even in the original paper, GANs were being used to generate images of humans\cite{goodfellow2014generative}. In 2017, the technology would expand out of the realm of academia and into the public eye. A user named \verb|u/deepfakes| and others on the internet forum site Reddit were discovered to be sharing pornographic material, edited to contain popular celebrities using GANs\cite{cole2018reddit}. Users were taking ``conventional" pornographic videos and using GANs to swap the faces to famous individuals without their consent. By only generating the face, these networks required less computational power and thus videos could be generated quickly. Following legal pressure, Reddit would delete the forum two months later\cite{cole2018reddit}, but the damage was done: it had been proven that AI could generate realistic videos of humans semi-autonomously. The media soon caught on to the story using the subreddit's name to coin the new types of videos as ``DeepFakes", a portmanteau of ``Deep Leaning" and ``fake".
 
-% add stuff like diffusion, dalle, transformers, and sora here
+Other methods of generating DeepFakes have been developed since GANs. Diffusion\cite{rombach2022high} is a process of removing noise from images based off of transformers\cite{vaswani2017attention}. When given random noise, these models can generate completely novel images. When trained on images with text descriptions, images could be generated from natural language prompts. Multiple different companies began making image generation tools such as OpenAI\cite{ramesh2022hierarchical}, Stable Diffusion\cite{stablediffusion2022}, and Midjourney\cite{midjourney2022}. OpenAI would go on to create Sora\cite{brooks2024video} a model that could generate realistic videos from a text prompt. The most recent architecture for image generators is Visual AutoRegressive modelling (VAR)\cite{tian2024visual}, also based on the transformer, that allowed image accuracy to scale with the amount of computational power available, enabling OpenAI to release 4o Image Generation\cite{4oimagegen}. Allowing for realistic images to be generated from a simple text prompt, such as Figure \ref{fig:gpt4o-dog}.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.5\linewidth]{dissertation//figures/gpt4o.png}
+    \caption{An image generated by GPT-4o\cite{4oimagegen} using the prompt ``a chocolate labrador with glasses programming on a computer"}
+    \label{fig:gpt4o-dog}
+\end{figure}
 
 \subsection{DeepFakes for Malicious Purposes}
 
+DeepFakes can generate realistic images that are undetectable to humans. When presented with a combination of real and fake videos, individuals were asked to classify them as either real or DeepFaked; the overall accuracy was 55.54\%\cite{diel2024human}, only slightly better than guessing. Whilst DeepFakes rose to initial property for their entertainment value, for example users would use them to add the actor Nicholas Cage into movies he did not originally star in\cite{harris2023deep}. However, DeepFakes soon begun to be used for various malicious purposes.
+
+DeepFakes have been used by state actors and opponents to misrepresent candidates in elections across the globe. In the United States 2016 election, Russian-backed faked videos were published on social media to ``undermine public faith in the U.S. democratic process, denigrate Secretary [Hilary] Clinton, and harm her electability and potential presidency"\cite{harris2023deep}. A similar misinformation campaign was attempted by Russia during the 2017 French elections where documents were stolen from Emmanuel Macron's campaign team and edited in an attempt to detriment his chances of being elected\cite{chesney2019deep}. They were unsuccessful with the Macaron team planting several fake documents which the Russians published along with poor coordination and obvious editing from the Russians. 
+
+On an individual scale, DeepFakes have been used by scammers to fraud vulnerable people out of their money. A number of celebrities' likenesses have been used to promote products without their consent. Quantum AI is one such DeepFake-based scam\cite{sensity2024state}. DeepFakes videos of celebrities local to the area (such as Rishi Sunak or Justin Trudeau) were posted as social media advertisements endorsing the tool which guaranteed ``\$3,000 as early as day one". The second phase of the scam involved sockpuppets (non-existent people entirely AI generated) posing as local media reporting on the fake endorsements. Victims are prompted to invest a small amount of money to start with, often receiving genuine returns, soon however victims would be locked out of their account with their money stolen.
+
+Another disturbing use for DeepFakes were around for their inception: pornography. Approximately 96\% of all DeepFakes generated are pornography\cite{ajder2019state}. Entire video sequences can be created from a handful of images scraped from an individual's public profiles\cite{chesney2019deep}. The videos generated are humiliating to the victims they depict, making them feel extremely vulnerable. Often these videos can then be used to further blackmail victims, threatening to release the videos publicly if the victim does not comply.
+
 \section{DeepFake Detection}
 
-\subsection{Traditional Detection Methods}
+With all the harm DeepFakes can do, it is essential to be able to detect them reliably and accurately. Early DeepFakes were easy to spot, often with warping around facial features and other temporal irregularities\cite{diel2024human}. Unfortunately, DeepFakes have become increasingly realistic and this trend is only set to continue. Taking inspiration from the GAN model (Figure \ref{fig:gan-diagram}), tools were developed to detect DeepFakes using AI. Whilst in the GAN architecture the generator is meant to win, discriminators are being generated with the aim to accurately detect DeepFakes. Significant investment and research is being made into DeepFake detection; the US government invested \$22,000,000 into DeepFake detection research with the Media and Semantic Forensics program\cite{harris2023deep}.
 
-\begin{itemize}
-    \item Backbones
-    \begin{itemize}
-        \item ResNet, VGG19....
-        \item Head added for final classification
-        \item Often trained on imagenet (transfer learning)
-    \end{itemize}
-\end{itemize}
+\subsection{Traditional Neural Network Detection Methods}
+
+CNNs have been used to detect DeepFakes since the original GAN paper\cite{goodfellow2014generative}. Whilst CNNs are infinitely customisable with the different choices of layers and connections, often CNN architectures will consist of a backbone and a head\cite{elharrouss2024backbones}. Backbones are large convolutional neural networks that have been pre-trained on a large dataset that can extract features from an input. A customised head is then added to the network to convert the features into the desired output.
+
+In context of DeepFake detection, the backbone is trained on ImageNet\cite{deng2009imagenet} an image dataset with 3.2 million images. Backbones are initially trained on the task of classifying an image in the dataset to an overall class (for example ``cat"). The backbone is then released with the weights from the training. For DeepFake detection, the head ends with a fully connected layer with a binary-softmax (Equation \ref{eq:softmax}) to classify an image into real or fake. Softmax separates $N$ input parameters into separate probabilities representing the probability that in input is in class $y$ such that $\sum^N_{i=1} y_i=1$. Using the initial weights of the backbone as the final weights of a similar problem is a technique known as transfer learning\cite{bozinovski1976influence} and can vastly improve the network's learning time and accuracy. The header's learnable parameters are initialised randomly as is normal. To extrapolate image classification to video classification, each frame of the video is independently classified and then the classifications are aggregated. Various aggregation methods exist but the simplest one is to set a threshold of frames that can be flagged as DeepFaked before the overall video is classified as fake.
+
+\begin{equation}
+    \label{eq:softmax}
+    y_i=\frac{e^{z_i}}{e^{z_1} + e^{z_2}}, i\in1,2
+\end{equation}
+
+A variety of backbones have been applied to DeepFake detection to varying success\cite{thing2023deepfake}. The first backbones to be applied to DeepFake detection were VGG16/19\cite{simonyan2014very} and ResNet\cite{he2016deep}. Whilst VGG is a typical CNN as outlined in Section \ref{sec:cnns}, ResNet introduced the concept of skip-connections, allowing for the interaction of high and low level features. State of the art backbones have also been applied to DeepFakes, the best performing CNNs are currently EfficientNet\cite{tan2019efficientnet} and Xception\cite{chollet2017xception}. These achieve impressive accuracy on standard benchmarks (Section \ref{sec:datasets}), achieving over 90\%.
+
+CNN detection works by pixel level analysis on the images. Due to the nature of CNNs it is difficult to tell what features they are focussing on for the final classification. However, due attention layers it is possible to view the regions of interest show in Figure \ref{fig:attention}, implying the particular areas of attention are the front facial features. Often these will be the area that DeepFakes will have the hardest time generating convincingly and will often leave artifacts such as inconsistent shaping\cite{verdoliva2020media}. CNNs are then picking up on these artifacts as features to classify a DeepFake. This leaves them vulnerable to possible pixel-based attacks which can disrupt the initial feature extraction\cite{gandhi2020adversarial}. Furthermore, reliance on specific artifacts cause CNNs to only be particularly effective on the DeepFake methodology they were trained and hence suffer reduced accuracy when viewing novel DeepFake methods\cite{thing2023deepfake}.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.5\linewidth]{dissertation//figures/attention-cnns.png}
+    \caption{Output from attention layers of convolutional neural networks on DeepFake detection}
+    \label{fig:attention}
+\end{figure}
 
 \subsection{Blink-Based Detection Methods}
 
-\begin{itemize}
-    \item Human's blink in a periodic and predictable manner
-    \item DeepFakes struggle with temporal stuff
-    \item Eye Aspect Ratio
-    \item DeepVision
-    \item Ictu Oculi
-    \item see progress report for evaluation and other stuff
-\end{itemize}
+% \begin{itemize}
+%     \item Human's blink in a periodic and predictable manner
+%     \item DeepFakes struggle with temporal stuff
+%     \item Eye Aspect Ratio
+%     \item DeepVision
+%     \item Ictu Oculi
+%     \item see progress report for evaluation and other stuff
+% \end{itemize}
+
+It has been shown that DeepFakes suffer from temporal inconsistencies\cite{juefei2022countering}. Temporal inconsistencies are where DeepFaked videos suffer from inconsistencies in between frames. For example, an object in the background may be temporarily obscured by the subject but when they move away from the object will have disappeared. 
+
+A more subtle but ever present temporal inconsistency is blinking. Humans blink in a predictable manner, with the average person blinking for 0.1-0.4 seconds and a 2.8 second blink period\cite{schiffman1990sensation}. Timings can vary based on a number of factors like age, gender, time of day, and activity\cite{jung2020deepvision}; but, nevertheless, blinking remains a consistent physiological act that can be predicted but DeepFakes cannot reproduce.
+
+\subsubsection{Eye Aspect Ratio}
+
+To determine when an individual is blinking or not, the most common approach is the Eye Aspect Ratio (EAR)\cite{soukupova2016eye}. The EAR is a ratio of the distance between 6 eye landmarks (Figure \ref{fig:ear}). 2 landmarks are labelled in caranucle and lateral canthus ($p_1$ and $p_4$, respectively) and the others are equidistant around the eyelid, labelled clockwise. The EAR is the ratio between the height and width of the eye (Equation \ref{eq:ear}) and is relatively constant when the eye is open but verges close to 0 when closed. It is partially consistent between people and variations in poses. The modal person has 2 eyes and so the total EAR is taken as the average of the 2 eyes. When plotted as an EAR-time graph (Figure \ref{fig:ear-graph}), a blink is evident as a steep drop in the graph. 
+
+\begin{figure}[h]
+    \centering
+    \begin{subfigure}{0.45\textwidth}
+        \centering
+        \begin{tikzpicture}
+            \node[anchor=south west, inner sep=0] at (0,0) {\includegraphics[width=\linewidth]{dissertation/figures/eye.png}};
+            \filldraw[black] (0.7,1.7) circle (5pt) node[anchor=west, xshift=5pt] {$p_1$};
+            \filldraw[black] (2.2,3.4) circle (5pt) node[anchor=north east, yshift=-5pt] {$p_2$};
+            \filldraw[black] (4.6,3.5) circle (5pt) node[anchor=north west, xshift=3pt] {$p_3$};
+            \filldraw[black] (6.2,2.6) circle (5pt) node[anchor=east, xshift=-5pt] {$p_4$};
+            \filldraw[black] (4.5,1.4) circle (5pt) node[anchor=south west, xshift=4pt] {$p_5$};
+            \filldraw[black] (2.8,1.2) circle (5pt) node[anchor=south east, xshift=-3pt] {$p_6$};
+        \end{tikzpicture}
+        \caption{An image of a human eye with the 6 points necessary for the Eye Aspect Ratio labelled}
+        \label{fig:ear}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.45\textwidth}
+        \centering
+        \raisebox{1.8cm}{\includegraphics[width=\linewidth]{dissertation/figures/ear-graph.png}}
+        \caption{A graph of EAR over time with a blink in the final third}
+        \label{fig:ear-graph}
+    \end{subfigure}
+    \caption{The points and resulting graph for the Eeye Aspect Ratio}
+\end{figure}
+
+\begin{equation}
+    \label{eq:ear}
+    EAR=\frac{||p_2-p_6|| + ||p_3-p_5||}{2||p_1-p_4||}
+\end{equation}
+
+\subsubsection{DeepVision}
+
+DeepVision\cite{jung2020deepvision} is a detection model that utilises the $EAR$ and other environmental factors to determine whether a video is DeepFaked or not by comparing their blink patterns to a database of known ``good" blinking patterns.
+
+DeepVision's input not only includes the video to be checked but a number of environmental factors. A user must manually estimate the: gender, age, time, and activity (whether the subject is moving or stationary) of the main subject of the video. 
+
+Two algorithms are used to detect a blink. The first algorith is a target detector that uses Fast-HyperFace\cite{ranjan2017hyperface} which is a pretrained CNN that can identify subjects of a video and produce basic landmarks. If the detection confidence is over 70\%, the subject is identified as the target and a basic crop of their face is calculated from the landmarks and forwarded to the next algorithm.
+
+A second algorithm takes the face crops and calculates $p_{1-6}$ for the $EAR$, whilst the exact algorithm is not defined, it is assumed to be the algorithm used in the original $EAR$ paper, Intraface\cite{xiong2013supervised}. From these 6 points, the $EAR$ is calculated for each eye and then averaged across the two. A blink is defined as when the $EAR$ drops below a certain threshold for multiple consecutive frames. DeepVision sets this threshold as 2 standard deviations below the mean. Data such as when the blink occurred in time, the period of blink, and frequency are then used as features for the next step.
+
+DeepVision compares these features with known good features from a database. The database was created using known good data from the Eye Blinking Prediction Dataset\cite{turing2018eye}. The database is queried for individuals in the same environment as the subject and the corresponding features of blinking accross the video are returned. The database's features are compared to the video's and if they are ``within an allowable" range the video is declared as real, otherwise fake. DeepVision achieves an overall accuracy of 87.5\%.
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}{0.45\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{dissertation//figures/deepvision-flow.png}
+        \caption{A flow diagram for DeepVision\cite{jung2020deepvision}}
+        \label{fig:deepvision-flow}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.45\textwidth}
+        \centering
+        \raisebox{1.2cm}{\includegraphics[width=\linewidth]{dissertation//figures/deepvision-database.png}}
+        \caption{A sample database query for DeepVision\cite{jung2020deepvision}}
+        \label{fig:deepvision-database}
+    \end{subfigure}
+    \caption{DeepVision's architecture and database queries}
+    \label{fig:deepvision}
+\end{figure}
+
+DeepVision's primary advantage is that it is easy to compute and program. Fast-HyperFace is a pre-trained model and therefore is a simple drag-and-drop implementation. Once $p_{1-6}$ are located in a frame, it is a simple calculation to determine the EAR. The following statistical analysis to determine whether blinking is consistent with real videos is also relatively simple and non-computationally intensive as it is a database query. Therefore, any methodology involving DeepVision would be fast to implement and relatively easy to debug. It also benefits from more granularity in eye state data which could enable more complex analysis.
+
+The primary downside to DeepVision is the potential obstruction of the eye(s). EAR requires the entire eye to be visible in the frame of a video to identify all of the points. A partial $EAR$ can be calculated with a single eye but the accuracy of this is going to be less than if two eyes were visible. The second disadvantage is the database required to determine whether blinking is consistent with normal blinking. The database requires many labelled examples which would be time-consuming to produce. Furthermore, the exact methodology for determining whether video's data is similar enough to the dataset's is never explained, nor is the ``allowable" range, resulting in DeepVision's accuracy being impossible to replicate
+
+\subsubsection{Ictu Oculi}
+
+
 
 \section{Adversarial Noise}
 
@@ -311,6 +422,7 @@ Even in the original paper, GANs were being used to generate images of humans\ci
 \end{itemize}
 
 \section{Datasets}
+\label{sec:datasets}
 
 \begin{itemize}
     \item Wide variety of deepfake datasets (they be chonky)
