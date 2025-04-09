@@ -1,12 +1,14 @@
 # utils for project
 
 import json
+import pickle
 import sys
 from os import system
 from pathlib import Path
 
 import cv2 as cv
 import numpy as np
+from matplotlib import pyplot as plt
 
 path_to_eyes = "/dcs/large/u2204489/eyes"
 
@@ -308,6 +310,20 @@ def reformat_dics(paths: list[str]) -> None:
             f.write("\n")
         print(f"{path} done :)")
 
+def visualise_ear(path_to_ear: str) -> None:
+    """visualises the ear dataset on training videos"""
+    with Path(path_to_ear).open("rb") as f:
+        ear_dataset = pickle.load(f)
+    ear_dataset = ear_dataset[0] + ear_dataset[1]
+    for i, (ear, label) in enumerate(ear_dataset):
+        print(f"Visualising ear {i} - {label}")
+        plt.figure()
+        plt.plot(ear)
+        plt.title(f"Label: {label}")
+        plt.xlabel("Time (frames)")
+        plt.ylabel("EAR")
+        plt.savefig(f"ears/ear_{i}.png")
+        plt.close()
 
 if __name__ == "__main__":
     arg = None
@@ -336,6 +352,9 @@ if __name__ == "__main__":
     elif arg == "reformat":
         paths = sys.argv[2:]
         reformat_dics(paths)
+    elif arg == "ear":
+        path_to_ear = sys.argv[2]
+        visualise_ear(path_to_ear)
     else:
         print("invalid argument")
         sys.exit(1)

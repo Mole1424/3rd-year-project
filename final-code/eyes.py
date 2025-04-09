@@ -699,6 +699,14 @@ class EyeLandmarker:
             landmarks_per_frame.append(multi_landmarks[idx : idx + num_faces])
             idx += num_faces
 
+        # # draw landmarks on the frame and save to file
+        # for i, frame in enumerate(video):
+        #     for landmarks in landmarks_per_frame[i]:
+        #         for landmark in landmarks:
+        #             x, y = int(landmark[0]), int(landmark[1])
+        #             cv.circle(frame, (x, y), 2, (0, 255, 0), -1)
+        #     cv.imwrite(f"test-frames/frame_{i}.jpg", frame)
+
         return landmarks_per_frame
 
 
