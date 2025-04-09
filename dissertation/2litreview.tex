@@ -406,11 +406,50 @@ DeepVision compares these features with known good features from a database. The
 
 DeepVision's primary advantage is that it is easy to compute and program. Fast-HyperFace is a pre-trained model and therefore is a simple drag-and-drop implementation. Once $p_{1-6}$ are located in a frame, it is a simple calculation to determine the EAR. The following statistical analysis to determine whether blinking is consistent with real videos is also relatively simple and non-computationally intensive as it is a database query. Therefore, any methodology involving DeepVision would be fast to implement and relatively easy to debug. It also benefits from more granularity in eye state data which could enable more complex analysis.
 
-The primary downside to DeepVision is the potential obstruction of the eye(s). EAR requires the entire eye to be visible in the frame of a video to identify all of the points. A partial $EAR$ can be calculated with a single eye but the accuracy of this is going to be less than if two eyes were visible. The second disadvantage is the database required to determine whether blinking is consistent with normal blinking. The database requires many labelled examples which would be time-consuming to produce. Furthermore, the exact methodology for determining whether video's data is similar enough to the dataset's is never explained, nor is the ``allowable" range, resulting in DeepVision's accuracy being impossible to replicate
+The primary downside to DeepVision is the potential occlusion of the eye(s). EAR requires the entire eye to be visible in the frame of a video to identify all of the points. A partial $EAR$ can be calculated with a single eye but the accuracy of this is going to be less than if two eyes were visible. The second disadvantage is the database required to determine whether blinking is consistent with normal blinking. The database requires many labelled examples which would be time-consuming to produce. Furthermore, the exact methodology for determining whether video's data is similar enough to the dataset's is never explained, nor is the ``allowable" range, resulting in DeepVision's accuracy being impossible to replicate
 
 \subsubsection{Ictu Oculi}
 
+Another method for blink-based DeepFake detection is Ictu Oculi\cite{li2018ictu}. A more complex method of blink-detection allows for a simpler method of blink verification. 
 
+An initial pre-processing step is done to identify the faces of the image using a face detector (no detector is provided) and distort and crop it so that the face is: in the centre of the image; rotated such that the eyes form a horizontal line; and scaled to a similar size across the duration of the video. 
+
+Once pre-processing is complete, the cropped video is sent to a Long-term Recurrent Convolution Neural Network (LRCN) to determine the state of the eyes. This is a three-stage neural network as shown in Figure \ref{fig:LRCN}. 
+
+\begin{figure}[H]
+    \centering
+    \fbox{\includegraphics[width=0.75\linewidth]{images/LRCN.png}}
+    \caption{Overview of the LRCN method. (a) is the original sequence. (b) is the sequence after face alignment. The eye region of each frame is cropped based on eye landmarks $p_1-6$ in (b) and pass it to (c) LRCN, which consists of three parts: feature extraction, sequence learning and state prediction\cite{ictuoculi}}
+    \label{fig:LRCN}
+\end{figure}
+
+The first part is a typical Convolution Neural Network (CNN) used to extract the discriminative features from the eye region. The next stage is to use a Recursive Neural Network with Long Short Term cells (LSTM-RNN) to guess the state of the eye with $0$ equating to open, and $1$ being closed. To do this it uses the following functions:
+
+\begin{align}
+    f_t &= \sigma \left( W_{fh} h_{t-1} + W_{fx} x_t + b _f \right) \\
+    i_t &= \sigma \left( W_{ih} h_{t-1} + W_{ix} x_t + b_i \right) \\
+    g_t &= \tanh \left( W_{ch} h_{t-1} + W_{cx} x_t + b_c \right) \\
+    C_t &= f_t \odot C_{t-1} + i_t \odot g_t \\
+    o_t &= \sigma \left( W_{oh} h_{t-1} + W_{ox} x_t + b_o \right) \\
+    h_t &= o_t \odot \tanh \left( C_t \right)
+\end{align}
+
+$\sigma$ is the sigmoid function, $f_t$ is forget gate to control what previous memories will be discard, it is input gate to selectively pass the current input, which is manipulated by $g_t$. $o_t$ is output gate to control how much memory will be transferred into hidden state $h_t$. Memory cell $C_t$ is combined by previous memory cell $C_{t-1}$ controlled by $f_t$ and manipulated input $g_t$ controlled by $i_t$. $b_{var}$ is a bias designed to add weight to a specific feature. 256 hidden units are used in the LSTM cell, which is the dimension of LSTM output $z_t$\cite{ictuoculi}. A diagram of such a cell is shown in Figure \ref{fig:LSTM}.
+
+\begin{figure}[H]
+    \centering
+    \fbox{\includegraphics[width=0.5\linewidth]{images/LSTN.png}}
+    \caption{A diagram of LSTM structure\cite{ictuoculi}}
+    \label{fig:LSTM}
+\end{figure}
+
+Finally, the output is determines whether or not a blink has occurred, and over what period.\\
+
+As the accuracy of data is reduced from the amount an eye is open to a binary open/close, the simplicity of the validity algorithm needs to be greatly reduced. The algorithm implemented detects the number of blinks in a set period (60 seconds), the average person blinks 34.1 times a minute. A video is deemed fake or real based on how closely the blinking in the video matches this number. This leads to an accuracy of 99\% when tested on a dataset of 32 videos.
+
+Ictu Oculi has a much more complex blink-detection system, requiring two separate machine learning models trained to identify if a blink is happening or not. This is more complex and requires pre-processing resulting in longer development and training times. On the other hand, it results in a much more resilient blink detection mechanism as the eye's state can be accurately determined even when partially obscured.\\
+
+The drawback is that the state of the eye is binary open/close, any information relating to the speed of the blink is lost resulting in a very rudimentary system to determine whether a sequence of blinks is a DeepFake or not. Yet, this has little effect on the accuracy of detection.\\
 
 \section{Adversarial Noise}
 
