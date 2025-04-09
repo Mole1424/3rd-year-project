@@ -142,7 +142,7 @@ A sequence of these layers are then combined to produce a network. The exact seq
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.5\linewidth]{dissertation//figures/sample-cnn.png}
-    \caption{A sample CNN network\cite{kromydas2023convolutional}}
+    \caption{A sample convolutional neural network\cite{kromydas2023convolutional}}
     \label{fig:sample-cnn}
 \end{figure}
 
@@ -412,53 +412,33 @@ The primary downside to DeepVision is the potential occlusion of the eye(s). EAR
 
 Another method for blink-based DeepFake detection is Ictu Oculi\cite{li2018ictu}. A more complex method of blink-detection allows for a simpler method of blink verification. 
 
-An initial pre-processing step is done to identify the faces of the image using a face detector (no detector is provided) and distort and crop it so that the face is: in the centre of the image; rotated such that the eyes form a horizontal line; and scaled to a similar size across the duration of the video. 
+An initial pre-processing step is done to identify the faces of the image using dlib's\cite{king2009dlib} face detector and distort and crop them so that the face is: in the centre of the image; rotated such that the eyes form a horizontal line; and scaled to a similar size across the duration of the video. The main face is chosen as the one with the highest confidence. This face is further cropped to just the eyes which is then passed to the main model.
 
-Once pre-processing is complete, the cropped video is sent to a Long-term Recurrent Convolution Neural Network (LRCN) to determine the state of the eyes. This is a three-stage neural network as shown in Figure \ref{fig:LRCN}. 
+To determine the current state of the eye (open or closed), Ictu Oculi uses a custom Recurrent Neural Network (RNN). RNNs are a similar to CNNs but contain recurrent connections that can loop back into the network, allowing for a form of memory. This makes RNNs very effective for analysing time-based data as each position in time can be predicted using the context of the previous prediction; unlike, CNNs which would analyse each position independently.
 
-\begin{figure}[H]
-    \centering
-    \fbox{\includegraphics[width=0.75\linewidth]{images/LRCN.png}}
-    \caption{Overview of the LRCN method. (a) is the original sequence. (b) is the sequence after face alignment. The eye region of each frame is cropped based on eye landmarks $p_1-6$ in (b) and pass it to (c) LRCN, which consists of three parts: feature extraction, sequence learning and state prediction\cite{ictuoculi}}
-    \label{fig:LRCN}
-\end{figure}
-
-The first part is a typical Convolution Neural Network (CNN) used to extract the discriminative features from the eye region. The next stage is to use a Recursive Neural Network with Long Short Term cells (LSTM-RNN) to guess the state of the eye with $0$ equating to open, and $1$ being closed. To do this it uses the following functions:
-
-\begin{align}
-    f_t &= \sigma \left( W_{fh} h_{t-1} + W_{fx} x_t + b _f \right) \\
-    i_t &= \sigma \left( W_{ih} h_{t-1} + W_{ix} x_t + b_i \right) \\
-    g_t &= \tanh \left( W_{ch} h_{t-1} + W_{cx} x_t + b_c \right) \\
-    C_t &= f_t \odot C_{t-1} + i_t \odot g_t \\
-    o_t &= \sigma \left( W_{oh} h_{t-1} + W_{ox} x_t + b_o \right) \\
-    h_t &= o_t \odot \tanh \left( C_t \right)
-\end{align}
-
-$\sigma$ is the sigmoid function, $f_t$ is forget gate to control what previous memories will be discard, it is input gate to selectively pass the current input, which is manipulated by $g_t$. $o_t$ is output gate to control how much memory will be transferred into hidden state $h_t$. Memory cell $C_t$ is combined by previous memory cell $C_{t-1}$ controlled by $f_t$ and manipulated input $g_t$ controlled by $i_t$. $b_{var}$ is a bias designed to add weight to a specific feature. 256 hidden units are used in the LSTM cell, which is the dimension of LSTM output $z_t$\cite{ictuoculi}. A diagram of such a cell is shown in Figure \ref{fig:LSTM}.
+The specific form of RNN used by Ictu Oculi is the Long Short-Term Memory (LSTM) modules\cite{hochreiter1997long}. LSTM modules dictate how many of the previous states to remember and how much influence the previous states have on the current state. Ictu Oculi consists of 3 main stages. The first stage is feature extraction using a VGG16-based CNN. Discriminative features are extracted from the cropped eye image. The features and the previous LSTM's output are fed into an LSTM in the sequence learning stage. This takes temporal features into account to enhance the blink detection; for example, if the previous 5 frames have all shown the eye in the process of closing, it is likely the current frame will also show the eye closing. The final stage is the state prediction which uses a dense MLP to determine whether the eye is open or closed. A full diagram is shown in Figure \ref{fig:ictu-oculi}.
 
 \begin{figure}[H]
     \centering
-    \fbox{\includegraphics[width=0.5\linewidth]{images/LSTN.png}}
-    \caption{A diagram of LSTM structure\cite{ictuoculi}}
-    \label{fig:LSTM}
+    \includegraphics[width=0.75\linewidth]{dissertation//figures/ictu-oculi.png}
+    \caption{A network diagram of Ictu Oculi\cite{li2018ictu}}
+    \label{fig:ictu-oculi}
 \end{figure}
 
-Finally, the output is determines whether or not a blink has occurred, and over what period.\\
+As the accuracy of data is reduced from the amount an eye is open to a binary open/close, the simplicity of the validity algorithm needs to be greatly reduced. The algorithm implemented detects the number of blinks in a set period (60 seconds), the average person blinks 34.1 times a minute. A video is deemed fake or real based on how closely the blinking in the video matches this number. This leads to an accuracy of 99\% when tested on a custom dataset of 32 videos.
 
-As the accuracy of data is reduced from the amount an eye is open to a binary open/close, the simplicity of the validity algorithm needs to be greatly reduced. The algorithm implemented detects the number of blinks in a set period (60 seconds), the average person blinks 34.1 times a minute. A video is deemed fake or real based on how closely the blinking in the video matches this number. This leads to an accuracy of 99\% when tested on a dataset of 32 videos.
+Ictu Oculi has a much more complex blink-detection system, requiring two separate machine learning models trained to identify if a blink is happening or not. This is more complex and requires pre-processing resulting in longer development and training times. On the other hand, it results in a much more resilient blink detection mechanism as the eye's state can be accurately determined even when partially obscured.
 
-Ictu Oculi has a much more complex blink-detection system, requiring two separate machine learning models trained to identify if a blink is happening or not. This is more complex and requires pre-processing resulting in longer development and training times. On the other hand, it results in a much more resilient blink detection mechanism as the eye's state can be accurately determined even when partially obscured.\\
-
-The drawback is that the state of the eye is binary open/close, any information relating to the speed of the blink is lost resulting in a very rudimentary system to determine whether a sequence of blinks is a DeepFake or not. Yet, this has little effect on the accuracy of detection.\\
+The drawback is that the state of the eye is binary open/close, any information relating to the speed of the blink is lost resulting in a very rudimentary system to determine whether a sequence of blinks is a DeepFake or not. Yet, this has little effect on the accuracy of detection.
 
 \section{Adversarial Noise}
 
-\begin{itemize}
-    \item Additive noise can cause misclassification
-    \item Adversarial Perturbations
-    \item FakeRetouch
-    \item Again see progress report
-\end{itemize}
+% \begin{itemize}
+%     \item Additive noise can cause misclassification
+%     \item Adversarial Perturbations
+%     \item FakeRetouch
+%     \item Again see progress report
+% \end{itemize}
 
 \section{Datasets}
 \label{sec:datasets}
