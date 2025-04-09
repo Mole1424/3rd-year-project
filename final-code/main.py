@@ -340,7 +340,7 @@ def process_video(
     landmarker: EyeLandmarker,
     ear_analyser: EarAnalysis,
     **models: Model,
-) -> tuple[int, ...]:
+) -> tuple[int, dict[str, bool]]:
     """Processes a single video and returns classification results."""
 
     video_path, label = video_info
@@ -399,7 +399,7 @@ def process_video(
         print(f"{name}: {prediction == bool(label)}")
     print("=" * 20)
 
-    return (label, *predictions.values())
+    return label, predictions
 
 
 def main(path_to_dataset: str, path_to_models: str, epsilon: float) -> None:
@@ -458,14 +458,14 @@ def main(path_to_dataset: str, path_to_models: str, epsilon: float) -> None:
         test_set[num_vidoes_processed:], start=num_vidoes_processed + 1
     ):
         print(f"{i}/{len(test_set)}")
-        label, *predictions = process_video(
+        label, predictions = process_video(
             video,
             epsilon,
             landmarker,
             ear_analyser,
             **dict(zip(traditional_models, models))
         )
-        for model_name, prediction in zip(results.keys(), predictions):
+        for model_name, prediction in predictions.items():
             if label == 1 and prediction:
                 results[model_name]["tp"] += 1
             elif label == 1 and not prediction:

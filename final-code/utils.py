@@ -1,5 +1,6 @@
 # utils for project
 
+import json
 import sys
 from os import system
 from pathlib import Path
@@ -268,6 +269,45 @@ def move_files() -> None:
             file_name = fake_path.lower() + file.name
             system(f"mv {file} {path_to_fake + file_name}")
 
+def reformat_dics(paths: list[str]) -> None:
+    """corrects model order in dictionary"""
+
+    desired_order = [
+        "custom", "vgg", "resnet", "xception", "efficientnet",
+        "custom_vgg", "vgg_vgg", "vgg_resnet", "vgg_xception", "vgg_efficientnet",
+        "custom_resnet", "resnet_vgg", "resnet_resnet", "resnet_xception", "resnet_efficientnet",  # noqa: E501
+        "custom_xception", "xception_vgg", "xception_resnet", "xception_xception", "xception_efficientnet",  # noqa: E501
+        "custom_efficientnet", "efficientnet_vgg", "efficientnet_resnet", "efficientnet_xception", "efficientnet_efficientnet" # noqa: E501
+    ]
+    current_order = [
+        "custom", "vgg", "resnet", "xception", "efficientnet",
+        "custom_vgg", "custom_resnet", "custom_xception", "custom_efficientnet",
+        "vgg_vgg", "vgg_resnet", "vgg_xception", "vgg_efficientnet",
+        "resnet_vgg", "resnet_resnet", "resnet_xception", "resnet_efficientnet",
+        "xception_vgg", "xception_resnet", "xception_xception", "xception_efficientnet",
+        "efficientnet_vgg", "efficientnet_resnet", "efficientnet_xception", "efficientnet_efficientnet" # noqa: E501
+    ]
+    for path in paths:
+        # load file
+        with Path(path).open() as f:
+            ear_analyser = f.readline().strip()
+            results = json.load(f)
+        # create a new dictionary with the desired order
+        new_results = {}
+        for old_key, new_key in zip(current_order, desired_order):
+            if old_key in results:
+                new_results[new_key] = results[old_key]
+        # order dictionary by current order
+        ordered_results = {}
+        for key in current_order:
+            ordered_results[key] = new_results[key]
+        # save to file
+        with Path(path).open("w") as f:
+            f.write(ear_analyser + "\n")
+            json.dump(ordered_results, f, indent=4)
+            f.write("\n")
+        print(f"{path} done :)")
+
 
 if __name__ == "__main__":
     arg = None
@@ -293,6 +333,9 @@ if __name__ == "__main__":
         truncate_datasets()
     elif arg == "move":
         move_files()
+    elif arg == "reformat":
+        paths = sys.argv[2:]
+        reformat_dics(paths)
     else:
         print("invalid argument")
         sys.exit(1)
