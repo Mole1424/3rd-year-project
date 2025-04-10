@@ -54,8 +54,8 @@ class KerasTimeSeriesClassifier:
             verbose=2,
         )
 
-    def predict(self, X: np.ndarray) -> np.ndarray:  # noqa: N803
-        return self.model.predict(X, verbose=0)
+    def predict(self, X: np.ndarray, verbose: int) -> np.ndarray:  # noqa: N803
+        return self.model.predict(X, verbose=verbose)
 
     def save(self, path: str) -> None:
         self.model.save(path)
@@ -415,7 +415,7 @@ class EarAnalysis:
             # evaluate model on accuracy
             y_pred = (
                 model.predict(np.expand_dims(X_test, axis=-1), verbose=0) # type: ignore
-                if is_tensorflow else model.predict(np.array(X_test))
+                if is_tensorflow else model.predict(np.array(X_test)) # type: ignore
             )
             y_pred_labels = np.argmax(y_pred, axis=1) if is_tensorflow else y_pred
             accuracy = np.mean(y_pred_labels == y_test)
