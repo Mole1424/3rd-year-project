@@ -7,8 +7,8 @@
 #SBATCH --time=2-00:00:00
 #
 #SBATCH --mail-type=END,FAIL
-#SBATCH --output=joboutput_%j.out
-#SBATCH --error=joboutput_%j.err
+#SBATCH --output=slurm-%j.out
+#SBATCH --error=slurm-%j.err
 
 source /etc/profile.d/modules.sh
 source /etc/profile.d/conda.sh

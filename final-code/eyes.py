@@ -6,12 +6,12 @@ import tensorflow as tf
 from mtcnn import MTCNN
 from tensorflow.keras import Model, Sequential  # type: ignore
 from tensorflow.keras.layers import (  # type: ignore
+    AveragePooling2D,
     BatchNormalization,
     Conv2D,
     Dense,
     DepthwiseConv2D,
     Flatten,
-    GlobalAveragePooling2D,
     Input,
     Layer,
     MaxPooling2D,
@@ -566,10 +566,21 @@ def pfld() -> Model:
 
     x = inverted_residual(128, 16, 1, False, 2)(x)
 
-    x1 = GlobalAveragePooling2D()(x)
-    x2 = GlobalAveragePooling2D()(conv2d(32, 3, 2)(x))
-    x3 = ReLU()(BatchNormalization()(Conv2D(128, 7, strides=1, padding="valid")(x)))
-    x3 = Flatten()(x3)
+    x1 = AveragePooling2D(14)(x)
+    x1 = Flatten()(x1)
+
+    x = Conv2D(32, 3, 2, padding="same", use_bias=False)(x)
+    x = BatchNormalization()(x)
+    x = ReLU()(x)
+
+    x2 = AveragePooling2D(7)(x)
+    x2 = Flatten()(x2)
+
+    x = Conv2D(32, 3, 2, padding="same", use_bias=False)(x)
+    x = BatchNormalization()(x)
+    x = ReLU()(x)
+
+    x3 = Flatten()(x)
 
     multi_scale = MultiScaleLayer()([x1, x2, x3])
     landmarks = Dense(136)(multi_scale)
