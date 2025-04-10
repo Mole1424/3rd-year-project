@@ -3,11 +3,42 @@
 
 \section{Language \& Libraries}
 
-\begin{itemize}
-    \item Python as pre-existing machine learning frameworks
-    \item Tensorflow vs PyTorch (Tensorflow seemed nicer and more base code, first code seen for proof of concept was in tensorflow)
-    \item mutually exclusive due to CUDA implementations
-\end{itemize}
+% \begin{itemize}
+%     \item Python as pre-existing machine learning frameworks
+%     \item Tensorflow vs PyTorch (Tensorflow seemed nicer and more base code, first code seen for proof of concept was in tensorflow)
+%     \item mutually exclusive due to CUDA implementations
+% \end{itemize}
+
+\subsection{Python}
+
+When choosing a language to code this project in Python\footnote{\url{https://www.python.org}} was a clear choice. Whilst other languages offer better speed (C++\footnote{\url{https://cplusplus.com/}}, Rust\footnote{\url{https://www.rust-lang.org/}}), Python's advantage comes from its libraries.
+
+Libraries are modular pieces of code written by other developers that can be integrated into a new software to make common tasks easier. In Python this is accomplished using the \verb|import| and \verb|from| syntax. Libraries vastly simplify coding as they can vastly reduce complex problems to simple functions. This is especially useful when dealing with complex machine learning functions, advanced mathematical algorithms such as Adam can be reduced to an import (Listing \ref{lst:adam}). Many Python libraries are written in lower-level languages like C or C++, allowing Python code to benefit from high performance while maintaining ease of use.
+
+\begin{listing}[H]
+    \begin{minted}{python}
+        from some_ml_library import adam
+        model.optimize(adam)
+    \end{minted}
+    \caption{An example of Python's import feature to simplify machine learning algorithms such as the Adam optimiser}
+    \label{lst:adam}
+\end{listing}
+
+The vast majority of popular packages have a Python implementation that can be easily installed by the Python Package Index\footnote{\url{https://pypi.org/}}. Especially for machine learning, Python has some of the largest collection of relevant libraries of any language and is therefore the language of choice for this project.
+
+\subsection{PyTorch versus TensorFlow}
+
+There are many machine learning frameworks in Python, however the primary two are PyTorch\cite{paszke2019pytorch} and TensorFlow\cite{abadi2016tensorflow}. They both offer near identical feature sets and performance so choosing between them is not a simple matter.
+
+PyTorch was created by Meta in 2019. It is a lot newer and viewed as a more ``pythonic" framework\cite{chirodea2021comparison}. To be more ``pythonic" is to be more developer-friendlier by providing a simple interface to the library that developers already familiar with Python should easily pick up on. PyTorch supports a dynamic computation graph which enables for dynamic changes of model architectures.
+
+TensorFlow is a much more mature framework by Google releasing in 2015. It offers similar abstractions as PyTorch but is widely viewed to be slightly harder to develop in\cite{chirodea2021comparison}. TensorFlow uses an eager computation graph meaning no changes to model architectures can be made once a model is defined. Whilst this reduces flexibility during runtime, it allows for more optimisations to be made to the model architecture meaning greater accuracy, smaller model architectures, and sometimes quicker computations. TensorFlow also scales effectively running as efficiently as possible on desktop computers to large GPU clusters.
+
+Unfortunately, TensorFlow and PyTorch are mutually exclusive. Both rely on separate versions of the CUDA backend to allow for GPU acceleration on NVIDIA architectures. Whilst this can be accomplished using virtually environments and other work arounds it is generally recommended to use one or the other.
+
+Due to their similarities, there is no clear choice between PyTorch and TensorFlow. Some trends have emerged, however, with PyTorch being used for research and development work where iterative improvements are desired whereas as TensorFlow is employed for production environments. 
+
+TensorFlow was chosen for this project for a number of reasons. Firstly, the flexibility that PyTorch offers is less important to this project as all models being used have had their architectures pre-defined. On the other hand, TensorFlow's ability to scale and optimise for the compute resources will be valuable for this project as it will be developed on smaller desktops but the final evaluation loops will be run on large GPU clusters. Furthermore, after trying out both TensorFlow and PyTorch, the author preferred the overall syntax of TensorFlow.
 
 \section{Proof of Concept}
 
@@ -80,7 +111,7 @@ YuNet for first pass, MTCNN if yunet fails
     \item secret sauce is custom loss function
 \end{itemize}
 
-\subsubsection{Datasets}
+\subsubsection{Facial Landmark Datasets}
 
 \begin{itemize}
     \item 68 landmarks (upsampling and downsampling where necessary)
@@ -110,8 +141,11 @@ Yunet + PFLD, then MTCNN and HRNET as backup (hope ear analysis can filter out i
     \item foolbox library (Targeted FGSM using the other thing)
     \item chosen over cleverhans as cleverhans had meh documentation
     \item cw-l2 attack too slow (3hrs per video)
-    \item need to still implement fakeretouch
+    \item fakeretouch has no open-source implementation, timings were too slow, estimated would also take a while
 \end{itemize}
+
+\section{DeepFake Datasets}
+\label{sec:datasets}
 
 \section{Final Code}
 
