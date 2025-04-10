@@ -78,6 +78,7 @@ def get_custom_model(
     path_to_ear_anylyser: str
 ) -> tuple[EyeLandmarker, EarAnalysis, str]:
     """loads (and trains) models for custom classification"""
+    eye_landmarker = "hrnet" if hrnet else "pfld"
 
     if hrnet:
         # load hrnet config
@@ -110,11 +111,11 @@ def get_custom_model(
 
     if path_to_ear_anylyser != "":
         # if path to ear analyser is provided, load it
-        ear_analyser = EarAnalysis(path_to_ear_anylyser, None, "", "")
+        ear_analyser = EarAnalysis(path_to_ear_anylyser, None, "", "", "")
         return landmarker, ear_analyser, path_to_ear_anylyser
 
     # otherwise check if pickle file for ears dataset exists
-    path = Path(path_to_models + dataset_name + "_ears_dataset.pkl")
+    path = Path(f"{path_to_models}/{dataset_name}_{eye_landmarker}_ears_dataset.pkl")
     if path.exists():
         # if it does, load it
         with path.open("rb") as file:
@@ -186,7 +187,9 @@ def get_custom_model(
             pickle.dump(ears_dataset, file)
 
     # training models doesnt like being accross multiple GPUs
-    ear_analyser = EarAnalysis(None, ears_dataset, path_to_models, dataset_name)
+    ear_analyser = EarAnalysis(
+        None, ears_dataset, path_to_models, dataset_name, eye_landmarker
+    )
     path = ear_analyser.get_best_path()
 
     return landmarker, ear_analyser, path
@@ -402,14 +405,16 @@ def process_video(
     return label, predictions
 
 
-def main(path_to_dataset: str, path_to_models: str, epsilon: float) -> None:
+def main(
+    path_to_dataset: str, path_to_models: str, epsilon: float, eye_model: str
+) -> None:
     # allow for memory growth on GPU
     for gpu in tf.config.experimental.list_physical_devices("GPU"):
         tf.config.experimental.set_memory_growth(gpu, True)
 
     # get dataset name
     dataset_name = path_to_dataset.split("/")[-2]
-    path_to_save = f"{dataset_name}_{epsilon}_results.txt"
+    path_to_save = f"{dataset_name}_{eye_model}_{epsilon}_results.txt"
 
     # attempt to load progress
     path_to_ear_anylyser, loaded_results = load_progress(path_to_save)
@@ -421,9 +426,12 @@ def main(path_to_dataset: str, path_to_models: str, epsilon: float) -> None:
 
     # get custom model
     print("Getting custom model")
-    # MARK: change to True to use HRNet
     landmarker, ear_analyser, best_path = get_custom_model(
-        False, train_set, path_to_models, dataset_name, path_to_ear_anylyser
+        eye_model=="hrnet",
+        train_set,
+        path_to_models,
+        dataset_name,
+        path_to_ear_anylyser,
     )
     print("Custom model loaded")
 
@@ -500,7 +508,8 @@ if __name__ == "__main__":
         path_to_dataset = sys.argv[1]
         path_to_models = sys.argv[2]
         epsilon = float(sys.argv[3])
+        eye_model = sys.argv[4]
     except (IndexError, ValueError):
-        print("Please provide the path to the dataset, models, and epsilon value")
+        print("Please provide the path to the dataset, path to models, epsilon value, and eye model (hrnet or pfld)")  # noqa: E501
         sys.exit(1)
-    main(path_to_dataset, path_to_models, epsilon)
+    main(path_to_dataset, path_to_models, epsilon, eye_model)

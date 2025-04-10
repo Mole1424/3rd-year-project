@@ -286,9 +286,10 @@ class EarAnalysis:
         dataset: list[list[tuple[np.ndarray, int]]] | None,
         path_to_models: str,
         dataset_name: str,
+        eye_landmarker: str,
     ) -> None:
         if path is not None:
-            #load model from path if given
+            # load model from path if given
             if path.endswith(".joblib"):
                 self.model = joblib.load(path)
                 self.tensorflow = False
@@ -301,7 +302,7 @@ class EarAnalysis:
         elif dataset is not None:
             # otherwise train a new models and get best one
             self.model, self.tensorflow, self.best_path = self._get_model(
-                dataset, path_to_models, dataset_name
+                dataset, path_to_models, dataset_name, eye_landmarker
             )
         else:
             raise ValueError("Either path or dataset must be provided.")
@@ -313,7 +314,8 @@ class EarAnalysis:
         self,
         dataset: list[list[tuple[np.ndarray, int]]],
         path_to_models: str,
-        dataset_name: str
+        dataset_name: str,
+        eye_landmarker: str,
     ) -> tuple[Model | BaseEstimator, bool, str]:
         """train models on dataset and return best one"""
 
@@ -380,7 +382,7 @@ class EarAnalysis:
 
             # load model if it exists, otherwise train it
             model_path = Path(
-                f"{path_to_models}{dataset_name}_{name}."
+                f"{path_to_models}{dataset_name}_{eye_landmarker}_{name}."
                 f"{"keras" if is_tensorflow else "joblib"}"
             )
             print(f"Checking {model_path!s}...")
@@ -427,7 +429,9 @@ class EarAnalysis:
 
         # save and return best model
         print(f"Best model: {best_model_name} with accuracy {best_accuracy}")
-        best_path = f"{path_to_models}/{dataset_name}_{best_model_name}."
+        best_path = (
+            f"{path_to_models}/{dataset_name}_{eye_landmarker}_{best_model_name}."
+        )
         best_path += "keras" if best_tensorflow else "joblib"
         return best_model, best_tensorflow, best_path
 
