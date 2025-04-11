@@ -1,3 +1,4 @@
+import random
 from pathlib import Path
 
 import joblib
@@ -321,6 +322,13 @@ class EarAnalysis:
 
         # extract train and test sets
         trainset, testset = dataset
+
+        # shuffle the data
+        random.seed(42)
+        random.shuffle(trainset)
+        random.shuffle(testset)
+
+        # split into X and y
         X_train, y_train = zip(*trainset)  # noqa: N806
         X_test, y_test = zip(*testset) # noqa: N806
 
