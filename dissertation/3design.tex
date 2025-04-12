@@ -13,16 +13,7 @@
 
 When choosing a language to code this project in Python\footnote{\url{https://www.python.org}} was a clear choice. Whilst other languages offer better speed (C++\footnote{\url{https://cplusplus.com/}}, Rust\footnote{\url{https://www.rust-lang.org/}}), Python's advantage comes from its libraries.
 
-Libraries are modular pieces of code written by other developers that can be integrated into a new software to make common tasks easier. In Python this is accomplished using the \verb|import| and \verb|from| syntax. Libraries vastly simplify coding as they can vastly reduce complex problems to simple functions. This is especially useful when dealing with complex machine learning functions, advanced mathematical algorithms such as Adam can be reduced to an import (Listing \ref{lst:adam}). Many Python libraries are written in lower-level languages like C or C++, allowing Python code to benefit from high performance while maintaining ease of use.
-
-\begin{listing}[H]
-    \begin{minted}{python}
-        from some_ml_library import adam
-        model.optimize(adam)
-    \end{minted}
-    \caption{An example of Python's import feature to simplify machine learning algorithms such as the Adam optimiser}
-    \label{lst:adam}
-\end{listing}
+Libraries are modular pieces of code written by other developers that can be integrated into a new software to make common tasks easier. In Python this is accomplished using the \verb|import| and \verb|from| syntax. Libraries vastly simplify coding as they can vastly reduce complex problems to simple functions. This is especially useful when dealing with complex machine learning functions, advanced mathematical algorithms such as Adam can be reduced to an import. Many Python libraries are written in lower-level languages like C or C++, allowing Python code to benefit from high performance while maintaining ease of use.
 
 The vast majority of popular packages have a Python implementation that can be easily installed by the Python Package Index\footnote{\url{https://pypi.org/}}. Especially for machine learning, Python has some of the largest collection of relevant libraries of any language and is therefore the language of choice for this project.
 
@@ -41,13 +32,34 @@ Due to their similarities, there is no clear choice between PyTorch and TensorFl
 TensorFlow was chosen for this project for a number of reasons. Firstly, the flexibility that PyTorch offers is less important to this project as all models being used have had their architectures pre-defined. On the other hand, TensorFlow's ability to scale and optimise for the compute resources will be valuable for this project as it will be developed on smaller desktops but the final evaluation loops will be run on large GPU clusters. Furthermore, after trying out both TensorFlow and PyTorch, the author preferred the overall syntax of TensorFlow.
 
 \section{Proof of Concept}
+\label{sec:concept-design}
 
-\begin{itemize}
-    \item Re-use oriented design
-    \item Quick and dirty
-    \item Test my theory
-    \item Explain methodologies
-\end{itemize}
+% \begin{itemize}
+%     \item Re-use oriented design
+%     \item Quick and dirty
+%     \item test my theory
+%     \item explain methodologies
+% \end{itemize}
+
+To validate whether or not blink-based DeepFake detection is resistant to adversarial noise, it was decided to construct a proof of concept during the Christmas holiday. As it is intended to be a small test-bed, small flaws in the design are acceptable. Therefore, it makes sense to use pre-existing models, solutions, and implementations where possible in order to speed up development.
+
+\subsection{Architecture}
+
+The overall architecture of blink based DeepFake detection is relatively simple. First, the landmarks around the face are computed to determine for every frame to generated an EAR-time graph. The graph can then be analysed to determine whether the video is real or not.
+
+It was decided to use an EAR-based approach over a custom blink model, because it allows for complex analysis. EAR data is more precise than the binary open/close of a custom model, allowing for analysis of not just frequency of blinks but more subtle details like how the blink starts and ends, the velocity of the eye, and whether the eye consistently returns to the same position when open. The flaws in EAR noted by Ictu Oculi\cite{li2018ictu} are valid but they rely on the eye landmarks being unreliably marked, with sufficiently advanced models trained with occlusions this can be overcome. 
+
+To calculate the EAR, the six landmarks around the eye need to be located. Google's MediaPipe\cite{lugaresi2019mediapipe} was used for this purpose. It is designed to run in real-time on mobile devices and other edge compute resources and hence is very light weight and fast. MediaPipe produces 478 landmarks in three dimensions that cover the entire face, a subset of twelve (six landmarks per eye) is then used to be the six landmarks for EAR. From the six landmarks, the EAR can be calculated using Equation \ref{eq:ear} and the average taken for the final EAR-time graph. 
+
+EAR analysis is done via hybrid of DeepVision\cite{jung2020deepvision} and Ictu Oculi\cite{li2018ictu} by counting the number of blinks in the EAR graph and comparing that to the human average. DeepVision's database was viewed as too time-consuming to produce and the simplicity of Ictu Oculi's approach was appealing for its speed advantage. In experiments, DeepVision's threshold of two standard deviations below the mean proved to be to inconsistent so a revised threshold of half a standard deviation above the minimum EAR value was chosen. The average human blinks 14 times per minute\cite{schiffman1990sensation}, DeepFakes will blink less than this and so if the subject of the video blinks less than 14 times a minute, the video is deemed as a fake.
+
+For traditional detectors, both ResNet and VGG architectures have been proven vulnerable to adversarial noise\cite{gandhi2020adversarial}. A ResNet-based DeepFake detector was implemented using an implementation from Tiwari\cite{tiwari2024deepfake}, a VGG-detector was implemented using a header from Krishna et al\cite{krishna2022deepfake} but the backbone was upgraded to VGG19 following research from Yadav et al\cite{yadav2024deepfake}. To extend frame-by-frame detection to entire videos, each frame in a video is analysed individually. If the frame is classified as fake then a counter is incremented by one. If the counter exceeds a given threshold (set as one hundred frames), the video is classed as fake. 
+
+Adversarial noise was added to images using the Foolbox library\cite{rauber2017foolbox}\cite{rauber2017foolboxnative}. FGSM was used as the method for noise due to its known effectiveness and speed\cite{gandhi2020adversarial}. $\epsilon$ was set to 0.1. To replicate real life scenarios, noise was only added to faked videos and all models were solely trained on original videos, not noisy ones.
+
+Models were trained on a subset of fifty real and fifty fake videos from the FaceForensics++ dataset. Testing was run over a further fifty real and fifty fake videos. The results of the tests can be found in Section \ref{sec:concept-results}.
+
+{\huge need to add datasets to lit review}
 
 \section{Main Algorithm}
 

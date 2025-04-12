@@ -16,14 +16,14 @@
 
 Humans have been manipulating photographs since the 1860s when a composite of United States President Abraham Lincoln was composited onto fellow politician John Calhoun's body\cite{singh2018art} as shown in Figure \ref{fig:lincoln}. Photo tampering was then used throughout history as a way to shape opinions and beliefs of individuals by altering supposed ``evidence". As photography was still an entirely analogue process, editing a photo was significantly harder than it is today but nevertheless it still was done when deemed necessary. Another famous example is the removal of Nikolai Yezhov in 1940 from a 1937 photo (Figure \ref{fig:stalin-yezhov}) with Joseph Stalin after the ``Great Purge" in the Union of Soviet Socialist Republics.
 
-\begin{figure}[H]
+\begin{figure}[h]
     \centering
-    \begin{subfigure}[t]{0.45\textwidth}
+    \begin{subfigure}{0.45\textwidth}
             \includegraphics[width=\textwidth]{dissertation//figures/lincoln1960.jpg}
             \caption{A spliced portrait of Abraham Lincoln (left) with the original (right)\cite{singh2018art}}
             \label{fig:lincoln}
     \end{subfigure}
-    \begin{subfigure}[t]{0.45\textwidth}
+    \begin{subfigure}{0.45\textwidth}
         \includegraphics[width=\textwidth]{dissertation//figures/stalin.png}
         \caption{A photo of Stalin and Yezhov (left) which was subsequently edited to remove Yezhov (right)}
         \label{fig:stalin-yezhov}
@@ -36,14 +36,14 @@ With the advent of digital photography and computers, it photo manipulation beca
 
 Computer Generated Imagery (CGI) is a technique primarily used in movies to add artificially augment a frame, often with complete novel additions. CGI was first used in the 1958 film ``Vertigo" and became widespread in the 1990s\cite{ozturk2023vicious}. In the present day, CGI is used in almost every blockbuster film to generate realistic images. In ``Rogue One: A Star Wars Story" the actor Peter Cushing digitally recreated after his death in 1994 to play Grand Moff Tarkin (Figure \ref{fig:tarkin}).While CGI requires large amounts of hardware, consumer image generation runs on much worse hardware but has equally progressed. Most modern social media apps contain a variety of beauty filters\cite{corcoran2014digital}. For example, a blur can be applied to reduce skin blemishes as shown by Figure \ref{fig:beauty-filter}. These are often less computationally expensive and so can run on smartphones, offering the ability to manipulate media to the masses, not just the technically-able and skilled.
 
-\begin{figure}[H]
+\begin{figure}[h]
     \centering
-    \begin{subfigure}[t]{0.45\textwidth}
+    \begin{subfigure}{0.45\textwidth}
         \includegraphics[width=\linewidth]{dissertation//figures/grandmoff-tarkin.jpg}
         \caption{A digital recreation of Peter Cushing for the film ``Rogue One: A Star Wars Story"\cite{rogueone}}
         \label{fig:tarkin}
     \end{subfigure}
-    \begin{subfigure}[t]{0.45\textwidth}
+    \begin{subfigure}{0.45\textwidth}
         \includegraphics[width=\linewidth]{dissertation//figures/blurring.png}
         \caption{An original image (left) blurred to remove skin blemishes (right)\cite{corcoran2014digital}}
         \label{fig:beauty-filter}
@@ -73,7 +73,7 @@ Neural networks contain a collection of neurons organised into layers, each laye
 
 \begin{figure}[h]
     \centering
-    \begin{subfigure}[t]{0.45\textwidth}
+    \begin{subfigure}{0.45\textwidth}
         \centering
         \begin{tikzpicture}
             % inputs
@@ -103,7 +103,7 @@ Neural networks contain a collection of neurons organised into layers, each laye
         \caption{Structure of a single artificial neuron}
         \label{fig:neuron}
     \end{subfigure}
-    \begin{subfigure}[t]{0.45\textwidth}
+    \begin{subfigure}{0.45\textwidth}
         \centering
         \includegraphics[width=0.75\textwidth]{dissertation//figures/generic-neural-diagram.png}
         \caption{A network of neurons split into layers}
@@ -139,7 +139,7 @@ A CNN is a sequence of three layers: convolution layers, pooling layers, and a f
 
 A sequence of these layers are then combined to produce a network. The exact sequence and order is defined by the network architect and depends on the level of quality of output they want. More layers means a higher probable accuracy but incurs increased computation and tendency overfit. Further techniques exist to enhance CNNs such as skip connections which results in the outputs of layers to ``skip" forward layers and act as the input for layers further down the network. An example of a CNN to classify images is shown in Figure \ref{fig:sample-cnn}:
 
-\begin{figure}[H]
+\begin{figure}[h]
     \centering
     \includegraphics[width=0.5\linewidth]{dissertation//figures/sample-cnn.png}
     \caption{A sample convolutional neural network\cite{kromydas2023convolutional}}
@@ -160,7 +160,7 @@ This method of training requires a train set: a set of inputs and correct output
 
 For every parameter, the gradients over a set of inputs would like Figure \ref{fig:loss-graph} which indicated how much each parameter influences the final loss function. By minimising this graph, the loss function is minimised, resulting in an overall improvement to the network. Note the graph will often be a lot more complex compromising of a variety of hills, valleys, and plateaus.
 
-\begin{figure}[H]
+\begin{figure}[h]
     \centering
     \begin{tikzpicture}
         % graph axis
@@ -182,7 +182,7 @@ A variety of methods exist to find the minimum of the graph in the least possibl
 $x_n$ is the new value of the parameter $x$ which has previous value $x_{n-1}$. This value is altered by $l(x)$, the gradient produced for that parameter by backpropagation. $\alpha$ is a hyperparameter representing the learning rate. Often a number close to 0, this limits how much the value can vary within the graph. Too low of learning rate results in slow learning and the potential to get stuck in local minima or plateaus. A high learning rate leads to the possibility of divergence and the minimum never being found.
 
 
-\begin{figure}[H]
+\begin{figure}[h]
     \centering
     \begin{subfigure}{0.3\textwidth}
         \centering
@@ -244,7 +244,7 @@ $x_n$ is the new value of the parameter $x$ which has previous value $x_{n-1}$. 
 
 Traditionally, finding an optimal learning rate has been a hard problem and thus a variety of methods have been introduced to give a larger safety net when choosing parameters. The most popular of these is the Adaptive Moment Estimator (commonly shortened to Adam)\cite{kingma2014adam}.
 
-Adam combines the ideas of adaptive learning rate, and momentum. A per-parameter learning rate was first proposed in AdaGrad\cite{duchi2011adaptive} which implements a greater learning rate for sparser parameters (when the majority of weights are near 0) and lesser rates for denser parameters. Momentum fine tunes the learning rate for each parameter by combining it with the magnitude of the previous gradients.
+Adam combines the ideas of adaptive learning rate, and momentum. A per-parameter learning rate was first proposed in AdaGrad\cite{duchi2011adaptive} which implements a greater learning rate for sparser parameters (when the majority of weights are near zero) and lesser rates for denser parameters. Momentum fine tunes the learning rate for each parameter by combining it with the magnitude of the previous gradients.
 
 When training, the above process will be done for every learnable parameter for every item in the trainset. Often the trainset will be too small to allow for meaningful learning. To combat this the dataset will be iterated over multiple times. One iteration over the entire dataset is referred to as an epoch\cite{begmann-backpropagation}. Often training will be done for a set number of epochs or until the loss function stabilises. 
 
@@ -280,7 +280,7 @@ Even in the original paper, GANs were being used to generate images of humans\ci
 
 Other methods of generating DeepFakes have been developed since GANs. Diffusion\cite{rombach2022high} is a process of removing noise from images based off of transformers\cite{vaswani2017attention}. When given random noise, these models can generate completely novel images. When trained on images with text descriptions, images could be generated from natural language prompts. Multiple different companies began making image generation tools such as OpenAI\cite{ramesh2022hierarchical}, Stable Diffusion\cite{stablediffusion2022}, and Midjourney\cite{midjourney2022}. OpenAI would go on to create Sora\cite{brooks2024video} a model that could generate realistic videos from a text prompt. The most recent architecture for image generators is Visual AutoRegressive modelling (VAR)\cite{tian2024visual}, also based on the transformer, that allowed image accuracy to scale with the amount of computational power available, enabling OpenAI to release 4o Image Generation\cite{4oimagegen}. Allowing for realistic images to be generated from a simple text prompt, such as Figure \ref{fig:gpt4o-dog}.
 
-\begin{figure}[H]
+\begin{figure}[h]
     \centering
     \includegraphics[width=0.5\linewidth]{dissertation//figures/gpt4o.png}
     \caption{An image generated by GPT-4o\cite{4oimagegen} using the prompt ``a chocolate labrador with glasses programming on a computer"}
@@ -316,7 +316,7 @@ A variety of backbones have been applied to DeepFake detection to varying succes
 
 CNN detection works by pixel level analysis on the images. Due to the nature of CNNs it is difficult to tell what features they are focussing on for the final classification. However, due attention layers it is possible to view the regions of interest show in Figure \ref{fig:attention}, implying the particular areas of attention are the front facial features. Often these will be the area that DeepFakes will have the hardest time generating convincingly and will often leave artifacts such as inconsistent shaping\cite{verdoliva2020media}. CNNs are then picking up on these artifacts as features to classify a DeepFake. This leaves them vulnerable to possible pixel-based attacks which can disrupt the initial feature extraction\cite{gandhi2020adversarial}. Furthermore, reliance on specific artifacts cause CNNs to only be particularly effective on the DeepFake methodology they were trained and hence suffer reduced accuracy when viewing novel DeepFake methods\cite{thing2023deepfake}.
 
-\begin{figure}[H]
+\begin{figure}[h]
     \centering
     \includegraphics[width=0.5\linewidth]{dissertation//figures/attention-cnns.png}
     \caption{Output from attention layers of convolutional neural networks on DeepFake detection}
@@ -340,7 +340,7 @@ A more subtle but ever present temporal inconsistency is blinking. Humans blink 
 
 \subsubsection{Eye Aspect Ratio}
 
-To determine when an individual is blinking or not, the most common approach is the Eye Aspect Ratio (EAR)\cite{soukupova2016eye}. The EAR is a ratio of the distance between 6 eye landmarks (Figure \ref{fig:ear}). 2 landmarks are labelled in caranucle and lateral canthus ($p_1$ and $p_4$, respectively) and the others are equidistant around the eyelid, labelled clockwise. The EAR is the ratio between the height and width of the eye (Equation \ref{eq:ear}) and is relatively constant when the eye is open but verges close to 0 when closed. It is partially consistent between people and variations in poses. The modal person has 2 eyes and so the total EAR is taken as the average of the 2 eyes. When plotted as an EAR-time graph (Figure \ref{fig:ear-graph}), a blink is evident as a steep drop in the graph. 
+To determine when an individual is blinking or not, the most common approach is the Eye Aspect Ratio (EAR)\cite{soukupova2016eye}. The EAR is a ratio of the distance between siz eye landmarks (Figure \ref{fig:ear}). 2 landmarks are labelled in caranucle and lateral canthus ($p_1$ and $p_4$, respectively) and the others are equidistant around the eyelid, labelled clockwise. The EAR is the ratio between the height and width of the eye (Equation \ref{eq:ear}) and is relatively constant when the eye is open but verges close to zero when closed. It is partially consistent between people and variations in poses. The modal person has two eyes and so the total EAR is taken as the average of the two eyes. When plotted as an EAR-time graph (Figure \ref{fig:ear-graph}), a blink is evident as a steep drop in the graph. 
 
 \begin{figure}[h]
     \centering
@@ -381,11 +381,11 @@ DeepVision's input not only includes the video to be checked but a number of env
 
 Two algorithms are used to detect a blink. The first algorith is a target detector that uses Fast-HyperFace\cite{ranjan2017hyperface} which is a pretrained CNN that can identify subjects of a video and produce basic landmarks. If the detection confidence is over 70\%, the subject is identified as the target and a basic crop of their face is calculated from the landmarks and forwarded to the next algorithm.
 
-A second algorithm takes the face crops and calculates $p_{1-6}$ for the $EAR$, whilst the exact algorithm is not defined, it is assumed to be the algorithm used in the original $EAR$ paper, Intraface\cite{xiong2013supervised}. From these 6 points, the $EAR$ is calculated for each eye and then averaged across the two. A blink is defined as when the $EAR$ drops below a certain threshold for multiple consecutive frames. DeepVision sets this threshold as 2 standard deviations below the mean. Data such as when the blink occurred in time, the period of blink, and frequency are then used as features for the next step.
+A second algorithm takes the face crops and calculates $p_{1-6}$ for the $EAR$, whilst the exact algorithm is not defined, it is assumed to be the algorithm used in the original $EAR$ paper, Intraface\cite{xiong2013supervised}. From these six points, the $EAR$ is calculated for each eye and then averaged across the two. A blink is defined as when the $EAR$ drops below a certain threshold for multiple consecutive frames. DeepVision sets this threshold as two standard deviations below the mean. Data such as when the blink occurred in time, the period of blink, and frequency are then used as features for the next step.
 
 DeepVision compares these features with known good features from a database. The database was created using known good data from the Eye Blinking Prediction Dataset\cite{turing2018eye}. The database is queried for individuals in the same environment as the subject and the corresponding features of blinking accross the video are returned. The database's features are compared to the video's and if they are ``within an allowable" range the video is declared as real, otherwise fake. DeepVision achieves an overall accuracy of 87.5\%.
 
-\begin{figure}[H]
+\begin{figure}[h]
     \centering
     \begin{subfigure}{0.45\textwidth}
         \centering
@@ -416,9 +416,9 @@ An initial pre-processing step is done to identify the faces of the image using 
 
 To determine the current state of the eye (open or closed), Ictu Oculi uses a custom Recurrent Neural Network (RNN). RNNs are a similar to CNNs but contain recurrent connections that can loop back into the network, allowing for a form of memory. This makes RNNs very effective for analysing time-based data as each position in time can be predicted using the context of the previous prediction; unlike, CNNs which would analyse each position independently.
 
-The specific form of RNN used by Ictu Oculi is the Long Short-Term Memory (LSTM) modules\cite{hochreiter1997long}. LSTM modules dictate how many of the previous states to remember and how much influence the previous states have on the current state. Ictu Oculi consists of 3 main stages. The first stage is feature extraction using a VGG16-based CNN. Discriminative features are extracted from the cropped eye image. The features and the previous LSTM's output are fed into an LSTM in the sequence learning stage. This takes temporal features into account to enhance the blink detection; for example, if the previous 5 frames have all shown the eye in the process of closing, it is likely the current frame will also show the eye closing. The final stage is the state prediction which uses a dense MLP to determine whether the eye is open or closed. A full diagram is shown in Figure \ref{fig:ictu-oculi}.
+The specific form of RNN used by Ictu Oculi is the Long Short-Term Memory (LSTM) modules\cite{hochreiter1997long}. LSTM modules dictate how many of the previous states to remember and how much influence the previous states have on the current state. Ictu Oculi consists of three main stages. The first stage is feature extraction using a VGG16-based CNN. Discriminative features are extracted from the cropped eye image. The features and the previous LSTM's output are fed into an LSTM in the sequence learning stage. This takes temporal features into account to enhance the blink detection; for example, if the previous five frames have all shown the eye in the process of closing, it is likely the current frame will also show the eye closing. The final stage is the state prediction which uses a dense MLP to determine whether the eye is open or closed. A full diagram is shown in Figure \ref{fig:ictu-oculi}.
 
-\begin{figure}[H]
+\begin{figure}[h]
     \centering
     \includegraphics[width=0.75\linewidth]{dissertation//figures/ictu-oculi.png}
     \caption{A network diagram of Ictu Oculi\cite{li2018ictu}}
@@ -462,7 +462,7 @@ The attack works by estimating the gradient of the loss function for the image $
 
 \subsection{Carlini-Wagner L2-Norm Attack}
 
-A secondary adversarial noise shown to be effective on DeepFakes is the Carlini-Wagner L2-Norm (CW-L2) attack\cite{carlini2017towards}. It is more complex than FGSM and aims to minimise 2 objectives: reduce the L2-norm of the noise (Equation \ref{eq:cwl2-2}) whilst still adding enough noise to cause a misclassification (Equation \ref{eq:cwl2-3}).
+A secondary adversarial noise shown to be effective on DeepFakes is the Carlini-Wagner L2-Norm (CW-L2) attack\cite{carlini2017towards}. It is more complex than FGSM and aims to minimise two objectives: reduce the L2-norm of the noise (Equation \ref{eq:cwl2-2}) whilst still adding enough noise to cause a misclassification (Equation \ref{eq:cwl2-3}).
 
 \begin{align}
     \mathbf{x}_{adv} &= \frac{1}{2} \left( \tanh(\omega^*) + 1 \right) \label{eq:cwl2-1}\\
@@ -474,7 +474,7 @@ Equation \ref{eq:cwl2-3} aims to cause the model to misclassify an image. $\math
 
 By minimising the L2-norm of the difference between the original and noisy image in Equation \ref{eq:cwl2-2}, the final noise chosen is the one with the least amount of noise, reducing the chance of humans spotting the noise. $c$ is another hyperparameter which controls the relative strength of each objective. Finally, the noise is normalised to $[0,1]$ in Equation \ref{eq:cwl2-1}.
 
-Often, $c$ is found by a binary search during run time to further minimise the amount of noise on a frame by frame basis. To find the argument minimum (Equation \ref{eq:cwl2-2}) stochastic gradient descent is used, often with 1000 iteration steps. Both of these result in the CW-L2 attack taking a long time to run in comparison to other methods.
+Often, $c$ is found by a binary search during run time to further minimise the amount of noise on a frame by frame basis. To find the argument minimum (Equation \ref{eq:cwl2-2}) stochastic gradient descent is used, often with one thousand iteration steps. Both of these result in the CW-L2 attack taking a long time to run in comparison to other methods.
 
 When tested on the same ResNet detector as FGSM (Section \ref{sec:fgsm}), the CW-L2 attack reduced the accuracy on fake videos from 95.4\% to 0\% accurate. Furthermore, it is more resistant to various noise-reducing filters that may be employed as defence\cite{gandhi2020adversarial}.
 
@@ -482,7 +482,7 @@ When tested on the same ResNet detector as FGSM (Section \ref{sec:fgsm}), the CW
 
 FakeRetouch\cite{huang2020fakeretouch} is a novel approach to adversarial noise that uses offline-trained CNNs. Instead of targeting a specific model, FakeRetouch aims to reduce the fingerprints of GANs that can show up in the Fourier Transform of an image. As shown in Figure \ref{fig:fakeretouch}, GANs have a much more nosier Fourier transform which some CNNs can leverage as a potential DeepFake identifier. FakeRetouch attempts to normalise the Fourier transform by removing the noise.
 
-\begin{figure}[H]
+\begin{figure}[h]
     \centering
     \includegraphics[width=0.5\linewidth]{dissertation//figures/fakeretouch-noise.png}
     \caption{A collection of images and their Fourier Transforms}
