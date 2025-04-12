@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 #SBATCH --job-name=main_loop
-#SBATCH --partition=gecko
+#SBATCH --partition=gecko,falcon
 #SBATCH --gres=gpu:1
 #SBATCH --time=2-00:00:00
 #SBATCH --output=slurm-%j.out
@@ -15,4 +15,4 @@ module load CUDA
 export TF_GPU_ALLOCATOR=cuda_malloc_async
 
 source ../venv/bin/activate
-python3.12 -u main.py /dcs/large/u2204489/faceforensics/ /dcs/large/u2204489/ 0.05 hrnet
+python3.12 -u main.py /dcs/large/u2204489/faceforensics/ /dcs/large/u2204489/ 0.1 hrnet

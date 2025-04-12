@@ -121,17 +121,23 @@ def train_detectors(  # noqa: PLR0915
     batch_size = 32
 
     # load paths to images
-    reals = list(map(str, Path(f"{path_to_dataset}real").rglob("*.jpg")))
-    fakes = list(map(str, Path(f"{path_to_dataset}fake").rglob("*.jpg")))
+    reals = sorted(map(str, Path(f"{path_to_dataset}real").rglob("*.png")))
+    fakes = sorted(map(str, Path(f"{path_to_dataset}fake").rglob("*.png")))
 
-    # split the data
+    # group frames by video (100 frames per video)
+    reals = [reals[i : i + 100] for i in range(0, len(reals), 100)]
+    fakes = [fakes[i : i + 100] for i in range(0, len(fakes), 100)]
+
+    # split videos into train and test sets
     train_reals, test_reals = train_test_split(reals, train_size=0.8, random_state=42)
     train_fakes, test_fakes = train_test_split(fakes, train_size=0.8, random_state=42)
 
-    # combine into train and test data
+    # combine into train and test data and flatten
     train_data = train_reals + train_fakes
+    train_data = [frame for video in train_data for frame in video]
     train_labels = [1] * len(train_reals) + [0] * len(train_fakes)
     test_data = test_reals + test_fakes
+    test_data = [frame for video in test_data for frame in video]
     test_labels = [1] * len(test_reals) + [0] * len(test_fakes)
 
     # shuffle the data
@@ -161,12 +167,12 @@ def train_detectors(  # noqa: PLR0915
                 learning_rate=0.00001, beta_1=0.9, beta_2=0.999, epsilon=1e-07
             ),
             loss="categorical_crossentropy",
+            metrics=["accuracy"],
         )
         efficientnet.fit(
             train_generator, epochs=60, validation_data=test_generator, verbose=2
         )
         efficientnet.save(efficientnet_path)
-        tf.keras.backend.clear_session() # type: ignore
     else:
         print("Loading efficientnet")
         efficientnet = load_model(efficientnet_path)
@@ -182,12 +188,12 @@ def train_detectors(  # noqa: PLR0915
                 learning_rate=0.0002, beta_1=0.9, beta_2=0.999, epsilon=1e-07
             ),
             loss="categorical_crossentropy",
+            metrics=["accuracy"],
         )
         x_ception.fit(
             train_generator, epochs=60, validation_data=test_generator, verbose=2
         )
         x_ception.save(xception_path)
-        tf.keras.backend.clear_session() # type: ignore
     else:
         print("Loading xception")
         x_ception = load_model(xception_path)
@@ -209,7 +215,6 @@ def train_detectors(  # noqa: PLR0915
             train_generator, epochs=20, validation_data=test_generator, verbose=2
         )
         vgg.save(vgg19_path)
-        tf.keras.backend.clear_session() # type: ignore
     else:
         print("Loading vgg19")
         vgg = load_model(vgg19_path)
@@ -229,10 +234,75 @@ def train_detectors(  # noqa: PLR0915
             train_generator, epochs=20, validation_data=test_generator, verbose=2
         )
         resnet.save(resnet_path)
-        tf.keras.backend.clear_session() # type: ignore
     else:
         print("Loading resnet50")
         resnet = load_model(resnet_path)
     print("Got resnet50")
 
     return efficientnet, x_ception, vgg, resnet
+
+
+def test() -> None:
+    # set up paths
+    path_to_models = "/dcs/large/u2204489/"
+    path_to_dataset = "/dcs/large/u2204489/faceforensics/"
+    name="faceforensics"
+
+    # load the models
+    resnet50 = load_model(f"{path_to_models}{name}_resnet50.keras")
+    xception = load_model(f"{path_to_models}{name}_xception.keras")
+    efficientnet = load_model(f"{path_to_models}{name}_efficientnet.keras")
+    vgg19 = load_model(f"{path_to_models}{name}_vgg19.keras")
+
+    # load videos
+    videos = list(Path(path_to_dataset).rglob("*.mp4"))
+
+    # get random sample
+    random.seed(42)
+    video_sample = random.sample(videos, 10)
+
+    # trackers
+    num_frames = 0
+    resnet_correct, xception_correct, efficientnet_correct, vgg19_correct = 0, 0, 0, 0
+
+    for video in video_sample:
+        cap = cv.VideoCapture(str(video))
+        # sample 100 random frames
+        num_frames = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
+        random.seed(42)
+        frames = sorted(random.sample(range(num_frames), 100))
+
+        for frame in frames:
+            cap.set(cv.CAP_PROP_POS_FRAMES, frame)
+            success, image = cap.read()
+            if not success:
+                continue
+            # preproess the image
+            image = cv.resize(image, (256, 256)).astype(np.float32) / 255.0
+            image = np.expand_dims(image, axis=0)
+            # predict with each model
+            pred_resnet = np.argmax(resnet50.predict(image, verbose=0))
+            pred_xception = np.argmax(xception.predict(image, verbose=0))
+            pred_efficientnet = np.argmax(efficientnet.predict(image, verbose=0))
+            pred_vgg19 = np.argmax(vgg19.predict(image, verbose=0))
+
+            truth = 1 if "real" in str(video) else 0
+            if pred_resnet == truth:
+                resnet_correct += 1
+            if pred_xception == truth:
+                xception_correct += 1
+            if pred_efficientnet == truth:
+                efficientnet_correct += 1
+            if pred_vgg19 == truth:
+                vgg19_correct += 1
+            num_frames += 1
+        cap.release()
+
+    print(f"ResNet50: {resnet_correct / num_frames * 100:.2f}%")
+    print(f"Xception: {xception_correct / num_frames * 100:.2f}%")
+    print(f"EfficientNet: {efficientnet_correct / num_frames * 100:.2f}%")
+    print(f"VGG19: {vgg19_correct / num_frames * 100:.2f}%")
+    print("Done :)")
+
+if __name__ == "__main__":
+    test()

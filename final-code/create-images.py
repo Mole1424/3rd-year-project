@@ -56,7 +56,7 @@ def save_frames(
             if not success:
                 continue
             frame = cv.resize(frame, frame_size)
-            cv.imwrite(f"{video_path[:-4]}_{frame_num}.jpg", frame)
+            cv.imwrite(f"{video_path[:-4]}_{frame_num}.png", frame)
             frame_num += 1
 
     # process videos in parallel
