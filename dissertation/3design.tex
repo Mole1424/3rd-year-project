@@ -43,9 +43,7 @@ TensorFlow was chosen for this project for a number of reasons. Firstly, the fle
 
 To validate whether or not blink-based DeepFake detection is resistant to adversarial noise, it was decided to construct a proof of concept during the Christmas holiday. As it is intended to be a small test-bed, small flaws in the design are acceptable. Therefore, it makes sense to use pre-existing models, solutions, and implementations where possible in order to speed up development.
 
-\subsection{Architecture}
-
-The overall architecture of blink based DeepFake detection is relatively simple. First, the landmarks around the face are computed to determine for every frame to generated an EAR-time graph. The graph can then be analysed to determine whether the video is real or not.
+The overall architecture of blink based DeepFake detection is relatively simple. First, the landmarks around the face are computed to determine for every frame to generate an EAR-time graph. The graph can then be analysed to determine whether the video is real or not.
 
 It was decided to use an EAR-based approach over a custom blink model, because it allows for complex analysis. EAR data is more precise than the binary open/close of a custom model, allowing for analysis of not just frequency of blinks but more subtle details like how the blink starts and ends, the velocity of the eye, and whether the eye consistently returns to the same position when open. The flaws in EAR noted by Ictu Oculi\cite{li2018ictu} are valid but they rely on the eye landmarks being unreliably marked, with sufficiently advanced models trained with occlusions this can be overcome. 
 
@@ -53,21 +51,19 @@ To calculate the EAR, the six landmarks around the eye need to be located. Googl
 
 EAR analysis is done via hybrid of DeepVision\cite{jung2020deepvision} and Ictu Oculi\cite{li2018ictu} by counting the number of blinks in the EAR graph and comparing that to the human average. DeepVision's database was viewed as too time-consuming to produce and the simplicity of Ictu Oculi's approach was appealing for its speed advantage. In experiments, DeepVision's threshold of two standard deviations below the mean proved to be to inconsistent so a revised threshold of half a standard deviation above the minimum EAR value was chosen. The average human blinks 14 times per minute\cite{schiffman1990sensation}, DeepFakes will blink less than this and so if the subject of the video blinks less than 14 times a minute, the video is deemed as a fake.
 
-For traditional detectors, both ResNet and VGG architectures have been proven vulnerable to adversarial noise\cite{gandhi2020adversarial}. A ResNet-based DeepFake detector was implemented using an implementation from Tiwari\cite{tiwari2024deepfake}, a VGG-detector was implemented using a header from Krishna et al\cite{krishna2022deepfake} but the backbone was upgraded to VGG19 following research from Yadav et al\cite{yadav2024deepfake}. To extend frame-by-frame detection to entire videos, each frame in a video is analysed individually. If the frame is classified as fake then a counter is incremented by one. If the counter exceeds a given threshold (set as one hundred frames), the video is classed as fake. 
+For traditional detectors, both ResNet and VGG architectures have been proven vulnerable to adversarial noise\cite{gandhi2020adversarial}. A ResNet-based DeepFake detector was implemented using an implementation from Tiwari\cite{tiwari2024deepfake}, a VGG-detector was implemented using a header from Krishna et al\cite{krishna2022deepfake} but the backbone was upgraded to VGG19 following research from Yadav et al\cite{yadav2024deepfake}. To extend frame-by-frame detection to entire videos, each frame in a video is analysed independently. If the frame is classified as fake then a counter is incremented by one. If the counter exceeds a given threshold (set as one hundred frames), the video is classed as fake.
 
 Adversarial noise was added to images using the Foolbox library\cite{rauber2017foolbox}\cite{rauber2017foolboxnative}. FGSM was used as the method for noise due to its known effectiveness and speed\cite{gandhi2020adversarial}. $\epsilon$ was set to 0.1. To replicate real life scenarios, noise was only added to faked videos and all models were solely trained on original videos, not noisy ones.
 
-Models were trained on a subset of fifty real and fifty fake videos from the FaceForensics++ dataset. Testing was run over a further fifty real and fifty fake videos. The results of the tests can be found in Section \ref{sec:concept-results}.
-
-{\huge need to add datasets to lit review}
+The models were trained on a subset of fifty real and fifty fake videos from the FaceForensics++ dataset\cite{roessler2018faceforensics}. Testing was run over a further fifty real and fifty fake videos. The results of the tests can be found in Section \ref{sec:concept-results}. FaceForensics++ was chosen as it was the most robust dataset available at the time. More have been tested in the main code. Hyperparameters for the VGG and ResNet models were left the same as the original implementations. To reduce overfitting, only one frame per second was extracted and used for training.
 
 \section{Main Algorithm}
 
-\begin{itemize}
-    \item pseudocode of main algorithm
-    \item if at any point something fails, mark as fake (ensures resiliency)
-    \item emphasise each part is interchangeable
-\end{itemize}
+% \begin{itemize}
+%     \item pseudocode of main algorithm
+%     \item if at any point something fails, mark as fake (ensures resiliency)
+%     \item emphasise each part is interchangeable
+% \end{itemize}
 
 \subsection{Eye Landmark Detection}
 
