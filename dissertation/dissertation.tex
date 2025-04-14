@@ -15,6 +15,12 @@
 \usepackage{graphicx}
 \usepackage{amsmath}
 \usepackage{amssymb}
+\usepackage{chngcntr}
+
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\counterwithin{algorithm}{chapter}
+\renewcommand{\thealgorithm}{\thechapter.\arabic{algorithm}}
 
 \usepackage{tikz} % fancy diagrams
 \usetikzlibrary{positioning,calc}
@@ -84,6 +90,8 @@ Hi Mum! {\tiny are you proud of me now?}
 \tableofcontents
 \listoffigures
 \addcontentsline{toc}{chapter}{List of Figures}
+\listofalgorithms
+\addcontentsline{toc}{chapter}{List of Algorithms}
 \newpage
 
 %TC:endignore

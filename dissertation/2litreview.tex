@@ -276,7 +276,7 @@ The first notable GenAI was Generative Adversarial Networks (GANs)\cite{goodfell
     \label{fig:gan-diagram}
 \end{figure}
 
-Even in the original paper, GANs were being used to generate images of humans\cite{goodfellow2014generative}. In 2017, the technology would expand out of the realm of academia and into the public eye. A user named \verb|u/deepfakes| and others on the internet forum site Reddit were discovered to be sharing pornographic material, edited to contain popular celebrities using GANs\cite{cole2018reddit}. Users were taking ``conventional" pornographic videos and using GANs to swap the faces to famous individuals without their consent. By only generating the face, these networks required less computational power and thus videos could be generated quickly. Following legal pressure, Reddit would delete the forum two months later\cite{cole2018reddit}, but the damage was done: it had been proven that AI could generate realistic videos of humans semi-autonomously. The media soon caught on to the story using the subreddit's name to coin the new types of videos as ``DeepFakes", a portmanteau of ``Deep Leaning" and ``fake".
+Even in the original paper, GANs were being used to generate images of humans\cite{goodfellow2014generative}. In 2017, the technology would expand out of the realm of academia and into the public eye. A user named \verb|u/deepfakes| and others on the internet forum site Reddit\footnote{\url{https://reddit.com}} were discovered to be sharing pornographic material, edited to contain popular celebrities using GANs\cite{cole2018reddit}. Users were taking ``conventional" pornographic videos and using GANs to swap the faces to famous individuals without their consent. By only generating the face, these networks required less computational power and thus videos could be generated quickly. Following legal pressure, Reddit would delete the forum two months later\cite{cole2018reddit}, but the damage was done: it had been proven that AI could generate realistic videos of humans semi-autonomously. The media soon caught on to the story using the subreddit's name to coin the new types of videos as ``DeepFakes", a portmanteau of ``Deep Leaning" and ``fake".
 
 Other methods of generating DeepFakes have been developed since GANs. Diffusion\cite{rombach2022high} is a process of removing noise from images based off of transformers\cite{vaswani2017attention}. When given random noise, these models can generate completely novel images. When trained on images with text descriptions, images could be generated from natural language prompts. Multiple different companies began making image generation tools such as OpenAI\cite{ramesh2022hierarchical}, Stable Diffusion\cite{stablediffusion2022}, and Midjourney\cite{midjourney2022}. OpenAI would go on to create Sora\cite{brooks2024video} a model that could generate realistic videos from a text prompt. The most recent architecture for image generators is Visual AutoRegressive modelling (VAR)\cite{tian2024visual}, also based on the transformer, that allowed image accuracy to scale with the amount of computational power available, enabling OpenAI to release 4o Image Generation\cite{4oimagegen}. Allowing for realistic images to be generated from a simple text prompt, such as Figure \ref{fig:gpt4o-dog}.
 
@@ -365,7 +365,7 @@ To determine when an individual is blinking or not, the most common approach is 
         \caption{A graph of EAR over time with a blink in the final third}
         \label{fig:ear-graph}
     \end{subfigure}
-    \caption{The points and resulting graph for the Eeye Aspect Ratio}
+    \caption{The points and resulting graph for the Eye Aspect Ratio}
 \end{figure}
 
 \begin{equation}
@@ -383,7 +383,7 @@ Two algorithms are used to detect a blink. The first algorith is a target detect
 
 A second algorithm takes the face crops and calculates $p_{1-6}$ for the $EAR$, whilst the exact algorithm is not defined, it is assumed to be the algorithm used in the original $EAR$ paper, Intraface\cite{xiong2013supervised}. From these six points, the $EAR$ is calculated for each eye and then averaged across the two. A blink is defined as when the $EAR$ drops below a certain threshold for multiple consecutive frames. DeepVision sets this threshold as two standard deviations below the mean. Data such as when the blink occurred in time, the period of blink, and frequency are then used as features for the next step.
 
-DeepVision compares these features with known good features from a database. The database was created using known good data from the Eye Blinking Prediction Dataset\cite{turing2018eye}. The database is queried for individuals in the same environment as the subject and the corresponding features of blinking accross the video are returned. The database's features are compared to the video's and if they are ``within an allowable" range the video is declared as real, otherwise fake. DeepVision achieves an overall accuracy of 87.5\%.
+DeepVision compares these features with known good features from a database. The database was created using known good data from the Eye Blinking Prediction Dataset\cite{turing2018eye}. The database is queried for individuals in the same environment as the subject and the corresponding features of blinking across the video are returned. The database's features are compared to the video's and if they are ``within an allowable" range the video is declared as real, otherwise fake. DeepVision achieves an overall accuracy of 87.5\%.
 
 \begin{figure}[h]
     \centering
@@ -503,6 +503,7 @@ FakeRetouch uses Gaussian Noise ($\textbf{N}_{\sigma}$ to further blur the image
 When tested on DeepFakes, FakeRetouch has limited success. It does not target the neural network directly and so relies on both the neural network analysing the Fourier transform of an image and the DeepFake generator producing excessive fingerprints in the Fourier space. For scenarios when both requirements hold, FakeRetouch reduces accuracy by 67\%; on the other hand, in scenarios where either one or none of the conditions hold, FakeRetouch either decreases detection by an insignificant amount or can even increase the accuracy of detection.
 
 \section{Datasets}
+\label{sec:datasets}
 
 To compare performance of multiple proposed models, common datasets of DeepFakes were made. Datasets are large collections of data relevant to a problem that have been collated and labelled by a third party. For DeepFakes, these datasets take the form of videos or images that have been scraped from the internet. These are then passed into at least one DeepFake generator which produces a set of known fake media. This project is only concerned with videos.
 

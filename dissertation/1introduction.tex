@@ -50,7 +50,7 @@
 \section{Project Overview}
 \label{sec:project-review}
 
-DeepFakes are defined as ``manipulated or synthetic media the realness of which are not easily recognisable by the human eye"\cite{altuncu2024deepfake}. In simpler terms, a DeepFake is a video, image, or audio clip that has been digitally altered or created, often using Artificial Intelligence (AI). Concerningly, it is incredibly hard for humans to determine whether or not a particular video has been DeepFaked or not (Figure \ref{fig:thispersondoesnotexist}). In a 2024 study, 86,155 volunteers attempted to detect DeepFakes, the final accuracy access all DeepFake types was 55.54\%\cite{diel2024human}. Furthermore, a Europol report revealed 72\% of the UK population were unaware of DeepFakes and their potential impact\cite{europol2022facing}.
+DeepFakes are defined as ``manipulated or synthetic media whose realness is not easily recognisable by the human eye"\cite{altuncu2024deepfake}. In simpler terms, a DeepFake is a video, image, or audio clip that has been digitally altered or created, often using Artificial Intelligence (AI). Concerningly, it is extremely difficult for humans to determine whether a particular video has been DeepFaked or not (Figure \ref{fig:thispersondoesnotexist}). In a 2024 study, 86,155 volunteers attempted to detect DeepFakes, the final accuracy on all DeepFake types was 55.54\%\cite{diel2024human}. Furthermore, a Europol report revealed that 72\% of the UK population were unaware of DeepFakes and their potential impact\cite{europol2022facing}.
 
 \begin{figure}[h]
     \centering
@@ -59,11 +59,11 @@ DeepFakes are defined as ``manipulated or synthetic media the realness of which 
     \label{fig:thispersondoesnotexist}
 \end{figure}
 
-Because they are so realistic, DeepFakes have garnered a wide usage for various nefarious activities. Scams, misinformation, and fraud are all possible illegal uses for DeepFakes and all pose a real threat to society\cite{sensity2024state}.
+Because they are so realistic, DeepFakes have garnered wide usage for various nefarious activities. Scams, misinformation, and fraud are all possible illegal uses of DeepFakes and all pose a real threat to society\cite{sensity2024state}.
 
 It is therefore obvious that a mechanism to reliably detect DeepFakes would be incredibly useful.
 
-Convolutional Neural Networks (CNNs) are powerful neural network models that learn kernels (sometimes also called filters) in a feed-forward manner\cite{lecun2015deep}. They consist of sequences of layers which gradually take more and more general view of an input to produce final classification. They have a wide variety of applications in various fields of deep learning, such as computer vision and recommendation algorithms. Crucially, they can also be used to create accurate DeepFake detectors. When trained on a specific dataset, they can become extremely accurate achieving consistent accuracies of over 90\% when trained correctly\cite{papersiwthcodedeepfakedetection}.
+Convolutional Neural Networks (CNNs) are powerful neural network models that learn kernels (sometimes also called filters) in a feed-forward manner\cite{lecun2015deep}. They consist of sequences of layers that gradually take more and more general view of an input to produce the final classification. They have a wide variety of applications in various fields of deep learning, such as computer vision and recommendation algorithms. Crucially, they can also be used to create accurate DeepFake detectors. When trained on a specific dataset, they can become extremely accurate achieving consistent accuracies of over 90\% when trained correctly\cite{papersiwthcodedeepfakedetection}.
 
 However, recent studies has shown that CNNs are vulnerable to adversarial noise attacks. Noise, imperceptible to humans, is added to images which causes misclassification\cite{gandhi2020adversarial}. This becomes dangerous when noise is added to fake images causing them to be misclassified as real. A 90\% accurate classifier is going to be implicitly trusted to be correct and a simple and invisible method to fool classifiers is worrying.
 
@@ -77,7 +77,7 @@ This paper aims to implement blink-based DeepFake detection and show that such a
 \section{Objectives}
 \label{sec:objectives}
 
-To achieve the aim as laid out in Section \ref{sec:aim} the project can be decomposed into the following objectives:
+To achieve the aim, as laid out in Section \ref{sec:aim}, the project can be decomposed into the following objectives:
 
 \begin{enumerate}
     \item Produce a method to reliably track how ``open" an eye is over time
