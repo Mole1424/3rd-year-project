@@ -2,7 +2,6 @@ import json
 import pickle
 import sys
 from pathlib import Path
-from typing import Any
 
 import cv2 as cv
 import numpy as np
@@ -11,6 +10,7 @@ from ear_analysis import EarAnalysis
 from eye_detection import EyeLandmarker
 from foolbox import TargetedMisclassification, TensorFlowModel  # type: ignore
 from foolbox.attacks import LinfPGD
+from mtcnn import MTCNN  # type: ignore
 from sklearn.model_selection import train_test_split
 from tensorflow.keras.models import Model  # type: ignore
 from traditional_detectors import train_detectors
@@ -144,32 +144,14 @@ def get_custom_model(
             video.release()
             frames = np.array(frames)
 
-            # get landmarks for each frame and filter out invalid
-            landmarks = landmarker.get_landmarks(frames)
-            valid_landmarks = [
-                lm for lm in landmarks if lm is not None and len(lm) > 0
-            ]
+            # get faces from video
+            faces = get_faces_from_video(frames)
 
-            if len(valid_landmarks) == 0:
-                continue
-
-            # get first best face is the first one in list
-            previous_landmarks = valid_landmarks[0][0]
-            best_faces = [previous_landmarks]
-
-            for frame_landmarks in valid_landmarks[1:]:
-                # get best face by finding closest to previous
-                best_face = min(
-                    frame_landmarks,
-                    key=lambda x: np.linalg.norm(
-                        np.array(previous_landmarks) - np.array(x)
-                    )
-                )
-                previous_landmarks = best_face
-                best_faces.append(best_face)
+            # get landmarks from video
+            landmarks = landmarker.get_landmarks(faces)
 
             # calculate ear aspect accross frames
-            ears = calculate_ears(np.array(best_faces))
+            ears = calculate_ears(landmarks)
             # pad if necessary
             if len(ears) < max_frames:
                 ears = np.pad(
@@ -212,34 +194,16 @@ def calculate_ears(points: np.ndarray) -> np.ndarray:
 
 
 def classify_video_custom(
-    video: np.ndarray, landmarker: EyeLandmarker, ear_analyser: EarAnalysis
+    faces: np.ndarray, landmarker: EyeLandmarker, ear_analyser: EarAnalysis
 ) -> bool:
     """classifies a video using custom models (true=real, false=fake)"""
     ears = []
 
-    # get successful from video
-    landmarks = landmarker.get_landmarks(video)
-    valid_landmarks = [lm for lm in landmarks if lm is not None and len(lm) > 0]
-
-    # if no valid landmarks, assume fake
-    if len(valid_landmarks) == 0:
-        return False
-
-    # best face is set as the most confident face from the first frame
-    previous_landmarks = valid_landmarks[0][0]
-    best_faces = [previous_landmarks]
-
-    # for future frames, get face closest to previous
-    for frame_landmarks in valid_landmarks[1:]:
-        best_face = min(
-            frame_landmarks,
-            key=lambda x: np.linalg.norm(np.array(previous_landmarks) - np.array(x)),
-        )
-        previous_landmarks = best_face
-        best_faces.append(best_face)
+    # get landmarks from video
+    landmarks = landmarker.get_landmarks(faces)
 
     # calculate ear for frames
-    ears = calculate_ears(np.array(best_faces))
+    ears = calculate_ears(landmarks)
 
     if len(ears) == 0:
         return False
@@ -248,29 +212,10 @@ def classify_video_custom(
     return bool(ear_analyser.predict(np.array(ears)))
 
 
-def pre_process_frames(frames: np.ndarray) -> np.ndarray:
+def pre_process_frames(faces: np.ndarray) -> np.ndarray:
     """pre-process a frames for traditional models"""
-    processed_frames = []
-    num, height, width, channels = frames.shape
-
-    for i in range(0, num, 170):
-        batch = frames[i : i + 170]
-        num_frames = len(batch)
-
-        # hack to resize the images in one go using opencv
-        # https://stackoverflow.com/questions/65154879/using-opencv-resize-multiple-the-same-size-of-images-at-once-in-python
-        # channels * num <= 512 due to opencv limitations so need to take batches of 170
-        batch = batch.transpose((1, 2, 3, 0))
-        batch = batch.reshape((height, width, channels * num_frames))
-        batch = cv.resize(batch, (256, 256))
-        batch = batch.reshape((256, 256, channels, num_frames))
-        batch = batch.transpose((3, 0, 1, 2))
-
-        # normalise frames
-        batch = batch / 255.0
-        processed_frames.extend(batch)
-
-    return np.array(processed_frames)
+    # normalise to 0-1
+    return faces.astype(np.float32) / 255.0
 
 def classify_video_classical(video: np.ndarray, model: Model) -> bool:
     """classifies a video using a pre-existing model (1 real, 0 fake)"""
@@ -287,20 +232,10 @@ def classify_video_classical(video: np.ndarray, model: Model) -> bool:
     return bool(real_frames / len(video) > real_frame_threshold)  # thanks bool_
 
 
-def post_process_frames(frames: Any, height: int, width: int) -> np.ndarray:  # noqa: ANN401
+def post_process_frames(frames: np.ndarray) -> np.ndarray:
     """post-process frames from noise attacks"""
-    # convert back to uint8 and to rgb
-    frames = np.clip(frames.numpy(), 0, 1) * 255.0
-    frames = frames.astype(np.uint8)
-
-    # resize frames back to original size
-    num, fheight, fwidth, channels = frames.shape
-    frames = frames.transpose((1, 2, 3, 0))
-    frames = frames.reshape((fheight, fwidth, channels * num))
-    frames = cv.resize(frames, (width, height))
-    frames = frames.reshape((height, width, channels, num))
-    return frames.transpose((3, 0, 1, 2))
-
+    # convert back to uint8 and 0-255
+    return np.clip(frames * 255, 0, 255).astype(np.uint8)
 
 def perturbate_frames(
     frames: np.ndarray, epsilon: float, **models: Model
@@ -332,9 +267,81 @@ def perturbate_frames(
             adv_batch = attack.run(
                 TensorFlowModel(model, bounds=(0, 1)), batch, target, epsilon=epsilon
             )
-            adv_frames[name].extend(post_process_frames(adv_batch, *frames.shape[1:3]))
+            adv_frames[name].extend(post_process_frames(adv_batch)) # type: ignore
 
     return tuple(np.array(adv_frames[name]) for name in models)
+
+
+def get_faces_from_video(frames: np.ndarray) -> np.ndarray:
+    """get faces from video"""
+
+    yunet = cv.FaceDetectorYN().create(
+        "face_detection_yunet_2023mar.onnx", "", (frames.shape[2], frames.shape[1]), 0.7
+    )
+    device = "GPU:0" if tf.config.list_physical_devices("GPU") else "CPU:0"
+    mtcnn = MTCNN("face_detection_only", device)
+
+    faces = []
+    faces_per_frame = [np.ndarray([])] * len(frames)
+    mtcnn_indices = [] # indices of frames where mtcnn is needed
+    mtcnn_frames = [] # frames where mtcnn is needed
+
+    for i, frame in enumerate(frames):
+        # attempt to detect faces with yunet
+        _, detected_faces = yunet.detect(frame)
+
+        if detected_faces is not None:
+            # if face is detected, add to lists
+            face_list = []
+            for face in detected_faces:
+                x, y, w, h = map(int, face[:4])
+                # put in dict to align with mtcnn output
+                face_list.append({"box": [x, y, w, h]})
+            faces_per_frame[i] = face_list # type: ignore
+        else:
+            # otherwise, tag to use mtcnn
+            mtcnn_indices.append(i)
+            mtcnn_frames.append(frame)
+
+    if mtcnn_frames:
+        batch_size = 8 # batch mtcnn for speed
+        for i in range(0, len(mtcnn_frames), batch_size):
+            batch_frames = mtcnn_frames[i : i + batch_size]
+            mtcnn_results = mtcnn.detect_faces(batch_frames)
+
+            # add mtcnn results to list
+            for j, result in enumerate(mtcnn_results): # type: ignore
+                frame_idx = mtcnn_indices[i + j]
+                faces_per_frame[frame_idx] = result
+
+    previous_face = None
+    for i, frame_faces in enumerate(faces_per_frame):
+        if len(frame_faces) > 0:
+            best_face = None
+            if previous_face is None:
+                # if first frame, set previous face to first face
+                best_face = frame_faces[0]["box"]
+            else:
+                # otherwise, get face closest to previous
+                best_face = min(
+                    frame_faces,
+                    key=lambda x: np.linalg.norm(
+                        np.array(previous_face) - np.array(x["box"])
+                    )
+                )["box"]
+            previous_face = best_face
+            x, y, w, h = best_face
+            x = max(0, x)
+            y = max(0, y)
+            w = min(frames[i].shape[1] - x, w)
+            h = min(frames[i].shape[0] - y, h)
+            face_crop = cv.resize(
+                frames[i][y : y + h, x : x + w], (256, 256)
+            )
+            faces.append(face_crop)
+        else:
+            faces.append(cv.resize(frames[i], (256, 256)))
+    return np.array(faces)
 
 
 def process_video(
@@ -365,28 +372,30 @@ def process_video(
     video.release()
     frames = np.array(frames)
 
+    faces = get_faces_from_video(frames)
+
     # get initial predictions
-    predictions = {"custom": classify_video_custom(frames, landmarker, ear_analyser)}
+    predictions = {"custom": classify_video_custom(faces, landmarker, ear_analyser)}
     for name, model in models.items():
-        predictions[name] = classify_video_classical(frames, model)
+        predictions[name] = classify_video_classical(faces, model)
 
     # if video is fake, perturbate frames and classify them
     if label == 0:
-        perturbed_frames = perturbate_frames(frames, epsilon, **models)
+        perturbed_faces = perturbate_frames(faces, epsilon, **models)
 
         for i, model_name in enumerate(models.keys()):
-            adv_frames = perturbed_frames[i]
+            adv_faces = perturbed_faces[i]
 
             # reclassify perturbed frames using custom models
             predictions[f"custom_{model_name}"] = classify_video_custom(
-                adv_frames, landmarker, ear_analyser
+                adv_faces, landmarker, ear_analyser
             )
 
             # reclassify perturbed frames using classical models
             for target_model_name, target_model in models.items():
                 predictions[
                     f"{model_name}_{target_model_name}"
-                ] = classify_video_classical(adv_frames, target_model)
+                ] = classify_video_classical(adv_faces, target_model)
     else:
         # if video is real, copy predictions
         for model_name in models:

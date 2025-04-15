@@ -6,18 +6,24 @@ import cv2 as cv
 import numpy as np
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
-from tensorflow.keras import Input  # type: ignore
+from tensorflow.keras import Input, Sequential  # type: ignore
 from tensorflow.keras.applications import (  # type: ignore
     VGG19,
     EfficientNetB4,
     ResNet50,
     Xception,
 )
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau  # type: ignore
 from tensorflow.keras.layers import (  # type: ignore
     BatchNormalization,
     Dense,
     Dropout,
     GlobalAveragePooling2D,
+    RandomBrightness,
+    RandomContrast,
+    RandomFlip,
+    RandomRotation,
+    RandomZoom,
 )
 from tensorflow.keras.models import Model, load_model  # type: ignore
 from tensorflow.keras.optimizers import Adam  # type: ignore
@@ -37,13 +43,26 @@ def get_dataset(
     paths: list, labels: list, batch_size: int, target_size: tuple[int, int]
 ) -> tf.data.Dataset:
     """Create a tf.data.Dataset from a list of paths and labels."""
+    augmentations = Sequential([
+        RandomFlip("horizontal"),
+        RandomBrightness(0.1),
+        RandomContrast(0.1),
+        RandomRotation(0.1),
+        RandomZoom(0.1),
+    ])
+
+    def augment(image: tf.Tensor, label: tf.Tensor) -> tuple[tf.Tensor, tf.Tensor]:
+        """Apply augmentations to an image."""
+        image = augmentations(image)
+        return image, label
+
     return tf.data.Dataset.from_generator(
         lambda: image_generator(paths, labels, target_size),
         output_signature=(
             tf.TensorSpec(shape=(target_size[0], target_size[1], 3), dtype=tf.float32), # type: ignore
             tf.TensorSpec(shape=(2,), dtype=tf.float32), # type: ignore
         )
-    ).batch(batch_size).prefetch(tf.data.AUTOTUNE)
+    ).map(augment).batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
 
 # Video Face Manipulation Detection Through Ensemble of CNNs
@@ -124,20 +143,24 @@ def train_detectors(  # noqa: PLR0915
     reals = sorted(map(str, Path(f"{path_to_dataset}real").rglob("*.png")))
     fakes = sorted(map(str, Path(f"{path_to_dataset}fake").rglob("*.png")))
 
-    # group frames by video (100 frames per video)
-    reals = [reals[i : i + 100] for i in range(0, len(reals), 100)]
-    fakes = [fakes[i : i + 100] for i in range(0, len(fakes), 100)]
+    # group frames by video (32 frames per video)
+    reals = [reals[i : i + 32] for i in range(0, len(reals), 32)]
+    fakes = [fakes[i : i + 32] for i in range(0, len(fakes), 32)]
 
     # split videos into train and test sets
     train_reals, test_reals = train_test_split(reals, train_size=0.8, random_state=42)
     train_fakes, test_fakes = train_test_split(fakes, train_size=0.8, random_state=42)
 
+    # flatten the lists
+    train_reals = [frame for video in train_reals for frame in video]
+    test_reals = [frame for video in test_reals for frame in video]
+    train_fakes = [frame for video in train_fakes for frame in video]
+    test_fakes = [frame for video in test_fakes for frame in video]
+
     # combine into train and test data and flatten
     train_data = train_reals + train_fakes
-    train_data = [frame for video in train_data for frame in video]
     train_labels = [1] * len(train_reals) + [0] * len(train_fakes)
     test_data = test_reals + test_fakes
-    test_data = [frame for video in test_data for frame in video]
     test_labels = [1] * len(test_reals) + [0] * len(test_fakes)
 
     # shuffle the data
@@ -154,6 +177,10 @@ def train_detectors(  # noqa: PLR0915
     test_generator = get_dataset(test_data, test_labels, batch_size, (256, 256)) # type: ignore
 
     # train the models
+    callbacks = [
+        EarlyStopping(monitor="val_loss", patience=5, restore_best_weights=True),
+        ReduceLROnPlateau(monitor="val_loss", factor=0.1, patience=3),
+    ]
 
     # check if the models already exist (have been trained)
     print("Checking efficientnet")
@@ -170,7 +197,11 @@ def train_detectors(  # noqa: PLR0915
             metrics=["accuracy"],
         )
         efficientnet.fit(
-            train_generator, epochs=60, validation_data=test_generator, verbose=2
+            train_generator,
+            epochs=100,
+            validation_data=test_generator,
+            verbose=2,
+            callbacks=callbacks,
         )
         efficientnet.save(efficientnet_path)
     else:
@@ -191,7 +222,11 @@ def train_detectors(  # noqa: PLR0915
             metrics=["accuracy"],
         )
         x_ception.fit(
-            train_generator, epochs=60, validation_data=test_generator, verbose=2
+            train_generator,
+            epochs=20,
+            validation_data=test_generator,
+            verbose=2,
+            callbacks=callbacks,
         )
         x_ception.save(xception_path)
     else:
@@ -212,7 +247,11 @@ def train_detectors(  # noqa: PLR0915
             metrics=["accuracy"],
         )
         vgg.fit(
-            train_generator, epochs=20, validation_data=test_generator, verbose=2
+            train_generator,
+            epochs=20,
+            validation_data=test_generator,
+            verbose=2,
+            callbacks=callbacks,
         )
         vgg.save(vgg19_path)
     else:
@@ -231,7 +270,11 @@ def train_detectors(  # noqa: PLR0915
             metrics=["accuracy"],
         )
         resnet.fit(
-            train_generator, epochs=20, validation_data=test_generator, verbose=2
+            train_generator,
+            epochs=20,
+            validation_data=test_generator,
+            verbose=2,
+            callbacks=callbacks,
         )
         resnet.save(resnet_path)
     else:
@@ -262,7 +305,7 @@ def test() -> None:
     video_sample = random.sample(videos, 10)
 
     # trackers
-    num_frames = 0
+    total_frames = 0
     resnet_correct, xception_correct, efficientnet_correct, vgg19_correct = 0, 0, 0, 0
 
     for video in video_sample:
@@ -295,13 +338,13 @@ def test() -> None:
                 efficientnet_correct += 1
             if pred_vgg19 == truth:
                 vgg19_correct += 1
-            num_frames += 1
+            total_frames += 1
         cap.release()
 
-    print(f"ResNet50: {resnet_correct / num_frames * 100:.2f}%")
-    print(f"Xception: {xception_correct / num_frames * 100:.2f}%")
-    print(f"EfficientNet: {efficientnet_correct / num_frames * 100:.2f}%")
-    print(f"VGG19: {vgg19_correct / num_frames * 100:.2f}%")
+    print(f"ResNet50: {resnet_correct / total_frames * 100:.2f}%")
+    print(f"Xception: {xception_correct / total_frames * 100:.2f}%")
+    print(f"EfficientNet: {efficientnet_correct / total_frames * 100:.2f}%")
+    print(f"VGG19: {vgg19_correct / total_frames * 100:.2f}%")
     print("Done :)")
 
 if __name__ == "__main__":

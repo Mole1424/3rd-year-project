@@ -644,22 +644,19 @@ class EyeLandmarker:
         )
         self.mtcnn = MTCNN("face_detection_only", "GPU:0")
 
-    def get_landmarks(self, video: np.ndarray) -> list[np.ndarray]:
+    def get_landmarks(self, faces: np.ndarray) -> np.ndarray:
         """Gets landmarks from the video using either HRNet or PFLD backbone."""
-        if len(video) == 0:
-            return []
-
-        # get faces from video
-        face_crops, face_crop_vals, num_faces_per_frame = self._faces_from_video(video)
+        if len(faces) == 0:
+            return np.array([])
 
         multi_landmarks = []
 
         # pfld is smaller so can handle larger batch sizes
         batch_size = 128 if self.model_name == "hrnet" else 256
 
-        for i in range(0, len(face_crops), batch_size):
+        for i in range(0, len(faces), batch_size):
             # get the batch
-            batch = face_crops[i : i + batch_size]
+            batch = faces[i : i + batch_size]
             batch = tf.convert_to_tensor(batch, dtype=tf.float32)
 
             # get predictions
@@ -672,7 +669,7 @@ class EyeLandmarker:
                 # HRNet outputs heatmaps.
                 heatmaps = predictions
                 heatmap_size = heatmaps.shape[1:3]
-                for idx, (x, y, w, h) in enumerate(face_crop_vals[i : i + batch_size]):
+                for idx in range(len(batch)):
                     heatmap = heatmaps[idx]
                     # get eye landmarks from heatmaps
                     landmarks = [
@@ -685,109 +682,15 @@ class EyeLandmarker:
                         / np.array(heatmap_size)
                         * np.array(self.cropped_image_size)
                     )
-                    # crop space to image space
-                    landmarks = (
-                        np.array([x, y]) + landmarks * np.array([w, h])
-                        / np.array(self.cropped_image_size)
-                    )
                     multi_landmarks.append(landmarks)
             else:
-                # PFLD outputs direct landmark coordinates in crop space.
-                for idx, (x, y, w, h) in enumerate(face_crop_vals[i : i + batch_size]):
+                # PFLD outputs direct landmark coordinates
+                multi_landmarks.extend(
                     # get eye landmarks from predictions
-                    landmarks = predictions[idx][36:48]
-                    # crop space to image space
-                    landmarks = (
-                        np.array([x, y]) + landmarks * np.array([w, h])
-                        / np.array(self.cropped_image_size)
-                    )
-                    multi_landmarks.append(landmarks)
-
-        # Group landmarks per frame
-        landmarks_per_frame = []
-        idx = 0
-        for num_faces in num_faces_per_frame:
-            landmarks_per_frame.append(multi_landmarks[idx : idx + num_faces])
-            idx += num_faces
-
-        # # draw landmarks on the frame and save to file
-        # for i, frame in enumerate(video):
-        #     for landmarks in landmarks_per_frame[i]:
-        #         for landmark in landmarks:
-        #             x, y = int(landmark[0]), int(landmark[1])
-        #             cv.circle(frame, (x, y), 2, (0, 255, 0), -1)
-        #     cv.imwrite(f"test-frames/frame_{i}.jpg", frame)
-
-        return landmarks_per_frame
-
-
-    def _faces_from_video(
-        self, video: np.ndarray
-    ) -> tuple[np.ndarray, list[list[int]], list[int]]:
-        """Gets faces from the video"""
-
-        face_crop_vals = [] # the x, y, w, h of the face crop
-        face_crops = [] # the actual face crops
-        num_faces_per_frame = []
-
-        # set the input size for yunet
-        self.yunet.setInputSize((video[0].shape[1], video[0].shape[0]))
-
-        frames = list(video)
-
-        faces_per_frame = [None] * len(frames)
-        mtcnn_indices = [] # indices of frames where mtcnn is needed
-        mtcnn_frames = [] # frames where mtcnn is needed
-
-        for i, frame in enumerate(frames):
-            # attempt to detect faces with yunet
-            _, faces = self.yunet.detect(frame)
-
-            if faces is not None:
-                # if face is detected, add to lists
-                face_list = []
-                for face in faces:
-                    x, y, w, h = map(int, face[:4])
-                    # put in dict to align with mtcnn output
-                    face_list.append({"box": [x, y, w, h]})
-                faces_per_frame[i] = face_list # type: ignore
-            else:
-                # otherwise, tag to use mtcnn
-                mtcnn_indices.append(i)
-                mtcnn_frames.append(frame)
-
-        if mtcnn_frames:
-            batch_size = 8 # batch mtcnn for speed
-            for i in range(0, len(mtcnn_frames), batch_size):
-                batch_frames = mtcnn_frames[i : i + batch_size]
-                mtcnn_results = self.mtcnn.detect_faces(batch_frames)
-
-                # add mtcnn results to list
-                for j, result in enumerate(mtcnn_results): # type: ignore
-                    frame_idx = mtcnn_indices[i + j]
-                    faces_per_frame[frame_idx] = result
-
-        # create face crops
-        for i, faces in enumerate(faces_per_frame):
-            if faces is None:
-                faces = []  # noqa: PLW2901
-            num_faces_per_frame.append(len(faces))
-            for face in faces:
-                x, y, w, h = face["box"]
-                # clip face to frame
-                x = max(0, x)
-                y = max(0, y)
-                w = min(frames[i].shape[1] - x, w)
-                h = min(frames[i].shape[0] - y, h)
-                face_crop = cv.resize(
-                    frames[i][y : y + h, x : x + w], self.cropped_image_size
+                    predictions[idx][36:48] for idx in range(len(batch))
                 )
-                face_crops.append(face_crop)
-                face_crop_vals.append((x, y, w, h))
 
-        return np.array(face_crops), face_crop_vals, num_faces_per_frame
-
-
+        return np.array(multi_landmarks)
 
     def _heatmap_to_landmark(self, heatmap: np.ndarray) -> np.ndarray:
         """converts a heatmap to a landmark with refinement from CoM7"""
