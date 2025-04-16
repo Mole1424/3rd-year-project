@@ -6,7 +6,7 @@ import cv2 as cv
 import numpy as np
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
-from tensorflow.keras import Input, Sequential  # type: ignore
+from tensorflow.keras import Input  # type: ignore
 from tensorflow.keras.applications import (  # type: ignore
     VGG19,
     EfficientNetB4,
@@ -19,11 +19,6 @@ from tensorflow.keras.layers import (  # type: ignore
     Dense,
     Dropout,
     GlobalAveragePooling2D,
-    RandomBrightness,
-    RandomContrast,
-    RandomFlip,
-    RandomRotation,
-    RandomZoom,
 )
 from tensorflow.keras.models import Model, load_model  # type: ignore
 from tensorflow.keras.optimizers import Adam  # type: ignore
@@ -43,26 +38,13 @@ def get_dataset(
     paths: list, labels: list, batch_size: int, target_size: tuple[int, int]
 ) -> tf.data.Dataset:
     """Create a tf.data.Dataset from a list of paths and labels."""
-    augmentations = Sequential([
-        RandomFlip("horizontal"),
-        RandomBrightness(0.1),
-        RandomContrast(0.1),
-        RandomRotation(0.1),
-        RandomZoom(0.1),
-    ])
-
-    def augment(image: tf.Tensor, label: tf.Tensor) -> tuple[tf.Tensor, tf.Tensor]:
-        """Apply augmentations to an image."""
-        image = augmentations(image)
-        return image, label
-
     return tf.data.Dataset.from_generator(
         lambda: image_generator(paths, labels, target_size),
         output_signature=(
             tf.TensorSpec(shape=(target_size[0], target_size[1], 3), dtype=tf.float32), # type: ignore
             tf.TensorSpec(shape=(2,), dtype=tf.float32), # type: ignore
         )
-    ).map(augment).batch(batch_size).prefetch(tf.data.AUTOTUNE)
+    ).batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
 
 # Video Face Manipulation Detection Through Ensemble of CNNs

@@ -281,8 +281,8 @@ def get_faces_from_video(frames: np.ndarray) -> np.ndarray:
     device = "GPU:0" if tf.config.list_physical_devices("GPU") else "CPU:0"
     mtcnn = MTCNN("face_detection_only", device)
 
-    faces = []
-    faces_per_frame = [np.ndarray([])] * len(frames)
+    faces = [] # main face in each frame
+    faces_per_frame = [np.ndarray([])] * len(frames) # faces within each frame
     mtcnn_indices = [] # indices of frames where mtcnn is needed
     mtcnn_frames = [] # frames where mtcnn is needed
 
