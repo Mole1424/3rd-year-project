@@ -122,7 +122,7 @@ A CNN is a sequence of three layers: convolution layers, pooling layers, and a f
 
 \begin{itemize}
     \item \textbf{Convolutional Layer}\\
-    A Convolutional Layer is what a CNN lends its name to. It has two stages. The first stage is a filtering stage where a kernel (matrix) is passed over the input. The kernel is placed over the input and the dot product between the values in the kernel and the values in the input are calculated. This then becomes the output. The kernel is then shifted over by a fixed stride value to analyse another set of the input. This process is shown in Figure \ref{fig:filter}. The values (or weights) of each filter remain constant as it moves across the image, there can also be many filters, increasing the dimension of an input. These values are what are learned by this layer, by reducing the values to be trained to the size of the filter, this significantly speeds up the training process. Often some form of activation layer will be included to process the output array, more often than not, this uses the Rectified Linear Unit (ReLU) function, to limit outputs to strictly positive in order to introduce linerarity and prevent the vanishing gradient problem (a hindrance to learning)\cite{ibmconvolutional}.
+    A Convolutional Layer is what a CNN lends its name to. It has two stages. The first stage is a filtering stage where a kernel (sometimes called a filter) is passed over the input. The kernel is placed over the input and the dot product between the values in the kernel and the values in the input are calculated. This then becomes the output. The kernel is then shifted over by a fixed stride value to analyse another set of the input. This process is shown in Figure \ref{fig:filter}. The values (or weights) of each filter remain constant as it moves across the image, there can also be many filters, increasing the dimension of an input. These values are what are learned by this layer, by reducing the values to be trained to the size of the filter, this significantly speeds up the training process. Often some form of activation layer will be included to process the output array, more often than not, this uses the Rectified Linear Unit (ReLU) function, to limit outputs to strictly positive in order to introduce linerarity and prevent the vanishing gradient problem (a hindrance to learning)\cite{ibmconvolutional}.
     \begin{figure}[h]
         \centering
         \includegraphics[width=0.5\linewidth]{dissertation//figures/cnn-filter.png}
@@ -134,7 +134,7 @@ A CNN is a sequence of three layers: convolution layers, pooling layers, and a f
     The Pooling Layer is similar downsampling layer to the convolution layer but with no learnable parameters. Instead of a weighted kernel an aggregation function pools multiple values into a single one\cite{o2015introduction}. Any function could be used but the most common ones are: max pooling where the maximum value under the kernel is selected; or average pooling where the average of all the values is chosen. Pooling layers further reduce the numbers of learning parameters: reducing the tendency for overfitting, the model complexity, and computation time\cite{ibmconvolutional}.
 
     \item \textbf{Dense Layer}\\
-    To produce an output that is usable a final dense layer is needed to convert the output of the previous layers into a desired shape. This is an fully connected MLP network.
+    To produce an output that is usable a final dense layer is needed to convert the output of the previous layers into a desired shape. This is an fully connected MLP network. Often these will be referred to as either dense or fully connected layers.
 \end{itemize}
 
 A sequence of these layers are then combined to produce a network. The exact sequence and order is defined by the network architect and depends on the level of quality of output they want. More layers means a higher probable accuracy but incurs increased computation and tendency overfit. Further techniques exist to enhance CNNs such as skip connections which results in the outputs of layers to ``skip" forward layers and act as the input for layers further down the network. An example of a CNN to classify images is shown in Figure \ref{fig:sample-cnn}:
@@ -319,7 +319,7 @@ CNN detection works by pixel level analysis on the images. Due to the nature of 
 \begin{figure}[h]
     \centering
     \includegraphics[width=0.5\linewidth]{dissertation//figures/attention-cnns.png}
-    \caption{Output from attention layers of convolutional neural networks on DeepFake detection}
+    \caption{Output from attention layers of convolutional neural networks on DeepFake detection {\huge citation needed}}
     \label{fig:attention}
 \end{figure}
 
