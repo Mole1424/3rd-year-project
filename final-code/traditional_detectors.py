@@ -247,7 +247,7 @@ def train_detectors(  # noqa: PLR0915
         print("Training resnet50")
         resnet = resnet50()
         resnet.compile(
-            optimizer=Adam(),
+            optimizer=Adam(learning_rate=1e-5, beta_1=0.9, beta_2=0.999, epsilon=1e-7),
             loss="categorical_crossentropy",
             metrics=["accuracy"],
         )
