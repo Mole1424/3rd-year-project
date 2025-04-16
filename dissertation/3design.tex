@@ -1,7 +1,7 @@
 \chapter{Design \& Implementation}
 \label{ch:design-implementation}
 
-\section{Language \& Libraries}
+\section{Language \& Machine Learning Framework}
 
 % \begin{itemize}
 %     \item Python as pre-existing machine learning frameworks
@@ -49,7 +49,8 @@ The overall architecture of blink-based DeepFake detection is relatively simple.
     \caption{Overall architecture of a blink-based DeepFake detector}
     \label{alg:blink-based}
     \begin{algorithmic}
-        \State{ears $\gets$ \{\}}
+        \Require video
+        \State ears $\gets$ \{\}
         \For{frame $\in$ video}
             \State landmarks $\gets$ \textsc{GetLandmarks}(frame)
             \State ear $\gets$ \textsc{CalculateEAR}(landmarks)
@@ -83,6 +84,47 @@ The main DeepFake detection algorithm is similar to the one discussed in the pro
 
 To improve resiliency against adversarial noise attacks, the entire algorithm is fail negative. If any section of the algorithm were to fail then the video would be deemed a fake. For example, if no facial landmarks are detected in a frame, then the video is declared fake.
 
+\subsection{Face cropping}
+\label{sec:face-cropping}
+
+One common feature across all DeepFake detection and facial landmarking models is that they perform best when the face being analyses fills the entire frame, because background information is irrelevant and can disrupt the model. As such, it is incredibly useful to have a preprocessing step which crops a frame to just the faces in the frame using a face detector model. 
+
+One of the most efficient models available is YuNet\cite{wu2023yunet}. YuNet is designed to run in real time (approximately 1 millisecond per frame) on a CPU, whilst retaining a high degree of accuracy. It only contains 75,856 parameters, with many models requiring fifty times more parameters to reach similar levels of accuracy. More parameters means longer computation times, which was deemed unacceptable for a model designed to run on edge devices. With neural networks, quicker computation times often come at the expense of reduced accuracy; whilst this is still the case with YuNet, it still achieves ``similar accuracy to other small models" on standardised benchmarks. OpenCV contains an implementation of YuNet for use in Python\cite{yunetpyton}.
+
+A more accurate CNN for detecting faces is Multitask Cascaded Convolutional Networks (MTCNN)\cite{zhang2016joint}. MTCNN is more accurate, achieving 0.851 mean average precision on benchmarks, compared to YuNet's 0.836. The accuracy comes with a significant speed decrease. Where YuNet takes one millisecond per frame, MTCNN takes ten milliseconds. The MTCNN library\cite{centeno2024mtcnn} is a popular Python implementation of MTCNN.
+
+To attain the optimal combination of speed and accuracy both YuNet and MTCNN are used to identify faces in a video. An initial pass on all frames is done via YuNet, if no faces are found in a frame then MTCNN is used to identify the faces. To improve the performance of MTCNN, faces are processed in batches of 8. It was noted during testing that when exposed to adversarial noise, YuNet was prone to miss faces, as such the confidence YuNet required to mark a face was reduced from 0.9 to 0.7. Only the primary face in each frame is used, for the first frame this is taken as the face with highest confidence from the model, for subsequent frames it is the face with the smallest euclidean distance between the vertices of the bounding box. 
+
+\begin{algorithm}
+    \caption{The method for cropping faces from a video}
+    \label{alg:face-detection}
+    \begin{algorithmic}
+        \Require video
+        \State faces\_per\_frame $\gets$ \{\}
+        \For{frame $\in$ video}
+            \State faces\_coords $\gets$ \textsc{Yunet}(frame)
+            \If{faces\_coords $\neq$ \{\}}
+                \State \textsc{Append}(faces\_per\_frame, face\_coords)
+            \Else
+                \State faces\_coords $\gets$ \textsc{MTCNN}(frame)
+                \State \textsc{Append}(faces\_per\_frame, face\_coords) \Comment{Will deliberately append empty set if no faces}
+            \EndIf
+        \EndFor
+        \State faces $\gets$ \{\}
+        \State previous\_face $\gets$ \{\}
+        \For{frame\_faces$\in$ faces\_per\_frame}
+            \State best\_face $\gets$ \{\}
+            \If{previous\_face $=$ \{\}}
+                \State best\_face $\gets$ frame\_faces[0]
+            \Else
+                \State best\_face $\gets$ \textsc{MinimumDistance}(frame\_faces,previous\_face)
+            \EndIf
+            \State previous\_face $\gets$ best\_face
+            \State \textsc{Append}(faces, best\_face)
+        \EndFor
+    \end{algorithmic}
+\end{algorithm}
+
 \subsection{Eye Landmark Detection}
 
 % \begin{itemize}
@@ -93,16 +135,6 @@ To improve resiliency against adversarial noise attacks, the entire algorithm is
 % \end{itemize}
 
 To determine the EAR in a specific frame, the six landmarks around each eye need to be located. There are a large number of Python packages which come with facial landmarking features, unfortunately most of these are unsuitable for use in a state of the art detector as they are insufficiently accurate. The models included in packages are either compressed for ease of distribution or optimised to run on devices with reduced computational capabilities. 
-
-\subsubsection{Face cropping}
-
-One common feature across all facial landmarking models is that they perform best when the face being landmarked fills the entire frame. As such, it is incredibly useful to have a preprocessing step which crops a frame to just the faces in the frame using a face detector model. 
-
-One of the most efficient models available is YuNet\cite{wu2023yunet}. YuNet is designed to run in real time (approximately 1 millisecond per frame) on a CPU, whilst retaining a high degree of accuracy. It only contains 75,856 parameters, with many models requiring fifty times more parameters to reach similar levels of accuracy. More parameters means longer computation times, which was deemed unacceptable for a model designed to run on edge devices. With neural networks, quicker computation times often come at the expense of reduced accuracy; whilst this is still the case with YuNet, it still achieves ``similar accuracy to other small models" on standardised benchmarks. OpenCV contains an implementation of YuNet for use in Python\cite{yunetpyton}.
-
-A more accurate CNN for detecting faces is Multitask Cascaded Convolutional Networks (MTCNN)\cite{zhang2016joint}. MTCNN is more accurate, achieving 0.851 mean average precision on benchmarks, compared to YuNet's 0.836. The accuracy comes with a significant speed decrease. Where YuNet takes one millisecond per frame, MTCNN takes ten milliseconds. The MTCNN library\cite{centeno2024mtcnn} is a popular Python implementation of MTCNN.
-
-To attain the optimal combination of speed and accuracy both YuNet and MTCNN are used to identify faces in a video. An initial pass on all frames is done via YuNet, if no faces are found in a frame then MTCNN is used to identify the faces. To improve the performance of MTCNN, faces are processed in batches of 8. It was noted during testing that when exposed to adversarial noise, YuNet was prone to miss faces, as such the confidence YuNet required to mark a face was reduced from 0.9 to 0.7.
 
 \subsubsection{Weakly Supervised Eye Landmarks Detection}
 
@@ -159,41 +191,163 @@ The facial landmark detection is a common problem in machine learning. The vast 
 
 The most implemented facial landmark detector on PapersWithCode is High-Resolution Network (HRNet)\cite{sun2019high}. HRNet is actually a proposal for a novel architecture of CNNs that has applications in many fields and one of those fields is facial landmarking.
 
-HRNet's novel contribution is parallel fusion blocks 
+HRNet's novel contribution is CNNs working in parallel. Typical CNNs have one layer following another, whilst HRNet contains multiple CNNs in parallel, each working at a different resolution over the image. Similar to a CNN, the network gradually introduces lower and lower resolution layers to focus on more generic features, but at all times keeps the higher resolution layers in context which can refine their feature predictions based on the input from more lower level feature predictions. Lower resolution layers are connected to higher resolution layers through fusion layers which either upsample or downsample the feature predictions using either a CNN for downsampling or a bilinear for upsampling. An overview of the architecture for a HRNet is shown in Figure \ref{fig:hrnet-diagram}.
 
-\subsubsection{PFLD}
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=1\linewidth]{dissertation//figures/hrnet-network.png}
+    \caption{A generic network diagram for a High-Resolution Network\cite{sun2019high}}
+    \label{fig:hrnet-diagram}
+\end{figure}
 
-\begin{itemize}
-    \item speedy boi
-    \item uses mobilenet-techniques to reduce the size and increase the speed
-    \item still accurate tho
-    \item secret sauce is custom loss function
-\end{itemize}
+Whilst HRNet is a generic architecture, it has been applied with great effect to facial landmarking. Such an implementation has been made open source in HRNet's official GitHub repository\cite{zhao2019facial} which details the specific architecture used of HRNet uses for facial landmarking. Similar to Figure \ref{fig:hrnet-diagram}, the network consists of four distinct modules, with each module containing four convolutional layers. Each module introduces one additional parallel network. Each layer consists of 18, 36, 72, and 144 filters respectively.
+
+Instead of a set of coordinates for landmarks, the output of HRNet is a heatmap of the likely locations of a landmark with the peak of the heatmap being the most probable location (Figure \ref{fig:hrnet-output}. As such the location of the maximal value of the heatmap can be taken as the final location of a landmark. Whilst a simple version would be to simply take the index of the maximal value in the array, this neglects the possibility of the landmark being in the subpixel domain. The output heatmap is relatively low resolution ($64\times64$) and so it is highly likely the peak is within a subpixel. The problem has been research by Fisher et al.\cite{fisher1996comparison}. The most accurate algorithm proposed is Centre of Mass 7 (CoM7) which assumes the heatmap follows a Gaussian distribution and can therefore be estimated using a weighted average as shown through Equation \ref{eq:com7}. Firstly, the coordinates of the maximal value are computed and stored as $x,y$. Six values on either side of the maximal value are retrieved ($f(x)$). The original equation assumes one dimension, but it can be expanded to two by performing the calculation twice, one for $x$ and one for $y$.
+
+\begin{figure}[h]
+    \centering
+    \begin{subfigure}{0.25\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{dissertation/figures/hrnet-single.png}
+        \caption{The heatmap for a single landmark}
+        \label{fig:hrnet-single}
+    \end{subfigure}
+    \hspace{3cm}
+    \begin{subfigure}{0.25\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{dissertation/figures/hrnet-multiple.png}
+        \caption{The heatmap for all facial landmarks}
+        \label{fig:hrnet-multiple}
+    \end{subfigure}
+    \caption{The heatmap outputs of HRNet}
+    \label{fig:hrnet-output}
+\end{figure}
+
+\begin{equation}
+    \label{eq:com7}
+    \hat{x} = \frac{3f(x+3)+2f(x+2)+f(x+1)-f(x-1)-2f(x-2)-3f(x-3)}{f(x+3)+f(x+2)+f(x+1)+f(x)+f(x-1)+f(x-2)+f(x-3)}
+\end{equation}
+
+HRNet achieves state of the art performance on facial landmarking datasets. It is currently ranked in the top 25 on a variety of datasets by the PapersWithCode\cite{paperswithcodehrnet}. As there are multiple CNNs working in parallel, HRNet is often slower than a CNN on equivalent tasks. When trained, HRNet operates at approximately 30 frames per second when run on an RTX3060ti. As such, HRNet is not viable for real time computation on edge devices but can be used for detection on powerful machines.
+
+When training, the ground truth heatmap was generated by centring Gaussian noise with a $\sigma=1.5$ on the true landmark, all other values in the heatmap were set to 0. Following the HRNet code\cite{zhao2019facial}, each heatmap was $64\times64$. To align with the inputs for all the other models used in this project, the input was scaled up from $112\times112$ to $256\times256$. The model was trained for 60 epochs with mean squared error as the loss and the Adam\cite{kingma2014adam} optimiser.
+
+
+\subsubsection{Practical Facial Landmark Detector}
+
+% \begin{itemize}
+%     \item speedy boi
+%     \item uses mobilenet-techniques to reduce the size and increase the speed
+%     \item still accurate tho
+%     \item secret sauce is custom loss function
+% \end{itemize}
+
+A Practical Facial Landmark Detector (PFLD)\cite{guo2019pfld} is an accurate landmarker that is primarily designed for speed. Developed to run on edge devices such as phones, the model can achieve speeds of 150 frames per second on some phones with a minimal reduction in accuracy.
+
+The architecture of PFLD is more a similar to a traditional CNN: a backbone that leads into a number of dense layers which produce the final classification. PFLD uses the MobileNet backbone\cite{howard2017mobilenets} for feature extraction. MobileNet is a lightweight neural network specifically designed to be as small and as fast as possible, similar to the ideals of PFLD. 
+
+MobileNet is built upon depthwise separable convolutions. A traditional convolutional layer will analyse every channel of an input (such as the red, green, and blue channels in an image) at once, combining them in a single step, for every pixel in an image. A depthwise separable convolution layer instead analyses each input channel independently, and then combines them afterwards. This vastly reduces the computation required as learnable parameters are separated from each other in different stages, as such when combined over larger images the parameters combine linearly rather than exponentially, reducing computation costs. 
+
+Bottlenecks further speed-up MobileNet by reducing the dimensions of feature vectors. As data flows through a traditional CNN it can reach into a large number of dimensions, bottlenecks reduce the dimensions of a neural network which exponentially increase the network's speed. Bottlenecks reduce the dimension by having fewer neurons than the layer before it, forcing data to be aggregated and hence reducing complexity.
+
+MobileNet also comes with a width hyperparameter that can further narrow down a network, increasing speed at the expense of accuracy. For this project, accuracy is more important than speed so only the most accurate MobileNet model is used, as such the width parameter is set to $1\times$. 
+
+PFLD also includes an auxiliary network that is only used for training. To improve accuracy in a small network, PFLD uses a custom loss function which requires the pitch, yaw, and roll of a face. Whilst these could be calculated from the landmarks produced by the PFLD network, during the early stages, this is very inaccurate and can cause the model learning to stall. The auxiliary network picks up from an intermediary layer midway through the main backbone and outputs three values which are the pitch, yaw, roll.
+
+The overall main backbone is taken from the a PyTorch implementation\cite{zhao2019pfld} but with header from a TensorFlow fork\cite{qi2019pfld} to align with the number of facial landmarks required.
+ 
+{\huge need to add own PFLD network diagram}
+
+One of the key contributions to PFLD's accuracy is a custom loss function. A typical facial landmarking model will use some form of distance metric for the loss function. These can only be done in two dimensions, neglecting geometric and structural information. For example, the more you turn your head with respect to a camera, the closer your eyes will appear to the camera despite them remaining the same distant apart in three dimensional space. Whilst large scale models can get away with using conventional loss functions and brute force their way the inconsistencies, smaller models cannot. To take into account geometrical information, PFLD uses the pitch, yaw, and roll of a face from the auxiliary network to compute the following loss function:
+
+\begin{equation}
+    L =\sum^N_{n=1}\left(\sum^C_{c=1}\omega^c_n\sum^K_{k=1}(1-\cos{\theta^k_n})\right) ||d_n||^2_2
+\end{equation}
+
+$n$ represents the $n^\text{th}$ of $N$ landmarks. $C$ and $\omega$ are weighting parameters to equalise datasets. The dataset is divided into $C$ classes. A number of classes are proposed, but these require augmenting the dataset with hand labelled, as this is an individual project and some facial landmark datasets contain over 10,000 images (Section \ref{sec:face-datasets}) these weights are omitted. The primary weighting parameter is $\theta^1, \theta^2,\theta^3$ which represent the difference the difference between the estimated and truth pitch, yaw, and roll respectively. As the delta goes up, so does the penalisation allowing the model to compensate for large deviations in head poses. Finally, L2 loss ($||d_n||^2_2$) is used as the primary loss component that is then weighted by the previous factors. 
+
+To find the ground truth angles of the face, the Perspective-n-Point algorithm\cite{mallick2016head}\cite{hou2018face} maps sample points in three dimensions to two dimensions on the face, from which the facial angles can be calculated. The model was trained for 500 epochs following the PyTorch implementation\cite{zhang2016joint} using the Adam\cite{kingma2014adam} optimiser.
 
 \subsubsection{Facial Landmark Datasets}
 \label{sec:face-datasets}
 
-\begin{itemize}
-    \item 68 landmarks (upsampling and downsampling where necessary)
-    \item list all of them and give brief overview
-    \item didnt use aflw due to inaccurate landmarks or not enough landmarks
-    \item reflected to double size
-\end{itemize}
+% \begin{itemize}
+%     \item 68 landmarks (upsampling and downsampling where necessary)
+%     \item list all of them and give brief overview
+%     \item didnt use aflw due to inaccurate landmarks or not enough landmarks
+%     \item reflected to double size
+% \end{itemize}
 
-\subsubsection{Final model choice}
+Similar to DeepFake detection (Section \ref{sec:datasets}), large numbers of faces have been pulled from the internet and hand labelled to enable the training and comparison of accurate facial landmarking models. The precise number of landmarks varies but the standard is 68 with some datasets labelling more landmarks, acting as a superset. 68 landmarks was used for this project as only the six eye landmarks for calculating the EAR are useful and the 68 landmarks is the smallest standardised size that covers all of them. Reducing the number of outputs significantly speeds up the model as less nodes are required to be trained. Where a model used more than 68 landmarks, a mapping was made from the model's landmarks to the main 68 and the rest of the landmarks were discarded.
 
-Yunet + PFLD, then MTCNN and HRNET as backup (hope ear analysis can filter out idiosyncrasies of the model as will be consistent across real and fake)
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.5\linewidth]{dissertation//figures/facial-landmarks.jpg}
+    \caption{68 facial landmarks}
+    \label{fig:facial-landarks}
+\end{figure}
 
-\subsection{EAR Analysis}
+A variety of datasets were chosen with the primary aim to include a wide variety of facial poses, environmental factors, and occlusions. Increasing the variety of data allows for the model to learn in more challenging scenarios and hopefully become more robust.
 
-\begin{itemize}
-    \item Can be abstracted to a univariate time series
-    \item Well researched
-    \item Classical methods exists (pyts library)
-    \item explain each one and give simple summary (1 paragraph)
-    \item As do deep learning frameworks (the other papers)
-    \item model diagrams for each one (maybe give a rough explenation as to the aims each one is doing?)
-\end{itemize}
+The following datasets were used: 300W\cite{sagonas2016300}\cite{sagonas2013300}\cite{sagonas2013semi}, Labelled Face Parts in the Wild (LFPW)\cite{belhumeur2013localizing}\cite{mondal2021lfpw}, Caltech Occluded Faces in the Wild (COFW)\cite{burgos2022caltech}, Annotated Faces in the Wild\cite{zhu2012face}, HELEN\cite{le2012interactive}, and Wider Facial Landmarks in the Wild (WFLW)\cite{wayne2018lab}.
+
+In total these contain 11,495 labelled images. A common method of augmenting the dataset is to flip the images horizontally, which increases the dataset to 22,990 image. Data is scraped from a variety of imaging sites such as Flickr\footnote{\url{https://www.flickr.com/}}, Google\footnote{\url{https://images.google.co.uk/}}, and Yahoo!\footnote{\url{https://images.search.yahoo.com/}}. The dataset is very comprehensive covering a wide variety of individual characteristics like age, gender, and race. Environmental factors are also covered such as lighting, whether the photo was taken outside or inside. 
+Two datasets (COFW and WFLW) were specifically chosen for their coverage of facial occlusions. Occlusions are where certain landmarks are obstructed from the view of the camera, for example sun glasses blocking eyes and hair obscuring one side of the face. Some examples of occlusions are shown in Figure \ref{fig:occlusions}.
+
+\begin{figure}[h]
+    \centering
+    \begin{subfigure}{0.45\textwidth}
+        \includegraphics[width=1\linewidth]{dissertation//figures/shadow.jpg}
+        \caption{A face occluded by shadow}
+        \label{fig:occlusion-shadow}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.45\textwidth}
+        \includegraphics[width=1\linewidth]{dissertation//figures/occlusion-mask.jpg}
+        \caption{A face occluded by a mask}
+        \label{fig:occlusion:mask}
+    \end{subfigure}
+    \caption{Faces that have been partially occluded}
+    \label{fig:occlusions}
+\end{figure}
+
+As explained in Section \ref{sec:face-cropping}, landmarking models benefit from faces filling the majority of images. To account for this, when training, the images are cropped to the facial region. This region is defined as the area bounded by the ground truth eye landmarks with 2\% padding on each side.
+
+\subsection{Eye Aspect Ratio Analysis}
+
+% \begin{itemize}
+%     \item Can be abstracted to a univariate time series
+%     \item Well researched
+%     \item Classical methods exists (pyts library)
+%     \item explain each one and give simple summary (1 paragraph)
+%     \item As do deep learning frameworks (the other papers)
+%     \item model diagrams for each one (maybe give a rough explanation as to the aims each one is doing?)
+% \end{itemize}
+
+With the eye landmarks located and the EAR calculated for each frame, the result is an EAR-time graph (Figure \ref{fig:real-ear-graph}). Existing blink-based DeepFake detectors will extract features from the graph such as frequency and period. A novel approach from this project is to use the entire EAR graph for analysis by abstracting the problem into univariate time series classification.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.5\linewidth]{dissertation/figures/real-ear-graph.png}
+    \caption{A sample graph of EAR over frame of video}
+    \label{fig:real-ear-graph}
+\end{figure}
+
+A univariate time series is a single point of data that varies over time. A large amount of research has been dome into time series due to their frequent appearance in statistical models. Traditionally machine learning models struggle with temporal structures seen in time series but over time reliable methods have been developed. A comprehensive overview of state of the art time series algorithms for time series classification has been provided Johann Faouzi\cite{faouzi2024time}.
+
+\subsubsection{K-Nearest Neighbours with Dynamic Time Warping}
+
+K-Nearest Neighbours (k-NN) is a common algorithm for classification problems. Points are plotted in $n$ dimensional space
+
+\subsubsection{Learning Shapelets}
+
+\subsubsection{Time Series Forest}
+
+\subsubsection{Time Series Bag-of-Features}
+
+\subsubsection{Neural Networks}
+
+\subsubsection{Implementation}
 
 \section{Adversarial Noise}
 
