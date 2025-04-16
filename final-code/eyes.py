@@ -638,12 +638,6 @@ class EyeLandmarker:
             )
             self.model_name = "pfld"
 
-        # initialise the face detectors
-        self.yunet = cv.FaceDetectorYN().create(
-            "face_detection_yunet_2023mar.onnx", "", (1920, 1080), 0.7
-        )
-        self.mtcnn = MTCNN("face_detection_only", "GPU:0")
-
     def get_landmarks(self, faces: np.ndarray) -> np.ndarray:
         """Gets landmarks from the video using either HRNet or PFLD backbone."""
         if len(faces) == 0:
