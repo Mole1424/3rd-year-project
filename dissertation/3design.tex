@@ -337,13 +337,96 @@ A univariate time series is a single point of data that varies over time. A larg
 
 \subsubsection{K-Nearest Neighbours with Dynamic Time Warping}
 
-K-Nearest Neighbours (k-NN) is a common algorithm for classification problems. Points are plotted in $n$ dimensional space
+K-Nearest Neighbours (k-NN) is a common algorithm for classification problems. Known training data is plotted in $n$-dimensional space where $n$ is the number of points of data. A new piece of data is classified by plotting it in the same space and determining which points it is ``nearest". The $k$ nearest neighbours' classification is checked and the majority classification is set as the classification for the new point. The metric for how ``near" one point is to another is a hyperparameter along with the value of $k$.
+
+Euclidean distance is the most common algorithm for k-NN classifiers\cite{faouzi2024time} but it cannot be readily applied to time series. Each point in the time series would be compared independently by Euclidean distance which would throw away valuable temporal data. For example, with speech recognition where one sentence is spoken slower than another, the two time series would represent the same data but be far apart via Euclidean distance due to the time discrepancy.
+
+
+The common solution is Dynamic Time Warping\cite{sakoe1978dynamic}. DTW is programmatically defined in Algorithm \ref{alg:dtw}. A cost matrix is computed which has dimensions of the two time series being compared. For every value in the matrix, the cost is computed as the squared delta of the two values. A warped path is then constructed through the matrix starting at 0,0 and ending in the opposite corner. This path is constructed as the path that has minimum cost across the matrix whilst only moving towards the goal. The total cost of the path is the sum of all the cells it crosses through. The problem can be optimised with dynamic programming as shown in Algorithm \ref{alg:dtw}.
+
+\begin{algorithm}
+    \caption{Dyanmic Time Warping algorithm}
+    \label{alg:dtw}
+    \begin{algorithmic}
+        \Require x, y \Comment{time series to be compared}
+
+        \State n $\gets$ \textsc{Length}(x)
+        \State m $\gets$ \textsc{Length}(y)
+
+        \State DTW $\gets$ n $\times$ m matrix initialised to $\infty$
+        \State DTW[0,0] $\gets$ 0
+
+        \For{i $\gets$ 1 ... n}
+            \For{j $\gets$ 1 ... m}
+                \State cost $\gets (\text{x[i]+y[j]})^2$
+                \State DTW[i,j] $\gets$ \textsc{Minimum}(DTW[i-1,j], DTW[i,j-1], DTW[i-1,j-1])
+            \EndFor
+        \EndFor
+        \State \textsc{Return} DTW[n,m]
+    \end{algorithmic}
+\end{algorithm}
+
+Although better than Euclidean distance, DTW has some flaws. By comparing every value to every other value, DTW is computationally expensive running in $O(nm)$ time. Furthermore, it allows for very large time warps as every time is compared to every other time which can result in overfitting. To constrain both problems a number of algorithms have been proposed which introduce a width parameter which causes points in time to only be compared to other points within the width. How the width parameter varies is dependent on the algorithm with some setting it to be a fixed constant throughout the entire algorithm (Sakoe-Chiba band\cite{sakoe1978dynamic}) and others having it vary throughout the matrix, starting small at the start, growing to its maximum in the middle, and reducing back again for the end (Itakaru parallelogram\cite{itakura2003minimum}). Representations of how these optimisations can exclude regions of the cost matrix are shown in Figure \ref{fig:dtw}.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.5\linewidth]{dissertation//figures/dtw.png}
+    \caption{Representations of various optimisation to the Dynamic Time Warping algorithm\cite{faouzi2024time}}
+    \label{fig:dtw}
+\end{figure}
+
+FastDTW looks to accelerate DTW by reducing the resolution of the matrix and gradually increasing it to give an accurate estimation\cite{salvador2007toward}. The time series are reduced in size combining values together, this leads to a smaller matrix and easier computing. The warped path from this matrix can then be used to exclude sections of the matrix in higher resolutions. Eventually, the full warped path through the full resolution matrix is computed but with a significant proportion of the matrix removed. This is illustrated by Figure \ref{fig:fast-dtw}.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.75\linewidth]{dissertation//figures/fast-dtw.png}
+    \caption{A representation of the different resolutions computed for FastDTW and how they exclude regions of the cost matrix in finer resolution\cite{salvador2007toward}}.
+    \label{fig:fast-dtw}
+\end{figure}
+
+Whilst k-NN can be done for any number, it is common to use 1-NN when dealing with time series classification.
+
+DTW is useful for blink-based DeepFake detection as humans do not blink in unison and hence blinks will appear at seemingly random intervals in the time series. This would cause a traditional distance-based k-NN but would be correctly handled by DTW, resulting in more accurate DeepFake detection.
 
 \subsubsection{Learning Shapelets}
 
+Shapelets are defined as ``a subsequence of consecutive observations from a time series"\cite{faouzi2024time}. These can be used to get a sense of the building blocks of a time series and enable for classification based off of fundamental features. Learning shapelets\cite{grabocka2014learning} is a modification of conventional shapelet classification by optimising shapelets during training. 
+
+First $k$ shapelets of length $l$ is generated randomly. Let $S = (s_1,\dots,s_l)$ be the shapelet and $T=(t_1,\dots,t_l$ be a time series. The ``distance" between the time series and the shapelet is defined in Equation\ref{eq:shapelet-distance}, note the use of Log Sum Exponent function (Equation \ref{eq:soft-min}) to make Equation \ref{eq:shapelet-distance} differentiable.
+
+\begin{align}
+    d(S,T) &= \min_{j \in \{0,\dots,n-l\}} \sum^l_{i=1} (s_i -x_{j+i})^2 \label{eq:shapelet-distance}\\
+    \min_j a_j &\approx -\frac{1}{\beta} \log \sum_j e^{-\beta a_j} \label{eq:soft-min}
+\end{align}
+
+A time series can then go under a change of basis to represent them as a feature vector of the distance between it and each of the $k$ shapelets. Hence, $T$ can be represented as $(d(S_1,T),\dots,d(S_k,T))$. The new feature vector can now be used in a conventional classifier, such as logistic regression\cite{cramer2002origins}. 
+
+Whilst the initial shapelets are random and are therefore likely to be ineffective, they can be learned. Both the distance function and logistic regression are differentiable and so can be learned via SGD\cite{robbins1951stochastic}. This can form shapelets into effective dataset discriminators.
+
+In this case, one shapelet might be the EAR over the course of a normal blink. DeepFakes cannot simulate a blink well and might close the eye too fast or too slow, which learning shapelets may be able to pick up on to classify videos.
+
 \subsubsection{Time Series Forest}
 
+A number of algorithms based on decision trees have been proposed over time. Time series forest\cite{deng2013time} is one such algorithm. Random intervals of a minimum length are extracted from the same locations in each time series (Figure \ref{fig:time-series-forest}a). From these intervals the mean, standard deviation, and gradient (slope) are extracted as feature vectors (Figure \ref{fig:time-series-forest}b).
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.5\linewidth]{dissertation//figures/time-series-forest.png}
+    \caption{An example of the sequences and features extracted during the time series forest algorithm}
+    \label{fig:time-series-forest}
+\end{figure}
+
+These are then fed into a forest of decision trees\cite{breiman2001random}. Decision trees are a binary tree where at each node a field is compared to a value, if it is greater than a value it goes to the left child, otherwise to the right child. This continues until a leaf node which acts as the final classification. A forest of decision trees processes similar data through a number of different decision trees with the final classification being the majority vote. In this case, each tree corresponds to a different interval.
+
+Decision trees are trained from the root down. For each feature and every value in the test dataset, the dataset is split using the feature and threshold. Each split is then evaluated via split metric function (for classification this is usually entropy). The best feature and corresponding threshold is then set and the data is split. The process repeats recursively for each node until some stopping factor is reached. Common stopping factors are the depth of the tree or the minimum samples a node can contain. If a leaf node contains multiple classes from the test dataset, the class of the node is decided by majority vote.
+
 \subsubsection{Time Series Bag-of-Features}
+
+Similar to a time series forest, time series bag-of-features\cite{baydogan2013bag} extracts random intervals of a minimum length from a time series. However, each interval is further split into 3 equal intervals, the mean, gradient, and standard deviation of these sub-intervals plus the interval as a whole are calculated.
+
+Two forests are trained in this algorithm. The first is a regression tree which rather than outputting the class of an item, outputs the probability of it being in a class, taken by the number of members of each class in a leaf node. Each tree in a forest is trained on a separate subsequence. To make the probabilities more reliable a subsequence is then classified by one it was not trained on and the entire interval has its probabilities averaged across its subsequences. 
+
+The result is for each time series, there is a set of features containing the average probability for each class and the actual probabilities of each class. These features are used as the training dataset for a second random forest which produces the final classification. 
 
 \subsubsection{Neural Networks}
 
@@ -357,6 +440,8 @@ K-Nearest Neighbours (k-NN) is a common algorithm for classification problems. P
     \item cw-l2 attack too slow (3hrs per video)
     \item fakeretouch has no open-source implementation, timings were too slow, estimated would also take a while
 \end{itemize}
+
+\section{Traditional Detectors}
 
 \section{Final Code}
 
