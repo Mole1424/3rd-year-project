@@ -460,4 +460,7 @@ class EarAnalysis:
             data = np.expand_dims(np.array(data), axis=-1)
             return int(np.argmax(self.model.predict(data, verbose=0))) # type: ignore
         else:  # noqa: RET505
+            if isinstance(self.model, LearningShapelets):
+                # learning shapelets removes the need for indexing
+                return int(self.model.predict(np.array([data])))
             return self.model.predict(np.array([data]))[0] # type: ignore
