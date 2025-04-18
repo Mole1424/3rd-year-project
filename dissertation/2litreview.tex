@@ -142,7 +142,7 @@ A sequence of these layers are then combined to produce a network. The exact seq
 \begin{figure}[h]
     \centering
     \includegraphics[width=0.5\linewidth]{dissertation//figures/sample-cnn.png}
-    \caption{A sample convolutional neural network\cite{kromydas2023convolutional}}
+    \caption{A sample CNN\cite{kromydas2023convolutional}}
     \label{fig:sample-cnn}
 \end{figure}
 
@@ -272,7 +272,7 @@ The first notable GenAI was Generative Adversarial Networks (GANs)\cite{goodfell
         \draw[->] (gene.north) -- (disc.south -| gene.north);
         \draw[->] (data.north) -- (disc.south -| data.north);
     \end{tikzpicture}
-    \caption{A diagram of the network structure of a Generative Adversarial Network}
+    \caption{A diagram of the network structure of a GAN}
     \label{fig:gan-diagram}
 \end{figure}
 
@@ -302,24 +302,33 @@ Another disturbing use for DeepFakes were around for their inception: pornograph
 With all the harm DeepFakes can do, it is essential to be able to detect them reliably and accurately. Early DeepFakes were easy to spot, often with warping around facial features and other temporal irregularities\cite{diel2024human}. Unfortunately, DeepFakes have become increasingly realistic and this trend is only set to continue. Taking inspiration from the GAN model (Figure \ref{fig:gan-diagram}), tools were developed to detect DeepFakes using AI. Whilst in the GAN architecture the generator is meant to win, discriminators are being generated with the aim to accurately detect DeepFakes. Significant investment and research is being made into DeepFake detection; the US government invested \$22,000,000 into DeepFake detection research with the Media and Semantic Forensics program\cite{harris2023deep}.
 
 \subsection{Traditional Neural Network Detection Methods}
+\label{sec:traditional-cnns}
 
 CNNs have been used to detect DeepFakes since the original GAN paper\cite{goodfellow2014generative}. Whilst CNNs are infinitely customisable with the different choices of layers and connections, often CNN architectures will consist of a backbone and a head\cite{elharrouss2024backbones}. Backbones are large convolutional neural networks that have been pre-trained on a large dataset that can extract features from an input. A customised head is then added to the network to convert the features into the desired output.
 
-In context of DeepFake detection, the backbone is trained on ImageNet\cite{deng2009imagenet} an image dataset with 3.2 million images. Backbones are initially trained on the task of classifying an image in the dataset to an overall class (for example ``cat"). The backbone is then released with the weights from the training. For DeepFake detection, the head ends with a fully connected layer with a binary-softmax (Equation \ref{eq:softmax}) to classify an image into real or fake. Softmax separates $N$ input parameters into separate probabilities representing the probability that in input is in class $y$ such that $\sum^N_{i=1} y_i=1$. Using the initial weights of the backbone as the final weights of a similar problem is a technique known as transfer learning\cite{bozinovski1976influence} and can vastly improve the network's learning time and accuracy. The header's learnable parameters are initialised randomly as is normal. To extrapolate image classification to video classification, each frame of the video is independently classified and then the classifications are aggregated. Various aggregation methods exist but the simplest one is to set a threshold of frames that can be flagged as DeepFaked before the overall video is classified as fake.
+In context of DeepFake detection, the backbone is trained on ImageNet\cite{deng2009imagenet} an image dataset with 3.2 million images. Backbones are initially trained on the task of classifying an image in the dataset to an overall class (for example ``cat"). The backbone is then released with the weights from the training. For DeepFake detection, the head ends with a fully connected layer with a binary-softmax (Equation \ref{eq:softmax}) to classify an image into real or fake. Softmax separates $N$ input parameters into separate probabilities representing the probability that in input is in class $y$ such that $\sum^N_{i=1} y_i=1$. 
 
 \begin{equation}
     \label{eq:softmax}
     y_i=\frac{e^{z_i}}{e^{z_1} + e^{z_2}}, i\in1,2
 \end{equation}
 
-A variety of backbones have been applied to DeepFake detection to varying success\cite{thing2023deepfake}. The first backbones to be applied to DeepFake detection were VGG16/19\cite{simonyan2014very} and ResNet\cite{he2016deep}. Whilst VGG is a typical CNN as outlined in Section \ref{sec:cnns}, ResNet introduced the concept of skip-connections, allowing for the interaction of high and low level features. State of the art backbones have also been applied to DeepFakes, the best performing CNNs are currently EfficientNet\cite{tan2019efficientnet} and Xception\cite{chollet2017xception}. These achieve impressive accuracy on standard benchmarks (Section \ref{sec:datasets}), achieving over 90\%.
+Using the initial weights of the backbone as the final weights of a similar problem is a technique known as transfer learning\cite{bozinovski1976influence} and can vastly improve the network's learning time and accuracy. The header's learnable parameters are initialised randomly as is normal. To extrapolate image classification to video classification, each frame of the video is independently classified and then the classifications are aggregated. Various aggregation methods exist but the simplest one is to set a threshold of frames that can be flagged as DeepFaked before the overall video is classified as fake.
+
+A variety of backbones have been applied to DeepFake detection to varying success\cite{thing2023deepfake}. The first backbones to be applied to DeepFake detection were VGG16/19\cite{simonyan2014very} and ResNet\cite{he2016deep}. Whilst VGG is a typical CNN as outlined in Section \ref{sec:cnns}, ResNet introduced the concept of skip-connections, allowing for the interaction of high and low level features. 
+
+State of the art backbones have also been applied to DeepFakes, the best performing CNNs are currently EfficientNet\cite{tan2019efficientnet} and Xception\cite{chollet2017xception}. These achieve impressive accuracy on standard benchmarks (Section \ref{sec:datasets}), achieving over 90\% accuracy\cite{bonettini2021video}.
+
+EfficientNet is a model based on the MobileNet\cite{howard2017mobilenets} architecture, aiming to reduce the size of neural networks. EfficientNet is built upon depthwise separable convolutions. A traditional convolutional layer will analyse every channel of an input (such as the red, green, and blue channels in an image) at once, combining them in a single step, for every pixel in an image. A depthwise separable convolution layer instead analyses each input channel independently, and then combines them afterwards. This vastly reduces the computation required as learnable parameters are separated from each other in different stages, as such when combined over larger images the parameters combine linearly rather than exponentially, reducing computation costs. Bottlenecks further speed-up EfficientNet by reducing the dimensions of feature vectors. As data flows through a traditional CNN it can reach into a large number of dimensions, bottlenecks reduce the dimensions of a neural network which exponentially increase the network's speed. Bottlenecks reduce the dimension by having fewer neurons than the layer before it, forcing data to be aggregated and hence reducing complexity. Whilst MobileNet was intended to reduce the size of CNNs, it can make larger ones more efficient on the same number of parameters.
+
+Xception has an architecture similar to ResNet with skip connections. However, rather than direct skips, residual layers pass through a convolution layer to enhance predictions. Furthermore, the same residuals are used in different layers of the network to keep higher level features in context throughout the network.
 
 CNN detection works by pixel level analysis on the images. Due to the nature of CNNs it is difficult to tell what features they are focussing on for the final classification. However, due attention layers it is possible to view the regions of interest show in Figure \ref{fig:attention}, implying the particular areas of attention are the front facial features. Often these will be the area that DeepFakes will have the hardest time generating convincingly and will often leave artifacts such as inconsistent shaping\cite{verdoliva2020media}. CNNs are then picking up on these artifacts as features to classify a DeepFake. This leaves them vulnerable to possible pixel-based attacks which can disrupt the initial feature extraction\cite{gandhi2020adversarial}. Furthermore, reliance on specific artifacts cause CNNs to only be particularly effective on the DeepFake methodology they were trained and hence suffer reduced accuracy when viewing novel DeepFake methods\cite{thing2023deepfake}.
 
 \begin{figure}[h]
     \centering
     \includegraphics[width=0.5\linewidth]{dissertation//figures/attention-cnns.png}
-    \caption{Output from attention layers of convolutional neural networks on DeepFake detection {\huge citation needed}}
+    \caption{Output from attention layers of convolutional neural networks on DeepFake detection\cite{bonettini2021video}}
     \label{fig:attention}
 \end{figure}
 
@@ -355,7 +364,7 @@ To determine when an individual is blinking or not, the most common approach is 
             \filldraw[black] (4.5,1.4) circle (5pt) node[anchor=south west, xshift=4pt] {$p_5$};
             \filldraw[black] (2.8,1.2) circle (5pt) node[anchor=south east, xshift=-3pt] {$p_6$};
         \end{tikzpicture}
-        \caption{An image of a human eye with the 6 points necessary for the Eye Aspect Ratio labelled}
+        \caption{An image of a human eye with the 6 points necessary for the EAR labelled}
         \label{fig:ear}
     \end{subfigure}
     \hfill
