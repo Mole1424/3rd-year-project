@@ -180,7 +180,7 @@ def train_detectors(  # noqa: PLR0915
         )
         efficientnet.fit(
             train_generator,
-            epochs=100,
+            epochs=20,
             validation_data=test_generator,
             verbose=2,
             callbacks=callbacks,

@@ -121,7 +121,7 @@ class LongShortTermMemory(KerasTimeSeriesClassifier):
 
 # MARK: Deep Neural Network Ensembles for Time Series Classification
 # https://arxiv.org/pdf/1903.06602 and https://link.springer.com/article/10.1007/s10618-019-00619-1
-# code from https://github.com/hfawaz/dl-4-tsc and https://github.com/hfawaz/ijcnn19ensemble
+# code from https://github.com/hfawaz/ijcnn19ensemble
 
 
 class MultiLayerPerceptron(KerasTimeSeriesClassifier):
@@ -180,7 +180,7 @@ class FullyConvolutionalNeuralNetwork(KerasTimeSeriesClassifier):
 
         return model
 
-
+# time-cnn
 class ConvolutionalNeuralNetwork(KerasTimeSeriesClassifier):
     def __init__(self, path: str | None = None) -> None:
         self.model = load_model(path) if path else self.build_model()
