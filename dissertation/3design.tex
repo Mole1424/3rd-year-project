@@ -45,7 +45,7 @@ To validate whether blink-based DeepFake detection is resistant to adversarial n
 
 The overall architecture of blink-based DeepFake detection is relatively simple. First, the landmarks around the face are computed to determine for every frame to generate an EAR-time graph. The graph can then be analysed to determine whether the video is real or not. 
 
-\begin{algorithm}
+\begin{algorithm}[h]
     \caption{Overall architecture of a blink-based DeepFake detector}
     \label{alg:blink-based}
     \begin{algorithmic}
@@ -95,7 +95,7 @@ A more accurate CNN for detecting faces is Multitask Cascaded Convolutional Netw
 
 To attain the optimal combination of speed and accuracy both YuNet and MTCNN are used to identify faces in a video. An initial pass on all frames is done via YuNet, if no faces are found in a frame then MTCNN is used to identify the faces. To improve the performance of MTCNN, faces are processed in batches of 8. It was noted during testing that when exposed to adversarial noise, YuNet was prone to miss faces, as such the confidence YuNet required to mark a face was reduced from 0.9 to 0.7. Only the primary face in each frame is used, for the first frame this is taken as the face with highest confidence from the model, for subsequent frames it is the face with the smallest euclidean distance between the vertices of the bounding box. 
 
-\begin{algorithm}
+\begin{algorithm}[h]
     \caption{The method for cropping faces from a video}
     \label{alg:face-detection}
     \begin{algorithmic}
@@ -339,7 +339,7 @@ Euclidean distance is the most common algorithm for k-NN classifiers\cite{faouzi
 
 The common solution is Dynamic Time Warping\cite{sakoe1978dynamic}. DTW is programmatically defined in Algorithm \ref{alg:dtw}. A cost matrix is computed which has dimensions of the two time series being compared. For every value in the matrix, the cost is computed as the squared delta of the two values. A warped path is then constructed through the matrix starting at 0,0 and ending in the opposite corner. This path is constructed as the path that has minimum cost across the matrix whilst only moving towards the goal. The total cost of the path is the sum of all the cells it crosses through. The problem can be optimised with dynamic programming as shown in Algorithm \ref{alg:dtw}.
 
-\begin{algorithm}
+\begin{algorithm}[h]
     \caption{DTW algorithm}
     \label{alg:dtw}
     \begin{algorithmic}
@@ -424,7 +424,7 @@ Two forests are trained in this algorithm. The first is a regression tree which 
 The result is for each time series, there is a set of features containing the average probability for each class and the actual probabilities of each class. These features are used as the training dataset for a second random forest which produces the final classification. 
 
 \subsubsection{Neural Networks}
-\label{ts-nns}
+\label{sec:ts-nns}
 
 Given the versatility of neural networks, it is unsurprising that several architectures have been proposed for time series classification. 
 
@@ -432,14 +432,14 @@ Intuitively, RNNs offer ideal performance as they are designed to work on tempor
 
 A number of conventional CNNs have been proposed for time series classification. A comprehensive overview is provided by Fawaz\cite{fawaz2020deep}. They propose a number of separate architectures, whilst the majority are for multivariate time series, some can be narrowed down to work on univariate time series. 
 
-The first model is a MLP to act as a baseline. The architecture contains three fully connected hidden layers. The only addition is dropout layers which regulates overfitting by removing neurons randomly from a layer (typically between 10\% and 15\%). Secondly, Fawaz proposes a CNN with three convolution layers, each performing linear transformation on the time series. A final global average pooling is used before the final dense classification to allow for time series of varying length to use the same architecture, however this is not used in this project as outlined in Section \ref{ts-implementation}. Time-CNN is a typical CNN for classification apart from it using mean squared error as the loss function during training instead of categorical cross entropy which is the usual loss function for classification tasks. Time series class boundaries can be not as distinct as other classification so mean squared error allows for ``smoother" classifications during training, potentially improving accuracy. The final model proposed for univariate time series is a model based on ResNet, including residual layers to improve classification.
+The first model is a MLP to act as a baseline. The architecture contains three fully connected hidden layers. The only addition is dropout layers which regulates overfitting by removing neurons randomly from a layer (typically between 10\% and 15\%). Secondly, Fawaz proposes a CNN with three convolution layers, each performing linear transformation on the time series. A final global average pooling is used before the final dense classification to allow for time series of varying length to use the same architecture, however this is not used in this project as outlined in Section \ref{sec:ts-implementation}. Time-CNN is a typical CNN for classification apart from it using mean squared error as the loss function during training instead of categorical cross entropy which is the usual loss function for classification tasks. Time series class boundaries can be not as distinct as other classification so mean squared error allows for ``smoother" classifications during training, potentially improving accuracy. The final model proposed for univariate time series is a model based on ResNet, including residual layers to improve classification.
 
 Architectures for the above models are shown in Appendix \ref{ch:series-architectures}
 
 \subsubsection{Implementation}
-\label{ts-implementation}
+\label{sec:ts-implementation}
 
-The \verb|pyts| library\cite{faouzi2020pyts} is an open source library which implements a variety of classical time series classification methods, including all the methods mentioned in this project. The CNNs proposed in Section \ref{ts-nns} by Fawaz have had their architectures and training parameters open sourced in a companion GitHub repository\cite{fawaz2019deep}. The LSTM architecture was implemented using the description from the corresponding paper. The number of epochs for LSTM was reduced from 2000 to 500 in order to reduce overfitting. Apart from this, all hyperparameters were left as the default values from their respective implementations.
+The \verb|pyts| library\cite{faouzi2020pyts} is an open source library which implements a variety of classical time series classification methods, including all the methods mentioned in this project. The CNNs proposed in Section \ref{sec:ts-nns} by Fawaz have had their architectures and training parameters open sourced in a companion GitHub repository\cite{fawaz2019deep}. The LSTM architecture was implemented using the description from the corresponding paper. The number of epochs for LSTM was reduced from 2000 to 500 in order to reduce overfitting. Apart from this, all hyperparameters were left as the default values from their respective implementations.
 
 Some of the neural network architectures require a fixed input length. To reduce computation time it was therefore decided to crop or pad all time series to 512 values. Assuming a video runs at 30 frames per second, 17 seconds of footage can be analysed, giving an ample number of blinks to be analysed.
 
@@ -463,6 +463,7 @@ The CW-L2 attack proved to be too slow for videos. To attack a video, FGSM took 
 Finally, FakeRetouch comes with no open source code implementation. Following the delay caused by the failed implementation of WSELD due to its own lack of implementation, there was little time available for further development work. Therefore, no evaluation was done on FakeRetouch. The reasons for this choice are explained in greater detail in Chapter \ref{ch:projman}.
 
 \section{Traditional Detectors}
+\label{sec:traditional-detectors}
 
 The VGG19\cite{krishna2022deepfake}\cite{yadav2024deepfake} and ResNet\cite{tiwari2024deepfake} models from the proof of concept are used in the main algorithm loop. Additional state of the art DeepFake detectors have been created to evaluate their performance against adversarial noise. State of the art detectors were taken as the best performing DeepFake detection models uploaded to the PapersWithCode leaderboard\footnote{\url{https://paperswithcode.com/sota/deepfake-detection-on-faceforensics}}\footnote{\url{https://paperswithcode.com/sota/deepfake-detection-on-faceforensics-1}} that had open source repositories. The models chosen were based on EfficinetNetB4\cite{bonettini2021video} and Xception\cite{roessler2019faceforensicspp}.
 
@@ -476,17 +477,65 @@ Custom headers were added to these backbones to allow for accurate classificatio
 
 The training dataset for these CNNs is created by splitting the overall training set into 80\% for model training, 20\% for model validation. For every video in the model training set, 32 frames are extracted and cropped to the facial region, following the method to train EfficientNet\cite{bonettini2021video}. To prevent overfitting, it is important for frames in the same video to not be used in both the training set and validation set, a phenomenon referred to as data leakage. Similarly to the proof of concept, no videos that have adversarial noise added to them are used in the training data as this would not reflect the scenarios DeepFake detectors would see in real life.
 
-When training, models are trained using categorical cross entropy. The Adam\cite{kingma2014adam} optimiser is used for optimising gradients with hyperparameters from the original paper's implementations. Models were trained for 20 epochs, however early stopping was implemented. If a model's validation loss stops improving for 5 consecutive epochs, training is halted. To further reduce overfitting, the learning rate of the Adam optimiser is reduced by 90\% if the validation loss does not improve for 3 consecutive epochs.
+When training, models are trained using categorical cross entropy. The Adam\cite{kingma2014adam} optimiser is used for optimising gradients with hyperparameters from the original paper's implementations. Models were trained for 20 epochs, however early stopping was implemented. If a model's validation loss stops improving for 5 consecutive epochs, training is halted. To further reduce overfitting, the learning rate of the Adam optimiser is reduced by 90\% if the validation loss does not improve for 3 consecutive epochs. To gain the benefits of transfer learning, all models were initialised with their weights form the imagenet\cite{deng2009imagenet} dataset.
+
+When classifying a video, each frame is independently classified by the model. If more than 50\% of the frames in a video are reported fake, then the video is deemed a fake.
 
 \section{Final Code}
 
-\begin{itemize}
-    \item One codebase to do full training, splitting and evaluation
-    \item just give overall flow diagram?
-    \item {\huge models only trained on non-noisy images}
-    \item checkpointing where possible
-    \item run on either dcs compute clusters or avon
-    \item final speeds + hardware
-\end{itemize}
+% \begin{itemize}
+%     \item One codebase to do full training, splitting and evaluation
+%     \item just give overall flow diagram?
+%     \item {\huge models only trained on non-noisy images}
+%     \item checkpointing where possible
+%     \item run on either dcs compute clusters or avon
+%     \item final speeds + hardware
+% \end{itemize}
+
+To make final testing and evaluation easier, it was decided to centralise the code for this project in one main loop. One piece of code, upon given a dataset and facial landmarking model, would train all other models required, and evaluate them. Facial landmarking models are trained separately as these require a different dataset for training and are invariant across datasets and therefore training them in the main program would be inefficient.
+
+The program has the following structure:
+
+\begin{algorithm}[h]
+    \caption{Final Code}
+    \label{alg:final-code}
+    \begin{algorithmic}
+        \Require dataset, \textsc{FaceLandmarks} \Comment{dataset and facial landmarker function call}
+
+        \State train\_set, test\_set $\gets$ \textsc{SplitDataset}(dataset)
+        \State \textsc{CustomAnalyser} $\gets$ \textsc{GetBestAnalyser}(train\_set, \textsc{FaceLandmarks})
+        \State \textsc{TraiditionalModels} $\gets$ \textsc{GetModels}(train\_set)
+        \For{video, label $\in$ test\_set}
+            \State landmarks $\gets$ \{\}
+            \State model\_predictions $\gets$ \{\}
+            \State noisy\_landmarks $\gets$ \{\}
+            \State noisy\_model\_predictions $\gets$ \{\}
+            \For{frame $\in$ video}
+                \State \textsc{Append}(landmarks, \textsc{FaceLandmarks}(frame))
+                \State \textsc{Append}(model\_predictions, \textsc{TraditionalModels}(frame))
+                \If{label = FAKE}
+                    \State noisy\_frames $\gets$ \textsc{AttackFrame}(frame, \textsc{TraditionalModels})
+                    \State \textsc{Append}(noisy\_landmarks, \textsc{FaceLandmarks}(noisy\_frames))
+                    \State \textsc{Append}(noisy\_model\_predictions, \textsc{TraditionalModels}(noisy\_frames))
+                \Else
+                    \State \textsc{Append}(noisy\_landmarks, \textsc{FaceLandmarks}(frame))
+                    \State \textsc{Append}(noisy\_model\_predictions, \textsc{TraditionalModels}(frame))
+                \EndIf
+            \EndFor 
+            \State traditional\_classifications $\gets$ \textsc{ClassifyVideosClassical}(model\_predictions)
+            \State noisy\_traditional\_classifications $\gets$ \textsc{ClassifyVideosClassical}(noisy\_model\_predictions)
+            \State custom\_classifications $\gets$ \textsc{CustomAnalyser}(landmarks)
+            \State noisy\_custom\_classifications $\gets$ \textsc{CustomAnalyser}(noisy\_landmarks)
+        \EndFor
+    \end{algorithmic}
+\end{algorithm}
+
+Often with DeepFake dataset, multiple DeepFake videos are generated from a single real video. As such, there are often more fake videos than real. This can cause issues when training as a model could achieve a high accuracy by simply predicting fake every time. As such, the dataset is split according to the number of real videos in the dataset. 80\% of the real videos are taken for training, the same number of fake videos are then used in the train set for an even split. The remaining videos are used for the testing set. Note that the train set is further split into a training set and validation set in the \textsc{GetBestAnalyser} and \textsc{GetModels} functions as outlined in Sections \ref{sec:ts-implementation} and \ref{sec:traditional-detectors}.
+
+Frames are only attacked if they are fake frames as this reflect reality where an adversary would only add noise to a video if the video was faked. This also has the advantage of significantly reducing compute times as not only is attacking the frame skipped, but classifying each attacked frame with every model is avoided as well. \verb|noisy_frames| is a tuple of 4 frames, each frame attacking a single one of the traditional models. 
+
+In line with good scientific computing practices, the main code has checkpoints. All models trained are saved so that they can be retrieved should the program ever terminate. The path to the best model selected by \textsc{GetBestAnalyser} is also saved so that all the models do not have to be re-evaluated. Every 25 videos, the ongoing results of the main video loop is saved so in the event the main loop crashes or is timed out, the loop can pick up from where it last saved. 
 
 \section{Datasets}
+
+An attempt was made to access all of the datasets listed in Section \ref{sec:datasets}. For the majority of them, the application involved filling in a form and agreeing to each dataset's respective terms and conditions. However, gaining access the DFDC dataset\cite{dolhansky2020deepfake} proved difficult. The original Kaggle competition the dataset was posted under\footnote{\url{https://www.kaggle.com/competitions/deepfake-detection-challenge}} has closed and hence it is impossible to download the dataset from that source. From the DFDC's website the dataset should be available at \url{https://dfdc.ai/}, however, the site known longer has a valid SSL certificate (Appendix \ref{ch:dfdcai}) and can therefore not be accessed securely. The website requires a username, password, and Amazon Web Service account ID. Some of this is sensitive information and is therefore unadvisable to upload over an insecure connection. As a result, testing on the DFDC is not completed in this project.
