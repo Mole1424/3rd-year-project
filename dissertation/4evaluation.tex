@@ -1,12 +1,47 @@
-\chapter{Results \& Evaluation}
+\chapter{Results and Evaluation}
 \label{ch:evaluation}
 
 \section{Proof of Concept}
 \label{sec:concept-results}
 
 \begin{itemize}
-    \item Need to wait to see final results
-    \item mention baselines and compare with traditional methods
-    \item transferability?
-    \item mention potential downsides (require views of eyes, eyes need to be faked, etc)
+    \item initial results good
+    \item VGG19 was targeted and had was reduced to 0\% accuracy
+    \item ResNet however was not impacted
+    \item therefore noise is effective for the model it attacks
+    \item however other models not affected, need to test further
+    \item \url{https://github.com/Mole1424/3rd-year-project/tree/main/proof-of-concept}
+\end{itemize}
+
+\section{Main Code Results}
+
+\begin{itemize}
+    \item Initial results VERY promising
+    \item custom model is consistently 56\% accurate
+    \begin{itemize}
+        \item less accurate than expected
+        \item consistently accurate tho so shows that the method is viable
+        \item for some reason every model chose learning shapelets as the best one
+    \end{itemize}
+    \item other models are very accurate (80-90\%)
+    \item however get massively degraded when noise is added
+    \item noise is transferable and so other models will be downgraded though not to the same extent
+    \item custom model was never affected, in fact sometimes improved
+    \item compare hrnet to pfld, hrnet is more accurate and so had better results
+    \item very little change with $\epsilon$ for advarserial noise
+    \item spam graphs, main results in table
+    \item ``The presentation of the results needed to be more rigourous, e.g., considering other methods without blink detection and other data sets (e.g., not simply that adding noise increased accuracy for the blink method). Also needed clearer definition of acuracy, so you can be sure that your system is not just detecting noise - what are the results for real video as well as fake?"
+\end{itemize}
+
+Transferability results soonTM
+
+\section{Main Code Evaluation}
+
+\begin{itemize}
+    \item mention potential downsides of blink based
+    \begin{itemize}
+        \item required eyes to be constantly visible for reliable detection
+        \item requires eyes to be faked
+    \end{itemize}
+    \item obviously other adversarial noise methods need to be evaluated but ran out of time :(
 \end{itemize}

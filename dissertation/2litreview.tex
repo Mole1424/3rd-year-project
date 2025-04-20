@@ -288,6 +288,7 @@ Other methods of generating DeepFakes have been developed since GANs. Diffusion\
 \end{figure}
 
 \subsection{DeepFakes for Malicious Purposes}
+\label{sec:mal-deepfakes}
 
 DeepFakes can generate realistic images that are undetectable to humans. When presented with a combination of real and fake videos, individuals were asked to classify them as either real or DeepFaked; the overall accuracy was 55.54\%\cite{diel2024human}, only slightly better than guessing. Whilst DeepFakes rose to initial property for their entertainment value, for example users would use them to add the actor Nicholas Cage into movies he did not originally star in\cite{harris2023deep}. However, DeepFakes soon begun to be used for various malicious purposes.
 
@@ -510,6 +511,16 @@ The offline trained CNN is a Kernel Prediction Network (KPN)\cite{mildenhall2018
 FakeRetouch uses Gaussian Noise ($\textbf{N}_{\sigma}$ to further blur the image, to reduce the effect of the Gaussian noise it is passed through a binary map $\textbf{A}$, that only allows noise in certain areas of the image. It is desirable that $\textbf{A}$ is as sparse as possible to avoid human detection of the noise and hence $\textbf{A}$ is regulated by Equation \ref{eq:fakeretouch-2}. $J$ is the defined the same as Equation \ref{eq:fgsm} but is set as categorical cross-entropy. $y$ is the true class label of the image $\textbf{x}$. Equation \ref{eq:fakeretouch-2} regulates the amount of Gaussian noise added to a frame by minimising the L1-norm of the noise.
 
 When tested on DeepFakes, FakeRetouch has limited success. It does not target the neural network directly and so relies on both the neural network analysing the Fourier transform of an image and the DeepFake generator producing excessive fingerprints in the Fourier space. For scenarios when both requirements hold, FakeRetouch reduces accuracy by 67\%; on the other hand, in scenarios where either one or none of the conditions hold, FakeRetouch either decreases detection by an insignificant amount or can even increase the accuracy of detection.
+
+\section{Transferability of DeepFake Detectors}
+
+{\huge TODO}
+
+\begin{itemize}
+    \item \url{https://arxiv.org/abs/2210.14571}
+    \item CNNs are only effective on the datasets they were trained on, or similar
+    \item real blinking is consistent no matter what the difference is
+\end{itemize}
 
 \section{Datasets}
 \label{sec:datasets}

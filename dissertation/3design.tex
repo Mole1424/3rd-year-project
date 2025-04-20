@@ -138,6 +138,7 @@ To attain the optimal combination of speed and accuracy both YuNet and MTCNN are
 To determine the EAR in a specific frame, the six landmarks around each eye need to be located. There are a large number of Python packages which come with facial landmarking features, unfortunately most of these are unsuitable for use in a state of the art detector as they are insufficiently accurate. The models included in packages are either compressed for ease of distribution or optimised to run on devices with reduced computational capabilities. 
 
 \subsubsection{Weakly Supervised Eye Landmarks Detection}
+\label{sec:sweld}
 
 % \begin{itemize}
 %     \item Looked promising
@@ -179,7 +180,7 @@ Whilst the original paper gave clear implementations, their code was difficult t
 
 To avoid a repetition of the WSELD implementation, it was decided to switch to a re-use oriented methodology for facial landmarking. In order for a model to be considered, it must have an open source implementation available. PapersWithCode\footnote{\url{https://paperswithcode.com}} is an aggregation site which ranks models on popular machine learning problems and links to known codebases where possible. 
 
-The facial landmark detection is a common problem in machine learning. The vast majority of available training datasets (Section \ref{sec:face-datasets}) contain the six points required for EAR calculation and as such any model that can be trained on these datasets can be used for eye landmarking. In theory, it is possible to optimise the networks for solely eye landmark detection, however this will not be optimised due to the potential that had to disrupt a network that is known to be working.
+The facial landmark detection is a common problem in machine learning. The vast majority of available training datasets (Section \ref{sec:face-datasets}) contain the six points required for EAR calculation and as such any model that can be trained on these datasets can be used for eye landmarking. In theory, it is possible to optimise the networks for solely eye landmark detection, however this will not be optimised due to the potential that has to disrupt a network that is known to be working.
 
 \subsubsection{High-Resolution Network}
 
@@ -446,6 +447,7 @@ Some of the neural network architectures require a fixed input length. To reduce
 To train the models, every video in the train set is analysed by one of the facial landmark models (Section \ref{sec:eye-landmark}) to produce the EAR graph for that video. It is assumed that the train set being given to this section is balanced between real and fake videos. The graphs are then further split into a train and test set with 80\% being used for training and 20\% for testing. Models are then trained on the train set and then compared on the test set. The model with the greatest accuracy is then selected as the best EAR analyser for the specific model on the specific dataset.
 
 \section{Adversarial Noise}
+\label{sec:ad-noise}
 
 % \begin{itemize}
 %     \item foolbox library (Targeted FGSM using the other thing)
