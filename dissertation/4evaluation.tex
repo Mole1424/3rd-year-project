@@ -17,7 +17,7 @@
 
 \begin{itemize}
     \item Initial results VERY promising
-    \item custom model is consistently 56\% accurate
+    \item custom model is consistently 50-60\% accurate
     \begin{itemize}
         \item less accurate than expected
         \item consistently accurate tho so shows that the method is viable
@@ -27,10 +27,10 @@
     \item however get massively degraded when noise is added
     \item noise is transferable and so other models will be downgraded though not to the same extent
     \item custom model was never affected, in fact sometimes improved
-    \item compare hrnet to pfld, hrnet is more accurate and so had better results
-    \item very little change with $\epsilon$ for advarserial noise
+    \item compare hrnet to pfld, pfld was more effective????
+    \item very little change with $\epsilon$ for adversarial noise
     \item spam graphs, main results in table
-    \item ``The presentation of the results needed to be more rigourous, e.g., considering other methods without blink detection and other data sets (e.g., not simply that adding noise increased accuracy for the blink method). Also needed clearer definition of acuracy, so you can be sure that your system is not just detecting noise - what are the results for real video as well as fake?"
+    \item ``The presentation of the results needed to be more rigorous, e.g., considering other methods without blink detection and other data sets (e.g., not simply that adding noise increased accuracy for the blink method). Also needed clearer definition of accuracy, so you can be sure that your system is not just detecting noise - what are the results for real video as well as fake?"
 \end{itemize}
 
 Transferability results soonTM
@@ -38,6 +38,11 @@ Transferability results soonTM
 \section{Main Code Evaluation}
 
 \begin{itemize}
+    \item explain why blink detection is resistant
+    \begin{itemize}
+        \item dealing with the derivative of the video over time
+        \item landmarks need to be consistently altered by a noise attack which is not feasible due to CNNs struggling with anything temporal based
+    \end{itemize}
     \item mention potential downsides of blink based
     \begin{itemize}
         \item required eyes to be constantly visible for reliable detection
