@@ -325,6 +325,17 @@ def visualise_ear(path_to_ear: str) -> None:
         plt.savefig(f"ears/ear_{i}.png")
         plt.close()
 
+def move(dataset_path: str) -> None:
+    """flattens a dataset"""
+    root = Path(dataset_path)
+
+    for path in root.rglob("*"):
+        if path.is_file():
+            relative_path = path.relative_to(root)
+            new_path = root / "-".join(relative_path.parts)
+            print(f"Moving {path} to {new_path}")
+            path.rename(new_path)
+
 if __name__ == "__main__":
     arg = None
     try:
@@ -355,6 +366,9 @@ if __name__ == "__main__":
     elif arg == "ear":
         path_to_ear = sys.argv[2]
         visualise_ear(path_to_ear)
+    elif arg == "move_dataset":
+        dataset_path = sys.argv[2]
+        move(dataset_path)
     else:
         print("invalid argument")
         sys.exit(1)

@@ -418,7 +418,7 @@ def main(
     path_to_dataset: str, path_to_models: str, epsilon: float, eye_model: str
 ) -> None:
     # allow for memory growth on GPU
-    for gpu in tf.config.experimental.list_physical_devices("GPU"):
+    for gpu in tf.config.list_physical_devices("GPU"):
         tf.config.experimental.set_memory_growth(gpu, True)
 
     # get dataset name
