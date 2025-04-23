@@ -68,7 +68,7 @@ EAR analysis is performed using the hybrid of DeepVision\cite{jung2020deepvision
 
 For traditional detectors, both ResNet and VGG architectures have been proven vulnerable to adversarial noise\cite{gandhi2020adversarial}. A ResNet-based DeepFake detector was implemented using an implementation from Tiwari\cite{tiwari2024deepfake}, a VGG-detector was implemented using a header from Krishna et al\cite{krishna2022deepfake} but the backbone was upgraded to VGG19 following research from Yadav et al\cite{yadav2024deepfake}. To extend frame-by-frame detection to entire videos, each frame in a video is analysed independently. If the frame is classified as fake then a counter is incremented by one. If the counter exceeds a given threshold (set as one hundred frames), the video is classed as fake.
 
-Adversarial noise was added to images using the Foolbox library\cite{rauber2017foolbox}\cite{rauber2017foolboxnative}. FGSM was used as the method for noise due to its known effectiveness and speed\cite{gandhi2020adversarial}. $\epsilon$ was set to 0.1. To replicate real life scenarios, noise was only added to faked videos and all models were solely trained on original videos, not noisy ones. This is because models would not be able to be trained on videos that has been manipulated by attacks specifically designed to disrupt the very model that is training.
+Adversarial noise was added to images using the Foolbox library\cite{rauber2017foolbox}\cite{rauber2017foolboxnative}. FGSM was used as the method for noise due to its known effectiveness and speed\cite{gandhi2020adversarial}. $\epsilon$ was set to 0.1. To replicate real life scenarios, noise was only added to faked videos and all models were solely trained on original videos, not noisy ones. This is because models would not be able to be trained on videos that has been manipulated by attacks specifically designed to disrupt the very model that is training. Only the VGG model is attacked during the proof of concept, with the ResNet model acting as a control model to show the effects on indirect noise on a model.
 
 The models were trained on a subset of fifty real and fifty fake videos from the FaceForensics++ dataset\cite{roessler2018faceforensics}. Testing was run over a further fifty real and fifty fake videos. The results of the tests can be found in Section \ref{sec:concept-results}. FaceForensics++ was chosen as it was the most robust dataset available at the time. More have been tested in the main code. Hyperparameters for the VGG and ResNet models were left the same as the original implementations. To reduce overfitting, only one frame per second was extracted and used for training. To ensure a realistic test, no model is ever trained on images that have been injected with adversarial noise.
 
@@ -325,7 +325,7 @@ With the eye landmarks located and the EAR calculated for each frame, the result
 \begin{figure}[h]
     \centering
     \includegraphics[width=0.5\linewidth]{dissertation/figures/real-ear-graph.png}
-    \caption{A sample graph of EAR over frame of video}
+    \caption{A sample graph of EAR over frame for a real video}
     \label{fig:real-ear-graph}
 \end{figure}
 
@@ -435,7 +435,7 @@ A number of conventional CNNs have been proposed for time series classification.
 
 The first model is a MLP to act as a baseline. The architecture contains three fully connected hidden layers. The only addition is dropout layers which regulates overfitting by removing neurons randomly from a layer (typically between 10\% and 15\%). Secondly, Fawaz proposes a CNN with three convolution layers, each performing linear transformation on the time series. A final global average pooling is used before the final dense classification to allow for time series of varying length to use the same architecture, however this is not used in this project as outlined in Section \ref{sec:ts-implementation}. Time-CNN is a typical CNN for classification apart from it using mean squared error as the loss function during training instead of categorical cross entropy which is the usual loss function for classification tasks. Time series class boundaries can be not as distinct as other classification so mean squared error allows for ``smoother" classifications during training, potentially improving accuracy. The final model proposed for univariate time series is a model based on ResNet, including residual layers to improve classification.
 
-Architectures for the above models are shown in Appendix \ref{ch:series-architectures}
+Architectures for the above models are shown in Appendix \ref{ch:series-architectures}.
 
 \subsubsection{Implementation}
 \label{sec:ts-implementation}
@@ -496,7 +496,7 @@ When classifying a video, each frame is independently classified by the model. I
 
 To make final testing and evaluation easier, it was decided to centralise the code for this project in one main loop. One piece of code, upon given a dataset and facial landmarking model, would train all other models required, and evaluate them. Facial landmarking models are trained separately as these require a different dataset for training and are invariant across datasets and therefore training them in the main program would be inefficient.
 
-The program has the following structure:
+The program program structure is shown in Algorithm \ref{alg:final-code}.
 
 \begin{algorithm}[h]
     \caption{Final Code}
@@ -536,7 +536,13 @@ Often with DeepFake dataset, multiple DeepFake videos are generated from a singl
 
 Frames are only attacked if they are fake frames as this reflect reality where an adversary would only add noise to a video if the video was faked. This also has the advantage of significantly reducing compute times as not only is attacking the frame skipped, but classifying each attacked frame with every model is avoided as well. \verb|noisy_frames| is a tuple of 4 frames, each frame attacking a single one of the traditional models. 
 
-In line with good scientific computing practices, the main code has checkpoints. All models trained are saved so that they can be retrieved should the program ever terminate. The path to the best model selected by \textsc{GetBestAnalyser} is also saved so that all the models do not have to be re-evaluated. Every 25 videos, the ongoing results of the main video loop is saved so in the event the main loop crashes or is timed out, the loop can pick up from where it last saved. 
+In line with good scientific computing practices, the main code has checkpoints. All models trained are saved so that they can be retrieved should the program ever terminate. The path to the best model selected by \textsc{GetBestAnalyser} is also saved so that all the models do not have to be re-evaluated. Every 25 videos, the ongoing results of the main video loop is saved so in the event the main loop crashes or is timed out, the loop can pick up from where it last saved.
+
+\section{Transferability}
+
+To evaluate the transferability of blink-based DeepFake detection, the FakeAVCeleb dataset from Section \ref{sec:datasets} will be reserved. As such, no model shall be trained on FakeAVCeleb. The main program will be run across all datasets which will produce models that have been trained on each of the other datasets. All of the traditional models and each of the custom models will then be tested on the FakeAVCeleb dataset. To save time and compute resources, only the eye landmarked and associated best EAR analysis model for the dataset it was trained on will be used to evaluate transferability.
+
+The testing algorithm follows the same rough structure as Algorithm \ref{alg:final-code}, with three main differences. The dataset is not split into a train and a test set as the entire dataset is used for testing. Secondly, all the models are loaded as they have all already been trained. In the main classification loop, no adversarial noise is added to a frames, hence the \verb|noisy_*| result stores are omitted along with the calls to \textsc{AttackFrame}. Similar to the main code loop, the results are saved every 25 videos to be able recover from crashes and other associated errors. 
 
 \section{Datasets}
 

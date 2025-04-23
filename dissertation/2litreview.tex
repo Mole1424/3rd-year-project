@@ -122,7 +122,8 @@ A CNN is a sequence of three layers: convolution layers, pooling layers, and a f
 
 \begin{itemize}
     \item \textbf{Convolutional Layer}\\
-    A Convolutional Layer is what a CNN lends its name to. It has two stages. The first stage is a filtering stage where a kernel (sometimes called a filter) is passed over the input. The kernel is placed over the input and the dot product between the values in the kernel and the values in the input are calculated. This then becomes the output. The kernel is then shifted over by a fixed stride value to analyse another set of the input. This process is shown in Figure \ref{fig:filter}. The values (or weights) of each filter remain constant as it moves across the image, there can also be many filters, increasing the dimension of an input. These values are what are learned by this layer, by reducing the values to be trained to the size of the filter, this significantly speeds up the training process. Often some form of activation layer will be included to process the output array, more often than not, this uses the Rectified Linear Unit (ReLU) function, to limit outputs to strictly positive in order to introduce linerarity and prevent the vanishing gradient problem (a hindrance to learning)\cite{ibmconvolutional}.
+    A Convolutional Layer is what a CNN lends its name to. It has two stages. The first stage is a filtering stage where a kernel (sometimes called a filter) is passed over the input. The kernel is placed over the input and the dot product between the values in the kernel and the values in the input are calculated. This then becomes the output. The kernel is then shifted over by a fixed stride value to analyse another set of the input. This process is shown in Figure \ref{fig:filter}. The values (or weights) of each filter remain constant as it moves across the image, there can also be many filters, increasing the dimension of an input. These values are what are learned by this layer, by reducing the values to be trained to the size of the filter, this significantly speeds up the training process. Often some form of activation layer will be included to process the output array, more often than not, this uses the Rectified Linear Unit (ReLU) function, to limit outputs to strictly positive in order to introduce linearity and prevent the vanishing gradient problem (a hindrance to learning)\cite{ibmconvolutional}.
+    
     \begin{figure}[h]
         \centering
         \includegraphics[width=0.5\linewidth]{dissertation//figures/cnn-filter.png}
@@ -508,19 +509,30 @@ FakeRetouch is defined by the following equation:
 
 The offline trained CNN is a Kernel Prediction Network (KPN)\cite{mildenhall2018burst}. This produces a kernel, similar to the filters in a CNN, that averages out a certain area of pixels to reduce the noise in the image. This can be sufficient for conventional noise reduction but is unfortunately not successful to cause misclassification\cite{huang2020fakeretouch} so further noise is required.
 
-FakeRetouch uses Gaussian Noise ($\textbf{N}_{\sigma}$ to further blur the image, to reduce the effect of the Gaussian noise it is passed through a binary map $\textbf{A}$, that only allows noise in certain areas of the image. It is desirable that $\textbf{A}$ is as sparse as possible to avoid human detection of the noise and hence $\textbf{A}$ is regulated by Equation \ref{eq:fakeretouch-2}. $J$ is the defined the same as Equation \ref{eq:fgsm} but is set as categorical cross-entropy. $y$ is the true class label of the image $\textbf{x}$. Equation \ref{eq:fakeretouch-2} regulates the amount of Gaussian noise added to a frame by minimising the L1-norm of the noise.
+FakeRetouch uses Gaussian Noise ($\textbf{N}_{\sigma}$) to further blur the image, to reduce the effect of the Gaussian noise it is passed through a binary map $\textbf{A}$, that only allows noise in certain areas of the image. It is desirable that $\textbf{A}$ is as sparse as possible to avoid human detection of the noise and hence $\textbf{A}$ is regulated by Equation \ref{eq:fakeretouch-2}. $J$ is the defined the same as Equation \ref{eq:fgsm} but is set as categorical cross-entropy. $y$ is the true class label of the image $\textbf{x}$. Equation \ref{eq:fakeretouch-2} regulates the amount of Gaussian noise added to a frame by minimising the L1-norm of the noise.
 
 When tested on DeepFakes, FakeRetouch has limited success. It does not target the neural network directly and so relies on both the neural network analysing the Fourier transform of an image and the DeepFake generator producing excessive fingerprints in the Fourier space. For scenarios when both requirements hold, FakeRetouch reduces accuracy by 67\%; on the other hand, in scenarios where either one or none of the conditions hold, FakeRetouch either decreases detection by an insignificant amount or can even increase the accuracy of detection.
 
 \section{Transferability of DeepFake Detectors}
 
-{\huge TODO}
+% \begin{itemize}
+%     \item \url{https://arxiv.org/abs/2210.14571}
+%     \item CNNs are only effective on the datasets they were trained on, or similar
+%     \item real blinking is consistent no matter what the difference is
+% \end{itemize}
 
-\begin{itemize}
-    \item \url{https://arxiv.org/abs/2210.14571}
-    \item CNNs are only effective on the datasets they were trained on, or similar
-    \item real blinking is consistent no matter what the difference is
-\end{itemize}
+Another potential flaw with CNN-based DeepFake detectors is their lack of transferability\cite{ricker2022towards}. CNNs will often score highly, near 100\% accuracy, on standardised datasets. However, this is often because they have been trained on the same DeepFake methodologies that they are then being tested on. As such, they may have overfitted to recognise the methods they have been trained on rather than becoming a generic classifier able to accurately classify unknown DeepFakes.
+
+This problem was demonstrated by Ricker et al.\cite{ricker2022towards}. Three state of the art CNN-based DeepFake detectors were trained on ten datasets each generated using either a GAN or diffusion model. The results are shown in Figure \ref{fig:transferability}. Accuracy is measured using Probability of detection at a Fixed Alarm Rate (Pd@FAR). As is expected, when a model is trained and tested on the same dataset it achieves close to 100\% accuracy. However, when tested on datasets it was not trained in, a model's accuracy would drop significantly. This effect is more pronounced when models trained on GANs are evaluated on diffusion models, however less so when models trained on diffusion DeepFakes are evaluated against other diffusion DeepFakes. Note in the figure that they GAN, DM, and All columns denote models trained on all GAN-based, Diffusion-based, and all models, respectively.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.75\linewidth]{dissertation//figures/transferability.png}
+    \caption{A graph showing the Pd@1\%FAR accuracy of a variety of detection models\cite{ricker2022towards}}
+    \label{fig:transferability}
+\end{figure}
+
+This project aims to evaluate whether blink-based detection can be used as a general DeepFake classifier or not. The majority of CNN-based detectors attain high accuracies by focussing on model-specific artifacts (Figure \ref{fig:fakeretouch}). On the other hand, the majority of DeepFakes will miss common factors in blinking such as frequency and period, and these patterns should be consistent across DeepFakes methodologies as similar kinds of mistakes will be made. Hence, it is believed that blink-based DeeepFake detectors will be generalised.
 
 \section{Datasets}
 \label{sec:datasets}
