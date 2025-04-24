@@ -12,8 +12,8 @@ from tensorflow.keras.models import Model, load_model  # type: ignore
 
 def create_dataset(path_to_dataset: str) -> list[tuple[str, int]]:
     """creates a dataset of video paths and labels"""
-    videos = list(Path(path_to_dataset).rglob("*.mp4"))
-    labels = ["real" in str(video) for video in videos]
+    videos = list(map(str, Path(path_to_dataset).rglob("*.mp4")))
+    labels = [int("real" in str(video)) for video in videos]
     return list(zip(videos, labels))
 
 def save_results(results: dict, path: str) -> None:
@@ -234,7 +234,7 @@ def main() -> None:
     for gpu in tf.config.list_physical_devices("GPU"):
         tf.config.experimental.set_memory_growth(gpu, True)
 
-    path_to_dataset = "/dcs/large/u2204489/faceforensics/"
+    path_to_dataset = "/dcs/large/u2204489/fakeavceleb/"
     path_to_models = "/dcs/large/u2204489/"
     path_to_save = "transferability_results.txt"
 
