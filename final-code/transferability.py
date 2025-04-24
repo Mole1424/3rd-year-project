@@ -194,8 +194,6 @@ def process_video(
 ) -> dict[str, bool]:
     """classifies a video and returns the results"""
 
-    print(f"Processing {video_path}")
-
     # get central 512 frames from video
     video = cv.VideoCapture(video_path)
     total_frames = int(video.get(cv.CAP_PROP_FRAME_COUNT))
@@ -313,6 +311,23 @@ def main() -> None:
         # save results every 25 videos
         if i % 25 == 0:
             save_results(results, path_to_save)
+
+    # save results at the end
+    save_results(results, path_to_save)
+
+    # print results
+    print("Results:")
+    for model, metrics in results.items():
+        accuracy = (metrics["tp"] + metrics["tn"]) / len(dataset)
+        print("=" * 20)
+        print("Model:", model)
+        print("Accuracy:", accuracy)
+        print("TP:", metrics["tp"])
+        print("FP:", metrics["fp"])
+        print("TN:", metrics["tn"])
+        print("FN:", metrics["fn"])
+
+    print("Done :)")
 
 if __name__ == "__main__":
     main()
