@@ -1,39 +1,74 @@
 \chapter{Results and Evaluation}
 \label{ch:evaluation}
 
+This section will show a summary of of results, the raw results can be found in Appendix \ref{ch:raw-results}. Results are classified into True Positives ($TP$, declared real when real), True Negatives ($TN$, declared fake when fake), False Positives ($FP$, declared real when fake), and False Negatives ($FN$, declared fake when real). Overall accuracy is defined in Equation \ref{eq:acc} and accuracy on fake videos is defined by Equation \ref{eq:fake-acc}.
+
+\begin{align}
+    \text{Accuracy} &= \frac{TP+TN}{TP+TN+FP+FN} \label{eq:acc} \\
+    \text{Fake Accuracy} &= \frac{TN}{TN+FP} \label{eq:fake-acc}
+\end{align}
+
+Traditional DeepFake detection uses the Area Under Curve (AUC) metric for model evaluation, which involves comparing the true positive rate against the false positive rate over all possible classification thresholds. AUC was not chosen for this project due to its tendency over-inflate model performance by averaging results over a range of thresholds, most of which would be unsuitable for real world implementations\cite{ricker2022towards}. Furthermore, in real-world applications, DeepFake detectors would operate at predetermined fixed thresholds which adversarial attacks would by fine-tuned to work against, hence an accuracy metric which varies such a threshold would be masking the true accuracy (or lack thereof) for a model.
+
 \section{Proof of Concept}
 \label{sec:concept-results}
 
-\begin{itemize}
-    \item initial results good
-    \item VGG19 was targeted and had was reduced to 0\% accuracy
-    \item ResNet however was not impacted
-    \item therefore noise is effective for the model it attacks
-    \item however other models not affected, need to test further
-    \item \url{https://github.com/Mole1424/3rd-year-project/tree/main/proof-of-concept}
-\end{itemize}
+% \begin{itemize}
+%     \item initial results good
+%     \item VGG19 was targeted and had was reduced to 0\% accuracy
+%     \item ResNet however was not impacted
+%     \item therefore noise is effective for the model it attacks
+%     \item however other models not affected, need to test further
+%     \item \url{https://github.com/Mole1424/3rd-year-project/tree/main/proof-of-concept}
+% \end{itemize}
+
+The initial results for proof of concept are promising. Firstly, when analysing unperturbed videos, blink detection has an overall accuracy of 80\% and an accuracy on fakes of 72\%. In comparison to VGG and ResNet models, which had an accuracy 98\% and 91\% across all videos respectively, blink-based detection performs at a slightly lower accuracy but still achieves an overall impressive accuracy, clearly identifying the originality of videos. It was found that the majority of videos classed as unknown were DeepFaked and as such if a video was classed as unknown it is deemed to be a fake.
+
+VGG19, the model which was directly attacked by adversarial noise, reduced from 100\% accuracy on faked videos to 0\%. Every faked video was declared real by the model, showing that the adversarial noise is attack was effective. On the other hand, neither the blink detection nor ResNet models were affected to a similar degree by the noise. The custom model suffered a slight degradation in performance, falling to 64\% accuracy. Unexpectedly, the accuracy of ResNet increased to 100\% accuracy on fake videos.
+
+This shows that adversarial noise is very effective on the model that is attacked; however, other models which are not the target of the attack are not affected to the same extent, showing that adversarial noise cannot be used as a general attack and is only effective on the model it is specifically designed to attack. Whilst initially disheartening at first, the results are not conclusive as only one attack was performed against a limited selection of models, hence a more diverse set of models and data is required for conclusive proof. It maybe that a FGSM attack against a VGG19 model on this subset of the FaceForensics dataset me be a highly specialised model, but all other attacks are.
+
+It is worth noting that during initial experimentation the strength of the noise ($\epsilon$) was varied. Although the results are not recorded, it was noted that the blink detection accuracy would stay similar, whereas the ResNet detector's accuracy would vary. Hence, blink-based DeepFake detectors are provisionally shown to be more resilient against adversarial noise attacks.
 
 \section{Main Code Results}
 
-\begin{itemize}
-    \item Initial results VERY promising
-    \item custom model is consistently 50-60\% accurate
-    \begin{itemize}
-        \item less accurate than expected
-        \item consistently accurate tho so shows that the method is viable
-        \item for some reason every model chose learning shapelets as the best one
-    \end{itemize}
-    \item other models are very accurate (80-90\%)
-    \item however get massively degraded when noise is added
-    \item noise is transferable and so other models will be downgraded though not to the same extent
-    \item custom model was never affected, in fact sometimes improved
-    \item compare hrnet to pfld, pfld was more effective????
-    \item very little change with $\epsilon$ for adversarial noise
-    \item spam graphs, main results in table
-    \item ``The presentation of the results needed to be more rigorous, e.g., considering other methods without blink detection and other data sets (e.g., not simply that adding noise increased accuracy for the blink method). Also needed clearer definition of accuracy, so you can be sure that your system is not just detecting noise - what are the results for real video as well as fake?"
-\end{itemize}
+% \begin{itemize}
+%     \item Initial results VERY promising
+%     \item custom model is consistently 50-60\% accurate
+%     \begin{itemize}
+%         \item less accurate than expected
+%         \item consistently accurate tho so shows that the method is viable
+%         \item for some reason every model chose learning shapelets as the best one
+%     \end{itemize}
+%     \item other models are very accurate (80-90\%)
+%     \item however get massively degraded when noise is added
+%     \item noise is transferable and so other models will be downgraded though not to the same extent
+%     \item custom model was never affected, in fact sometimes improved
+%     \item compare hrnet to pfld, pfld was more effective????
+%     \item very little change with $\epsilon$ for adversarial noise
+%     \item spam graphs, main results in table
+%     \item ``The presentation of the results needed to be more rigorous, e.g., considering other methods without blink detection and other data sets (e.g., not simply that adding noise increased accuracy for the blink method). Also needed clearer definition of accuracy, so you can be sure that your system is not just detecting noise - what are the results for real video as well as fake?"
+% \end{itemize}
 
-Transferability results soonTM
+\subsection{Unperturbed Blink Detection}
+
+Overall, the results from testing show that conventional detection methods are vulnerable to adversarial noise attacks, even ones that are not specifically targeted to the model being tested. Blink-based DeepFake detection, on the other hand, is initially less accurate but proves resilient to adversarial noise attacks.
+
+On unperturbed videos, HRNet achieves an average overall accuracy of 52.5\% and PFLD 63.3\% on FaceForensics and 61.2\% and 59.4\% on Celeb-DF. This is lower than expected as Ictu Oculi and DeepVision report achieving accuracies of 99\%\cite{li2018ictu} and 87.5\%\cite{jung2020deepvision}, respectively. The discrepancy could be due to a number of factors, Firstly, both Ictu Oculi and DeepVision were tested on small, custom datasets, whereas the models proposed in this project are tested on much larger, general benchmarks. Such benchmarks offer a much wider variety of situations and DeepFake methods and as such offer a more challenging scenario for DeepFake detection, hence a possible discrepancy. The other possibility is the use of more complex analysis. Previous methods used relatively simple abstractions of the EAR graph, such as counting the number of blinks over the course of a video or extracting a couple key features, the proposed method solely uses the raw EAR graph which allows for more information to be processed but may confuse a model with too much background data. However, the model custom models retain their accuracy across datasets, showing that the model is not just guessing but is making consistent predictions.
+
+One major surprise is that PFLD produces a similar or more accurate DeepFake detector than HRNet. It was assumed that due to HRNet being more accurate, the corresponding DeepFake detector would me more accurate. This is not the case with PFLD consistently outscoring HRNet in all accuracy metrics. There is no obvious reasons for this but a number of theories are proposed. Firstly, is that PFLD maybe more sensitive to irregularities, the slight randomness indirectly introduced to the landmarks by PFLD may be being amplified by DeepFakes, causing an easier classification of the EAR graph. Secondly, an implicit randomness in landmark location may act as a form of dataset augmentation. A common technique in machine learning is to augment a dataset to reduce overfitting by randomly modifying certain aspects of the data, the slight irregularities present in PFLD landmarks may have acted to augment the EAR dataset, enabling a more robust classifier to be trained.
+
+Consistently, the time series classifier chosen for EAR analysis was learning shapelets. It was chosen in 3/4 scenarios, only being beaten by a time series forest classifier for HRNet operating over the FaceForensics dataset. Due to the way neural networks, it is difficult to determine the exact reason as to why the learning shapelets classifier is consistently the best. One possible reason is that it is one of the few trainable networks employed that keep temporal data into account. The majority of classifiers used either are able to refine their model over a number of epochs or can keep the temporal nature of the EAR graph into account, few manage to do both and it so happens that learning shapelets is the best of both worlds.
+
+\subsection{Unperturbed Traditional Detectors}
+
+All traditional CNN-based DeepFake detectors perform at similar levels to the known literature, consistently achieving of 90\% and above. The worst performing model was the Xception model on the FaceForensics dataset, achieving an accuracy of 85.2\%, which is still impressive. Clearly, CNNs are better at conventional DeepFake detection than the proposed blink methods. 
+
+Whilst blink-based detection maintained a fairly consistent accuracy across datasets, CNN detectors achieved much better accuracies on Celeb-DF. This is notable as Celeb-DF is intended to be a ``harder" dataset than FaceForensics\cite{li2020celeb} and therefore models should not be achieving higher accuracies. One possible reason is that Celeb-DF has higher quality images than FaceForensics. Videos from the FaceForensics dataset are compressed using JPEG compression\cite{roessler2018faceforensics} and hence contain artifacts that may throw off CNNs causing a decrease in accuracy.
+
+\subsection{Perturbed Videos}
+
+The tables turn significantly when adversarial noise is introduced to attack the traditional detectors. As expected, blink-based detectors remain unaffected by adversarial noise, with the all models staying within $\pm$2\% of the unperturbed baseline. In some cases, accuracy would even increase slightly when attempting to classify attacked videos. On the FaceForensics dataset, PFLD prediction only predicts 3 videos differently when exposed to noise. Invariably, increasing the strength of noise will increase the accuracy of DeepFake detectors, potentially due to the noisy videos causing slight landmark misclassification, leading to a more variable EAR graph and thus more likely to be classed as fake. 
 
 \section{Main Code Evaluation}
 
@@ -50,3 +85,7 @@ Transferability results soonTM
     \end{itemize}
     \item obviously other adversarial noise methods need to be evaluated but ran out of time :(
 \end{itemize}
+
+\section{Transferability}
+
+{\huge Transferability results soonTM}
