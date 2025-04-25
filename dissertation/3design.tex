@@ -476,11 +476,11 @@ The VGG19\cite{krishna2022deepfake}\cite{yadav2024deepfake} and ResNet\cite{tiwa
 
 EfficientNetB4 was chosen chosen from the EfficinetNet family of models by Bonettini et al. due to its balance between number of parameters, run time, and classification performance. Two models based on EfficientNet are proposed in the paper, one using the standard EfficientNet and another with an attention module added. These were shown to have very similar results so, to keep the network architecture simple, just EfficientNetB4 is used as the backbone with no attention model added.
 
-A diagram of the CNNs used for classifications can be found in Appendix \ref{ch:trad-architectures}.
-
 Xception was chosen by R\"{o}ssler et al for classification from a pool of four other CNNs. When compared to the other CNNs, Xception proved to be the most accurate at 99.26\% accuracy.
 
 Custom headers were added to these backbones to allow for accurate classification. Firstly, the networks are stripped of their initial classification heads to allow fine tuning on DeepFakes. Secondly, global pooling reduces the high dimension features outputted from the backbone into a single one dimensional vector. The resulting vector is then normalised to allow for quicker and easier training. To reduce overfitting, a dropout layer is added to reduce the size of the final vector by 50\%. Finally, a dense layer produces the final classification.
+
+Model diagrams of the CNNs used for classifications can be found in Appendix \ref{ch:trad-architectures}.
 
 The training dataset for these CNNs is created by splitting the overall training set into 80\% for model training, 20\% for model validation. For every video in the model training set, 32 frames are extracted and cropped to the facial region, following the method to train EfficientNet\cite{bonettini2021video}. To prevent overfitting, it is important for frames in the same video to not be used in both the training set and validation set, a phenomenon referred to as data leakage. Similarly to the proof of concept, no videos that have adversarial noise added to them are used in the training data as this would not reflect the scenarios DeepFake detectors would see in real life.
 

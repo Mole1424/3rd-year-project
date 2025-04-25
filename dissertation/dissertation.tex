@@ -80,7 +80,13 @@
 
 \pagenumbering{gobble}
 \begin{abstract}
-    Your abstract goes here. This should be about 2-3 paragraphs summarising the motivation for your project and the main outcomes (software, results, etc.) of your project. 
+DeepFakes are pieces of media that have been generated or manipulated by Artificial Intelligence. They can produce realistic videos of humans that are nearly imperceptible to the humans. Hence, the can be used to easily spread misinformation. Convolutional Neural Networks have traditionally been used to reliably detect DeepFake videos. However, these have been shown to be vulnerable to adversarial noise, targeted noise, imperceptible to humans, that can be added to an image which causes a previously reliable detector to class a fake image as real.
+
+Blink-based detectors involve tracking a human's psychological eye blinking patterns to determine if a video has been DeepFaked video. DeepFakes will often blink at a rate that is unnatural and thus can be detected reliably.
+
+This project introduces a novel method of blink detection using univariate time series analysis on an individual's eyes blinking pattern over the course of a video. It goes on to show that such a method of detection is resilient against adversarial noise attacks. This is shown to be true across a variety of scenarios and DeepFake methods.
+
+\textbf{Keywords:} DeepFakes, Blinking, Eye Aspect Ratio, Time Series Analysis, Convolutional Neural Networks, Machine Learning
 \end{abstract}
 
 \renewcommand{\abstractname}{Acknowledgements}
@@ -89,7 +95,7 @@ First of all, I would like to thank my supervisor, Long Tran-Thanh, for his help
 
 Secondly, thank you to Alia Meek for helping me keep sane during the course of the project and my third year as a whole.
 
-Finally, I would like to thank my friends at Warwick. Notably, Serene Alrawi, Verity Anscombe, Ethan Farrell, and many others, for their help in keeping me motivated and allowing me to inflict my presentation on them multiple times.
+Finally, I would like to thank my friends at Warwick. Notably, Serene Alrawi, Verity Anscombe, Oliver Cordeaux, Ethan Farrell, and many others, for their help in keeping me motivated and allowing me to inflict my presentation on them multiple times.
 \end{abstract}
 
 \pagenumbering{roman}
