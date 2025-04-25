@@ -49,9 +49,12 @@ False Negatives: declared fake when real
         \hline
         Overall Accuracy & 80\% & 98\% & 91\% & 76\% & 45\% & 95\% \\
         \hline
+        Real Accuracy & 88\% & 96\% & 90\% & 88\% & 96\% & 90\% \\
+        \hline
         Fake Accuracy & 72\% & 100\% & 92\% & 64\% & 0\% & 100\% \\
         \hline
     \end{tabular}
+    \label{tab:proof-of-concept}
     \caption{Results of the proof of concept}
 \end{table}
 
@@ -80,10 +83,13 @@ The time series analysis paired with PFLD was learning shapelets.
         \hline
         Overall Accuracy & 52.5\% & 63.3\% & 87.9\% & 94.6\% & 85.6\% & 90.1\% \\
         \hline
+        Real Accuracy & 56.5\% & 73\% & 87.5\% & 91\% & 92\% & 88\% \\
+        \hline
         Fake Accuracy & 52.3\% & 62.7\% & 87.9\% & 94.8\% & 85.2\% & 90.3\% \\
         \hline
     \end{tabular}
-    \caption{Unperturbed}
+    \label{tab:ff-un}
+    \caption{FaceForensics results unperturbed}
 \end{table}
 
 \begin{table}[H]
@@ -99,7 +105,8 @@ The time series analysis paired with PFLD was learning shapelets.
         Accuracy & 52.6\% & 62.7\% & 0.2\% & 15.2\% & 16.9\% & 33.4\% \\
         \hline
     \end{tabular}
-    \caption{Perturbed (VGG, $\epsilon=0.05$)}
+    \label{tab:ff-vgg-5}
+    \caption{FaceForensics results perturbed (VGG, $\epsilon=0.05$)}
 \end{table}
 
 \begin{table}[H]
@@ -115,7 +122,8 @@ The time series analysis paired with PFLD was learning shapelets.
         Accuracy & 54.1\% & 62.7\% & 0\% & 4.8\% & 33.9\% & 61.6\% \\
         \hline
     \end{tabular}
-    \caption{Perturbed (VGG, $\epsilon = 0.1$)}
+    \label{tab:ff-vgg-1}
+    \caption{FaceForensics results perturbed (VGG, $\epsilon = 0.1$)}
 \end{table}
 
 \begin{table}[H]
@@ -131,7 +139,8 @@ The time series analysis paired with PFLD was learning shapelets.
         Accuracy & 52.2\% & 62.7\% & 18.9\% & 0\% & 15.6\% & 31\% \\
         \hline
     \end{tabular}
-    \caption{Perturbed (ResNet, $\epsilon=0.05$)}
+    \label{tab:ff-res-5}
+    \caption{FaceForensics results perturbed (ResNet, $\epsilon=0.05$)}
 \end{table}
 
 \begin{table}[H]
@@ -147,7 +156,8 @@ The time series analysis paired with PFLD was learning shapelets.
         Accuracy & 53.6\% & 62.7\% & 1\% & 0\% & 34.6\% & 61.4\% \\
         \hline
     \end{tabular}
-    \caption{Perturbed (ResNet, $\epsilon=0.1$)}
+    \label{tab:ff-res-1}
+    \caption{FaceForensics results perturbed (ResNet, $\epsilon=0.1$)}
 \end{table}
 
 \begin{table}[H]
@@ -163,7 +173,8 @@ The time series analysis paired with PFLD was learning shapelets.
         Accuracy & 52.5\% & 62.7\% & 15.5\% & 8.3\% & 0\% & 28.9\% \\
         \hline
     \end{tabular}
-    \caption{Perturbed (Xception, $\epsilon=0.05$)}
+    \label{tab:ff-xce-5}
+    \caption{FaceForensics results perturbed (Xception, $\epsilon=0.05$)}
 \end{table}
 
 \begin{table}[H]
@@ -179,7 +190,8 @@ The time series analysis paired with PFLD was learning shapelets.
         Accuracy & 53.1\% & 62.6\% & 0.1\% & 5.6\% & 0\% & 60\% \\
         \hline
     \end{tabular}
-    \caption{Perturbed (Xception, $\epsilon=0.1$)}
+    \label{tab:ff-xce-1}
+    \caption{FaceForensics results perturbed (Xception, $\epsilon=0.1$)}
 \end{table}
 
 \begin{table}[H]
@@ -195,7 +207,8 @@ The time series analysis paired with PFLD was learning shapelets.
         Accuracy & 52.3\% & 62.7\% & 18.9\% & 13.3\% & 16.8\% & 0\% \\
         \hline
     \end{tabular}
-    \caption{Perturbed (EfficientNet, $\epsilon=0.05$)}
+    \label{tab:ff-eff-5}
+    \caption{FaceForensics results perturbed (EfficientNet, $\epsilon=0.05$)}
 \end{table}
 
 \begin{table}[H]
@@ -211,7 +224,8 @@ The time series analysis paired with PFLD was learning shapelets.
         Accuracy & 53.8\% & 62.8\% & 1\% & 4.2\% & 33.9\% & 0\% \\
         \hline
     \end{tabular}
-    \caption{Perturbed (EfficientNet, $\epsilon=0.1$)}
+    \label{tab:ff-eff-1}
+    \caption{FaceForensics results perturbed (EfficientNet, $\epsilon=0.1$)}
 \end{table}
 
 \subsection{Celeb-DF}
@@ -235,10 +249,13 @@ The time series analysis paired with PFLD was learning shapelets.
         \hline
         Overall Accuracy & 61.2\% & 59.4\% & 98\% & 99.3\% & 98\% & 98.9\% \\
         \hline
+        Real Accuracy & 57.9\% & 58.4\% & 92.7\% & 97.8\% & 96.6\% & 96.1\% \\
+        \hline
         Fake Accuracy & 61.3\% & 59.5\% & 98.2\% & 99.4\% & 98.1\% & 99\% \\
         \hline
     \end{tabular}
-    \caption{Unperturbed}
+    \label{tab:cd-un}
+    \caption{Celeb-DF results unperturbed}
 \end{table}
 
 \begin{table}[H]
@@ -247,14 +264,15 @@ The time series analysis paired with PFLD was learning shapelets.
         \hline
         \textbf{} & \textbf{HRNet} & \textbf{PFLD} &  \textbf{VGG} & \textbf{ResNet} & \textbf{Xception} & \textbf{EfficientNet} \\
         \hline
-        True Negatives &  & 2937 & 0 & 4040 & 4647 & 486\\
+        True Negatives & 3020 & 2937 & 0 & 4040 & 4647 & 486\\
         \hline
-        False Positives &  & 1990 & 4927 & 887 & 280 & 4441\\
+        False Positives & 1907 & 1990 & 4927 & 887 & 280 & 4441\\
         \hline
-        Accuracy & \% & 59.6\% & 0\% & 82\% & 94.3\% & 9.9\% \\
+        Accuracy & 61.3\% & 59.6\% & 0\% & 82\% & 94.3\% & 9.9\% \\
         \hline
     \end{tabular}
-    \caption{Perturbed (VGG, $\epsilon=0.05$)}
+    \label{tab:cd-vgg-5}
+    \caption{Celeb-DF results perturbed (VGG, $\epsilon=0.05$)}
 \end{table}
 
 \begin{table}[H]
@@ -270,6 +288,7 @@ The time series analysis paired with PFLD was learning shapelets.
         Accuracy & 61.3\% & 59.9\% & 0\% & 100\% & 76.2\% & 0.1\% \\
         \hline
     \end{tabular}
+    \label{tab:cd-vgg-1}
     \caption{Perturbed (VGG, $\epsilon = 0.1$)}
 \end{table}
 
@@ -279,14 +298,15 @@ The time series analysis paired with PFLD was learning shapelets.
         \hline
         \textbf{} & \textbf{HRNet} & \textbf{PFLD} &  \textbf{VGG} & \textbf{ResNet} & \textbf{Xception} & \textbf{EfficientNet} \\
         \hline
-        True Negatives &  & 2939 & 215 & 0 & 4582 & 414\\
+        True Negatives & 3019 & 2939 & 215 & 0 & 4582 & 414\\
         \hline
-        False Positives &  & 1988 & 4712 & 4927 & 345 & 4513\\
+        False Positives & 1908 & 1988 & 4712 & 4927 & 345 & 4513\\
         \hline
-        Accuracy & \% & 59.7\% & 4.3\% & 0\% & 93\% & 8.4\% \\
+        Accuracy & 61.3\% & 59.7\% & 4.3\% & 0\% & 93\% & 8.4\% \\
         \hline
     \end{tabular}
-    \caption{Perturbed (ResNet, $\epsilon=0.05$)}
+    \label{tab:cd-res-5}
+    \caption{Celeb-DF results perturbed (ResNet, $\epsilon=0.05$)}
 \end{table}
 
 \begin{table}[H]
@@ -302,7 +322,8 @@ The time series analysis paired with PFLD was learning shapelets.
         Accuracy & 61.3\% & 59.9\% & 2.1\% & 68.1\% & 75.6\% & 0.1\% \\
         \hline
     \end{tabular}
-    \caption{Perturbed (ResNet, $\epsilon=0.1$)}
+    \label{tab:cd-res-1}
+    \caption{Celeb-DF results perturbed (ResNet, $\epsilon=0.1$)}
 \end{table}
 
 \begin{table}[H]
@@ -311,13 +332,14 @@ The time series analysis paired with PFLD was learning shapelets.
         \hline
         \textbf{} & \textbf{HRNet} & \textbf{PFLD} &  \textbf{VGG} & \textbf{ResNet} & \textbf{Xception} & \textbf{EfficientNet} \\
         \hline
-        True Negatives &  & 2936 & 193 & 3323 & 2 & 134\\
+        True Negatives & 3020 & 2936 & 193 & 3323 & 2 & 134\\
         \hline
-        False Positives &  & 1991 & 4734 & 1604 & 4925 & 4793\\
+        False Positives & 1907 & 1991 & 4734 & 1604 & 4925 & 4793\\
         \hline
-        Accuracy & \% & 59.6\% & 3.9\% & 67.4\% & 0\% & 2.7\% \\
+        Accuracy & 61.3\% & 59.6\% & 3.9\% & 67.4\% & 0\% & 2.7\% \\
         \hline
     \end{tabular}
+    \label{tab:cd-xce-5}
     \caption{Perturbed (Xception, $\epsilon=0.05$)}
 \end{table}
 
@@ -334,7 +356,8 @@ The time series analysis paired with PFLD was learning shapelets.
         Accuracy & 61.3\% & 59.9\% & 1.9\% & 100\% & 0\% & 0\% \\
         \hline
     \end{tabular}
-    \caption{Perturbed (Xception, $\epsilon=0.1$)}
+    \label{tab:cd-xce-1}
+    \caption{Celeb-DF results perturbed (Xception, $\epsilon=0.1$)}
 \end{table}
 
 \begin{table}[H]
@@ -343,14 +366,15 @@ The time series analysis paired with PFLD was learning shapelets.
         \hline
         \textbf{} & \textbf{HRNet} & \textbf{PFLD} &  \textbf{VGG} & \textbf{ResNet} & \textbf{Xception} & \textbf{EfficientNet} \\
         \hline
-        True Negatives &  & 2938 & 215 & 3955 & 4580 & 0\\
+        True Negatives & 3019 & 2938 & 215 & 3955 & 4580 & 0\\
         \hline
-        False Positives &  & 1988 & 4712 & 972 & 347 & 4927\\
+        False Positives & 1908 & 1988 & 4712 & 972 & 347 & 4927\\
         \hline
-        Accuracy & \% & 59.6\% & 4.4\% & 80.3\% & 93\% & 0\% \\
+        Accuracy & 61.3\% & 59.6\% & 4.4\% & 80.3\% & 93\% & 0\% \\
         \hline
     \end{tabular}
-    \caption{Perturbed (EfficientNet, $\epsilon=0.05$)}
+    \label{tab:cd-eff-5}
+    \caption{Celeb-DF results perturbed (EfficientNet, $\epsilon=0.05$)}
 \end{table}
 
 \begin{table}[H]
@@ -366,10 +390,12 @@ The time series analysis paired with PFLD was learning shapelets.
         Accuracy & 61.3\% & 59.9\% & 1.9\% & 100\% & 0\% & 0\% \\
         \hline
     \end{tabular}
-    \caption{Perturbed (EfficientNet, $\epsilon=0.1$)}
+    \label{tab:cd-eff-1}
+    \caption{Celeb-DF results perturbed (EfficientNet, $\epsilon=0.1$)}
 \end{table}
 
 \section{Transferability}
+\label{sec:transfer}
 
 \begin{table}[H]
     \centering
@@ -377,17 +403,19 @@ The time series analysis paired with PFLD was learning shapelets.
         \hline
         \textbf{} & \textbf{HRNet} & \textbf{PFLD} & \textbf{VGG} & \textbf{ResNet} & \textbf{Xception} & \textbf{EfficientNet} \\
         \hline
-        True Positives &  &  &  &  &  & \\
+        True Positives & 345 & 119 & 485 & 492 & 494 & 482\\
         \hline
-        True Negatives &  &  &  &  &  & \\
+        True Negatives & 2512 & 6414 & 4269 & 1500 & 2332 & 2956\\
         \hline
-        False Positives &  &  &  &  &  & \\
+        False Positives & 7197 & 3295 & 5440 & 8209 & 7377 & 8209\\
         \hline
-        False Negatives &  &  &  &  &  & \\
+        False Negatives & 155 & 381 & 15 & 8 & 6 & 18\\
         \hline
-        Overall Accuracy & \% & \% & \% & \% & \% & \% \\
+        Overall Accuracy & 28\% & 64\% & 46.6\% & 19.5\% & 27.7\% & 33.7\% \\
         \hline
-        Fake Accuracy & \% & \% & \% & \% & \% & \% \\
+        Real Accuracy & 69\% & 23.8\% & 97\% & 98.4\% & 98.8\% & 96.4\% \\
+        \hline
+        Fake Accuracy & 25.9\% & 66.1\% & 44\% & 15.4\% & 24\% & 30\% \\
         \hline
     \end{tabular}
     \caption{The accuracy of models trained on FaceForensics and tested on FakeAVCeleb}
@@ -399,20 +427,22 @@ The time series analysis paired with PFLD was learning shapelets.
         \hline
         \textbf{} & \textbf{HRNet} & \textbf{PFLD} & \textbf{VGG} & \textbf{ResNet} & \textbf{Xception} & \textbf{EfficientNet} \\
         \hline
-        True Positives &  &  &  &  &  & \\
+        True Positives & 3 & 148 & 500 & 500 & 500 & 499\\
         \hline
-        True Negatives &  &  &  &  &  & \\
+        True Negatives & 9678 & 5699 & 344 & 427 & 317 & 657\\
         \hline
-        False Positives &  &  &  &  &  & \\
+        False Positives & 31 & 4010 & 9365 & 9282 & 9392 & 9052\\
         \hline
-        False Negatives &  &  &  &  &  & \\
+        False Negatives & 397 & 352 & 0 & 0 & 0 & 1\\
         \hline
-        Overall Accuracy & \% & \% & \% & \% & \% & \% \\
+        Overall Accuracy & 94.8\% & 57.3\% & 8.3\% & 9.1\% & 8\% & 11.3\% \\
         \hline
-        Fake Accuracy & \% & \% & \% & \% & \% & \% \\
+        Real Accuracy & 0.6\% & 29.6\% & 100\% & 100\% & 100\% & 99.8\% \\
+        \hline
+        Fake Accuracy & 99.7\% & 58.7\% & 3.5\% & 4.4\% & 3.3\% & 6.8\% \\
         \hline
     \end{tabular}
-    \caption{The accuracy of models trained on Celeb DeepFake and tested on FakeAVCeleb}
+    \caption{The accuracy of models trained on Celeb-DF and tested on FakeAVCeleb}
 \end{table}
 
 \chapter{Open Source Contributions}

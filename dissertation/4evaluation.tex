@@ -58,34 +58,64 @@ On unperturbed videos, HRNet achieves an average overall accuracy of 52.5\% and 
 
 One major surprise is that PFLD produces a similar or more accurate DeepFake detector than HRNet. It was assumed that due to HRNet being more accurate, the corresponding DeepFake detector would me more accurate. This is not the case with PFLD consistently outscoring HRNet in all accuracy metrics. There is no obvious reasons for this but a number of theories are proposed. Firstly, is that PFLD maybe more sensitive to irregularities, the slight randomness indirectly introduced to the landmarks by PFLD may be being amplified by DeepFakes, causing an easier classification of the EAR graph. Secondly, an implicit randomness in landmark location may act as a form of dataset augmentation. A common technique in machine learning is to augment a dataset to reduce overfitting by randomly modifying certain aspects of the data, the slight irregularities present in PFLD landmarks may have acted to augment the EAR dataset, enabling a more robust classifier to be trained.
 
+{\huge side by side of hrnet and pfld landmarks and true landmarks}
+
 Consistently, the time series classifier chosen for EAR analysis was learning shapelets. It was chosen in 3/4 scenarios, only being beaten by a time series forest classifier for HRNet operating over the FaceForensics dataset. Due to the way neural networks, it is difficult to determine the exact reason as to why the learning shapelets classifier is consistently the best. One possible reason is that it is one of the few trainable networks employed that keep temporal data into account. The majority of classifiers used either are able to refine their model over a number of epochs or can keep the temporal nature of the EAR graph into account, few manage to do both and it so happens that learning shapelets is the best of both worlds.
 
 \subsection{Unperturbed Traditional Detectors}
+\label{sec:un-trad-detect}
 
 All traditional CNN-based DeepFake detectors perform at similar levels to the known literature, consistently achieving of 90\% and above. The worst performing model was the Xception model on the FaceForensics dataset, achieving an accuracy of 85.2\%, which is still impressive. Clearly, CNNs are better at conventional DeepFake detection than the proposed blink methods. 
 
 Whilst blink-based detection maintained a fairly consistent accuracy across datasets, CNN detectors achieved much better accuracies on Celeb-DF. This is notable as Celeb-DF is intended to be a ``harder" dataset than FaceForensics\cite{li2020celeb} and therefore models should not be achieving higher accuracies. One possible reason is that Celeb-DF has higher quality images than FaceForensics. Videos from the FaceForensics dataset are compressed using JPEG compression\cite{roessler2018faceforensics} and hence contain artifacts that may throw off CNNs causing a decrease in accuracy.
 
-\subsection{Perturbed Videos}
+\subsection{Perturbed Blink Detection}
 
-The tables turn significantly when adversarial noise is introduced to attack the traditional detectors. As expected, blink-based detectors remain unaffected by adversarial noise, with the all models staying within $\pm$2\% of the unperturbed baseline. In some cases, accuracy would even increase slightly when attempting to classify attacked videos. On the FaceForensics dataset, PFLD prediction only predicts 3 videos differently when exposed to noise. Invariably, increasing the strength of noise will increase the accuracy of DeepFake detectors, potentially due to the noisy videos causing slight landmark misclassification, leading to a more variable EAR graph and thus more likely to be classed as fake. 
+{\huge add more here}
 
-\section{Main Code Evaluation}
+The tables turn significantly when adversarial noise is introduced to attack the traditional detectors. 
 
-\begin{itemize}
-    \item explain why blink detection is resistant
-    \begin{itemize}
-        \item dealing with the derivative of the video over time
-        \item landmarks need to be consistently altered by a noise attack which is not feasible due to CNNs struggling with anything temporal based
-    \end{itemize}
-    \item mention potential downsides of blink based
-    \begin{itemize}
-        \item required eyes to be constantly visible for reliable detection
-        \item requires eyes to be faked
-    \end{itemize}
-    \item obviously other adversarial noise methods need to be evaluated but ran out of time :(
-\end{itemize}
+As expected, blink-based detectors are unaffected by adversarial noise, as all models remain within $\pm$2\% of the unperturbed baseline. It was found that more noise (a higher $\epsilon$) was used to target a model, the accuracy of blink detection would increase. For example, when targeting the VGG model on the FaceForensics dataset, the HRNet accuracy rose from 52.6\% to 54.1\%. This is likely due to a higher level of noise causing higher variation in the eye landmarks, thus a more varied EAR graph resulting in a higher chance of misclassification.
+
+{\huge image of landmarks on noisy vs unnoisy here}
+
+Blink-based is resistant to adversarial noise attacks because it deals with the abstraction of a video over time. Whilst CNNs classify a video on a per frame basis, blink detection takes every frame into account. As a result, to produce a successful attack against a blink-based detection model, noise would need to be consistent across frames to cause a constant mislocation of eye landmarks, to produce an EAR graph that would be classified as real. Such a challenge, would require an attack that it is temporally aware. As discussed in Section \ref{sec:blink-based-detection}, neural networks struggle with any problem of a temporal nature, as such noise required to attack a blink-based DeepFake detector would be computationally challenging to produce.
+
+\subsection{Perturbed Traditional Detection}
+
+On the other hand, traditional CNN-based detectors fall significantly in accuracy when exposed to adversarial noise attacks, even when the noise is indirectly attacking the noise. As expected, when attacked by, a traditional classifier's accuracy would fall significantly, often to 0\% when attacked with the strongest amount of noise. On average, when opposed to the weak noise ($\epsilon=0.05)$, accuracy decreased to an average of 0.025\%. Similarly, when exposed to higher levels of noise ($\epsilon=0.1$), accuracy on the targeted model would reduce to 0\%; apart from the ResNet model on the Celeb-DF dataset which attained an accuracy of 68.1\%. Whilst still a far cry from the unperturbed accuracy of 99.4\%, it is nonetheless surprising. The experiment was reran, but the result stayed the same. The results show that lower strength noise is sufficient to produce a successful attack. FGSM is a black box attack, only needing the input and output of a model, and so can be applied to any DeepFake detector that uses a conventional CNN as the backbone.
+
+Furthermore, an FGSM attack is shown to be a general attack. Whilst not as effective as the model being targeted, other models experienced a significant drop in accuracy. VGG was the most vulnerable of the models, dropping to accuracies below 20\% in every scenario and in most cases dropping to below 5\%. On the other hand, Xception proved relatively resilient to indirect adversarial attacks, repeatedly scoring higher than all other indirectly attacked models.
+
+There was a significant variety in accuracy between datasets. EfficientNet would attain high accuracies of 30-60\% on FaceForensics but would drop to under 10\% for Celeb-DF. On the contrary, Xception obtained around 30\% on FaceForensics but would score over 70\% on Celeb-DF when indirectly attacked. This is due to the differences between the two datasets. As stated in Section \ref{sec:un-trad-detect}, Celeb-DF is a more difficult dataset than FaceForensics, hence it contains different DeepFake methods. Therefore, the attacks on each model will be different across datasets as each model will be focusing on different aspects of the image. The resulting noisy images will be different and thus cause different levels of errors on models.
+
+Overall, every traditional model experienced a loss in accuracy when attacked by adversarial noise, either directly or indirectly. This shows that blink-based DeepFake is indeed resilient against adversarial noise as it was not affected by indirect attacks. 
 
 \section{Transferability}
 
-{\huge Transferability results soonTM}
+Appendix \ref{sec:transfer} shows the raw results of transferability.
+
+Unfortunately, the results for transferability are inconclusive. There is no correlation between any of the blink-based DeepFake detectors. Whilst they are slightly more accurate than the traditional detectors, none achieve sufficient accuracy across both and real fake videos to be deemed suitable for a general DeepFake detector. Whilst the HRNet model trained on Celeb-DF has a high accuracy score on faked videos (99.7\%), it consistently declares any video as fake, resulting in it having an accuracy of 0.6\% on real videos from the FakeAVCeleb dataset. The accuracies of the other blink detection models bear little similarity with the models they were trained on, meaning they cannot be used as general detectors.
+
+One potential reason for the discrepancy is that whilst real blinking is consistent across datasets, the fake blinking is not. One DeepFake may blink too frequently, another may blink for too long, etc. Similar to how a CNN picks up on the irregularities on the data it was trained, so does the time series classifier. The time series classifiers employed in this project have all overfitted on the methods they were trained on and thus cannot be used as general detectors.
+
+As has been shown in literature\cite{ricker2022towards}, CNNs are only effective on the data they are trained on. The same phenomenon is shown in this project. One discovery that is novel to Ricker at al's research is that the models trained for this project seem to consistently classify unknown videos as real. One potential reason is the set threshold for classification. This project uses the most probable class as the final classification, resulting in a threshold of 50\% for classification. If a CNN is unsure of classification, the probability for each class will be close to 50. The CNNs trained in this project have a slight leniency towards a real classification with the average confidence that a frame was real being 52\%, hence a tendency to classify unknown videos as real.
+
+\section{Evaluating Blink-Based DeepFake Detection}
+
+% \begin{itemize}
+%     \item mention potential downsides of blink based
+%     \begin{itemize}
+%         \item required eyes to be constantly visible for reliable detection
+%         \item requires eyes to be faked
+%     \end{itemize}
+%     \item obviously other adversarial noise methods need to be evaluated but ran out of time :(
+% \end{itemize}
+
+As shown, the primary benefit of blink-based DeepFake is the native resiliency to adversarial noise attacks. Adversarial Noise is a relatively computationally cheap and reliable way of causing an otherwise accurate DeepFake detector to classify fake videos. Blink-based detectors are resistant to such attacks and therefore can be used reliably when there is suspicion that an image or video has been manipulated.
+
+However, blink-based detection falls short of traditional detectors in a number of crucial ways. First is unperturbed accuracy. As shown by Tables \ref{tab:ff-un} and \ref{tab:cd-un}, whilst consistently better than guessing, blink-based detection is less accurate than conventional classifiers. Secondly, blink-based detection requires a video where the subject's eyes are clearly visible throughout the entire length of the video. Whilst it is possible to detect landmarks through occlusions, it is significantly less accurate than if the eyes were clearly visible, potentially leading to a misclassification. Furthermore, the eyes need to be faked to be classified. If just the mouth is faked, then blink detection will be unable to classify the video correctly.
+
+Hence, it is recommended that a blink-based DeepFake detector should not be used on its own as a classifier. It should instead be used in two scenarios as a supplement to other detection methods. The first scenario for its use is if a video is suspected to have been attacked with adversarial noise. If a traditional detector is consistently classifying a video is real but something feels ``off" about the video then it is recommended to pass the video through a blink detector for some clarification. 
+
+Another potential use for these detectors is as part of an ensemble of classifiers. Ensemble classifiers are group of classifiers all running on the same video, with the final classification being the majority vote of the classifiers. A blink based detector has a place among the ensemble as a form of resiliency against adversarial noise.
