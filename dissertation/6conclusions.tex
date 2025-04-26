@@ -1,37 +1,67 @@
 \chapter{Conclusions}
 \label{ch:conclusions}
 
-\begin{itemize}
-    \item This Project has shown blink-based detection via EAR analysis is both viable and resilient against adversarial noise attack
-    \item It shows that advanced univariate time series analysis can be used to detect DeepFakes across a wide a variety of example DeepFake datasets, a first
-    \item It shows that blink based deepfake detection is unaffected by adversarial attacks from FGSM
-\end{itemize}
+% \begin{itemize}
+%     \item This Project has shown blink-based detection via EAR analysis is both viable and resilient against adversarial noise attack
+%     \item It shows that advanced univariate time series analysis can be used to detect DeepFakes across a wide a variety of example DeepFake datasets, a first
+%     \item It shows that blink based deepfake detection is unaffected by adversarial attacks from FGSM
+% \end{itemize}
+
+In conclusion, blink-based DeepFake detectors are resilient to adversarial noise attacks.
+
+The project constructs a novel method for DeepFake detection through univariate time series analysis on the EAR graph. To accomplish this, 2 separate facial landmarking models and 13 time series classifiers were tested to produce the best combination on individual datasets. All models were implemented and trained locally to be optimised for DeepFake detection. The resulting classifiers consistently achieved accuracies of 50-60\%. Whilst not as accurate as current state of the art classifiers, these are still reliable for detection. 4 state of the art CNN-based DeepFake detectors were implemented and trained. These all achieved accuracies on unperturbed videos inline with expectations, correctly classifying videos around 90\% of the time.
+
+When exposed to adversarial noise attacks, traditional models would be heavily impacted, misclassifying the majority of DeepFaked videos is as real, even when not the direct target of the attack. Importantly, however, all blink-based detectors were unaffected by noise to any reasonable degree. Evaluation was done across 2 standardised datasets, a first of its kind for blink-based detection. Therefore, blink-based DeepFake detectors are resilient against adversarial noise attacks.
+
+Finally, all models were tested for their ability to classify unseen DeepFakes from a different DeepFake generator. This showed that whilst a slight improvement on existing CNNs blink-based DeepFake detectors cannot be used as a general classifier.
 
 \section{Author's Assessment of Project}
 
-\begin{itemize}
-    \item overall the project was successful, although the scope had to be narrowed significantly
-    \item explain initial sadness with scrapping WSELD, but then happy with the way i handled it
-    \item overall happy with the final results but wish testing could have been done on more attacks
-\end{itemize}
+% \begin{itemize}
+%     \item overall the project was successful, although the scope had to be narrowed significantly
+%     \item explain initial sadness with scrapping WSELD, but then happy with the way i handled it
+%     \item overall happy with the final results but wish testing could have been done on more attacks
+% \end{itemize}
+
+Overall, I am pleased and proud of the outcomes of this project. The initial aim of the project (Section \ref{sec:aim}) was to investigate whether or not blink-based DeepFake detection is resilient to adversarial noise attacks and I believe this was completed successfully. An accurate, resilient, and novel DeepFake detector was constructed and tested on a wide variety of datasets with varying strengths of noise. A multitude of state of the art DeepFake CNN-based DeepFake detectors were also implemented and evaluated. The primary outcome of the project was as suspected with blink based DeepFake detection being resilient to current adversarial noise attacks. As a result all of the core objectives in Section \ref{sec:objectives} have been completed successfully, producing a significant amount of novel research in the field of DeepFake detection (Section \ref{sec:novel})
+
+Furthermore, one of the stretch goals outlined in Section \ref{sec:objectives} was achieved, although it did not produce the desired outcomes. Nevertheless, it still adds to the novel research in this project. 
+
+Whilst the majority of this project was a success, there were a few low points. The failed implementation of WSELD (Section \ref{sec:sweld}) comes to mind as a particular low point, to loose approximately a month of work would be disheartening to anyone. However, such a challenge was overcome and the delay to the project was much less pronounced than it could have been. Unfortunately, there was still a delay in the project, resulting in a significant amount of adversarial noise methodologies not being evaluated to save time. Obviously, such a loss slightly degraded the final conclusions of this paper, but it still stands.
+
+Were I to do the project differently, I would have implemented the open-source and verifiable facial landmarking algorithms before I began work on unverified, potentially more accurate, facial landmarking models. This would have allowed me to get final results quicker and allowed for more extensive testing of my final models. 
 
 \section{Future Research Suggestions}
 
-\begin{itemize}
-    \item more comprehensive research into this specific area
-    \begin{itemize}
-        \item look into other methods
-        \item better EAR analysis
-    \end{itemize}
-    \item Diffusion models for noise reduction
-    \item potential development temporal noise
-    \item more subtle temporal dependencies like heartbeat detection and breathing
-\end{itemize}
+% \begin{itemize}
+%     \item more comprehensive research into this specific area
+%     \begin{itemize}
+%         \item look into other methods
+%         \item better EAR analysis
+%     \end{itemize}
+%     \item Diffusion models for noise reduction
+%     \item potential development temporal noise
+%     \item more subtle temporal dependencies like heartbeat detection and breathing
+% \end{itemize}
+
+The first potential area for research is a more detailed overview of this project. DeepVision and Ictu Oculi could both be tested against adversarial noise, along with a wider range of attacks. Whilst a number of time series analysis methods were proposed and tested, it is a wide and diverse field, hence there may be a time series classifier more accurate than learning shapelets that could raise the base accuracy of blink detection to the same as CNNs.
+
+A number of models have shown that diffusion models can be used as an initial parse to reduce adversarial noise in images\cite{nie2022diffusion}\cite{croitoru2023diffusion}\cite{ankile2023denoising}. Whilst this project has shown that blink-based DeepFake detection has a natural resiliency to adversarial noise, an extra preprocessing step of a diffusion model may be added to further reduce noise and improve accuracy.
+
+As discussed in Section \ref{sec:pert-blink}, it is theoretically difficult to produce adversarial noise that can reliably target a blink-based DeepFake detector. However, it may still be possible. As such, further research should be completed to show that such noise is actually possible to consistently create or not. If it is impossible, it shows that EAR analysis is a viable form of noise-resistant detection. If adversarial noise is possible to generate, then releasing the findings academically will allow other noise-resilient detection techniques to be researched and implemented.
+
+Other methods of DeepFake detection have been proposed that focus on physiological factors in humans. Both heartbeat\cite{qi2020deeprhythm}\cite{hernandez2020deepfakeson} and breathing\cite{layton2024every} have been shown to be viable signs for DeepFake detection, such methods rely on more subtle human movements and may therefore be even harder to attack with adversarial noise.
 
 \section{Open Source Work}
 
-\begin{itemize}
-    \item open source helped me so help back
-    \item main thing being deprecation
-    \item a couple actual bugs tho
-\end{itemize}
+% \begin{itemize}
+%     \item open source helped me so help back
+%     \item main thing being deprecation
+%     \item a couple actual bugs tho
+% \end{itemize}
+
+Due to the help provided by the open source community in this project, most notably the PapersWithCode\footnote{\url{https://paperswithcode.com/}} website, it felt right to give back to the community. 
+
+Firstly, the code for this project is open source and available on GitHub at \url{https://github.com/Mole1424/3rd-year-project}. This allows for anyone to replicate the research done in this project, and too potentially enhance it. 
+
+A number of bugs and depreciations were found in the open source projects used for this project. These were fixed where possible and communicated to the authors of the code in the appropriate ways. Screenshots of these contributions can be found in Appendix \ref{ch:open-source}.
