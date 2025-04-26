@@ -6,7 +6,11 @@ import cv2 as cv
 import numpy as np
 import tensorflow as tf
 from eyes import HRNET, EyeLandmarker, auxiliary_net, pfld, pfld_loss
+from foolbox import TargetedMisclassification, TensorFlowModel  # type: ignore
+from foolbox.attacks import LinfPGD
+from mtcnn import MTCNN  # type: ignore
 from tensorflow.keras.losses import MeanSquaredError  # type: ignore
+from tensorflow.keras.models import Model, load_model  # type: ignore
 from tensorflow.keras.optimizers import Adam  # type: ignore
 
 IMAGE_SIZE = (256, 256)
@@ -338,6 +342,137 @@ def calculate_ear(points: np.ndarray) -> float:
 
     return float((p2_p6 + p3_p5) / (2.0 * p1_p4))
 
+def noise_test() -> None:
+    path_to_large = "/dcs/large/u2204489/"
+    path_to_hrnet = path_to_large + "hrnet.weights.h5"
+    path_to_pfld = path_to_large + "pfld.keras"
+    path_to_vgg = path_to_large + "faceforensics_vgg19.keras"
+
+    hrnet = EyeLandmarker(hrnet_config, path_to_hrnet)
+    pfld = EyeLandmarker(None, path_to_pfld)
+    vgg = load_model(path_to_vgg)
+
+    mtcnn = MTCNN("face_detection_only")
+
+    path_to_image = path_to_large + "eyes/lfpw/testset/image_0063.png"
+
+    image = cv.imread(path_to_image)
+    mtcnn_boxes = mtcnn.detect_faces(image)
+    if mtcnn_boxes is None:
+        print("No faces detected")
+        return
+
+    # get bounding box
+    mtcnn_boxes = mtcnn_boxes[0]
+    x, y, w, h = mtcnn_boxes["box"]
+    face_crop = image[y:y+h, x:x+w].copy()
+    orig_h, orig_w = face_crop.shape[:2]
+    resized_face = cv.resize(face_crop, IMAGE_SIZE)
+    resized_face = np.expand_dims(resized_face, axis=0)
+
+    # get clean landmarks
+    hrnet_points = hrnet.get_landmarks(resized_face)[0]
+    pfld_points = pfld.get_landmarks(resized_face)[0]
+
+    # add noise
+    noisy_frame = perturb_frame(resized_face.copy(), vgg)
+
+    # get noisy landmarks
+    noisy_hrnet_points = hrnet.get_landmarks(noisy_frame)[0]
+    noisy_pfld_points = pfld.get_landmarks(noisy_frame)[0]
+
+    def resize_point(point: np.ndarray) -> np.ndarray:
+        """resize point to original image size"""
+        x, y = point
+        x = int(x * orig_w / IMAGE_SIZE[0])
+        y = int(y * orig_h / IMAGE_SIZE[1])
+        return np.array([x, y], dtype=np.float32)
+
+    hrnet_points = np.array([resize_point(point) for point in hrnet_points])
+    pfld_points = np.array([resize_point(point) for point in pfld_points])
+    noisy_hrnet_points = np.array([resize_point(point) for point in noisy_hrnet_points])
+    noisy_pfld_points = np.array([resize_point(point) for point in noisy_pfld_points])
+
+    # add hrnet points, in red (dots for clean, cross for noisy)
+    # add pfld points, in blue (dots for clean, cross for noisy)
+    # Prepare two copies of the face crop
+    face_crop_hrnet = face_crop.copy()
+    face_crop_pfld = face_crop.copy()
+
+    for idx, (
+        clean_hrnet_point, clean_pfld_point,
+        noisy_hrnet_point, noisy_pfld_point
+    ) in enumerate(
+        zip(hrnet_points, pfld_points, noisy_hrnet_points, noisy_pfld_points)
+    ):
+        # Draw HRNet points on face_crop_hrnet (red)
+        cv.circle(face_crop_hrnet, tuple(clean_hrnet_point.astype(int)), 2, (0, 0, 255), -1)
+        cv.putText(
+            face_crop_hrnet,
+            f"H{idx}",
+            tuple(clean_hrnet_point.astype(int) + np.array([5, -5])),
+            cv.FONT_HERSHEY_SIMPLEX,
+            0.3,
+            (0, 0, 255),
+            1,
+        )
+        cv.drawMarker(
+            face_crop_hrnet,
+            tuple(noisy_hrnet_point.astype(int)),
+            (0, 0, 255),
+            markerType=cv.MARKER_TILTED_CROSS,
+            markerSize=6,
+            thickness=1
+        )
+
+        # Draw PFLD points on face_crop_pfld (blue)
+        cv.circle(face_crop_pfld, tuple(clean_pfld_point.astype(int)), 2, (255, 0, 0), -1)
+        cv.putText(
+            face_crop_pfld,
+            f"P{idx}",
+            tuple(clean_pfld_point.astype(int) + np.array([5, 5])),
+            cv.FONT_HERSHEY_SIMPLEX,
+            0.3,
+            (255, 0, 0),
+            1
+        )
+        cv.drawMarker(
+            face_crop_pfld,
+            tuple(noisy_pfld_point.astype(int)),
+            (255, 0, 0),
+            markerType=cv.MARKER_TILTED_CROSS,
+            markerSize=6,
+            thickness=1
+        )
+
+    # Save two separate images
+    cv.imwrite("test-images/noisy_frame_hrnet.png", face_crop_hrnet)
+    cv.imwrite("test-images/noisy_frame_pfld.png", face_crop_pfld)
+    print("done :)")
+
+
+def preprocess_image(image:np.ndarray) -> np.ndarray:
+    """preprocess image for vgg"""
+    return image.astype(np.float32) / 255.0
+
+def postprocess_image(image:np.ndarray) -> np.ndarray:
+    """postprocess image for vgg"""
+    return np.clip(image * 255.0, 0, 255).astype(np.uint8)
+
+def perturb_frame(image: np.ndarray, vgg: Model) -> np.ndarray:
+    """perturb image with foolbox"""
+    image = preprocess_image(image)
+    image = tf.convert_to_tensor(image, dtype=tf.float32) # type: ignore
+    attack = LinfPGD(steps=1)
+    noisy_frame = attack.run(
+        TensorFlowModel(vgg, bounds=(0, 1)),
+        image,
+        TargetedMisclassification(tf.constant([1], dtype=tf.int32)),
+        epsilon=0.05,
+    )
+
+    return postprocess_image(noisy_frame)
+
 if __name__ == "__main__":
     arg = None
     try:
@@ -348,5 +483,7 @@ if __name__ == "__main__":
 
     if arg == "test":
         test_model(False)
+    elif arg == "noise":
+        noise_test()
     else:
         main(arg == "debug", False)
