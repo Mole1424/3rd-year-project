@@ -9,3 +9,5 @@ pillow # for mediapipe to work
 pyts
 scikit-learn
 tensorflow[and-cuda]
+
+# visualkeras # model views for project
