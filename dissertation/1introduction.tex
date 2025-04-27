@@ -50,7 +50,7 @@
 \section{Project Overview}
 \label{sec:project-review}
 
-DeepFakes are defined as ``manipulated or synthetic media whose realness is not easily recognisable by the human eye"\cite{altuncu2024deepfake}. In simpler terms, a DeepFake is a video, image, or audio clip that has been digitally altered or created, often using Artificial Intelligence (AI). Concerningly, it is extremely difficult for humans to determine whether a particular video has been DeepFaked or not (Figure \ref{fig:thispersondoesnotexist}). In a 2024 study, 86,155 volunteers attempted to detect DeepFakes, the final accuracy on all DeepFake types was 55.54\%\cite{diel2024human}. Furthermore, a Europol report revealed that 72\% of the UK population were unaware of DeepFakes and their potential impact\cite{europol2022facing}.
+DeepFakes are defined as ``manipulated or synthetic media whose realness is not easily recognisable by the human eye"\cite{altuncu2024deepfake}. In simpler terms, a DeepFake is a video, image, or audio clip that has been digitally altered or created, often using Artificial Intelligence (AI). Concerningly, it is extremely difficult for humans to determine whether or not a particular video has been DeepFaked. In a 2024 study, 86,155 volunteers attempted to detect DeepFakes, the final accuracy for all DeepFake types was 55.54\%\cite{diel2024human}, showing humans are only slightly better than guessing. Furthermore, a Europol report revealed that 72\% of the UK population were unaware of DeepFakes and their potential impact\cite{europol2022facing}.
 
 \begin{figure}[h]
     \centering
@@ -59,15 +59,19 @@ DeepFakes are defined as ``manipulated or synthetic media whose realness is not 
     \label{fig:thispersondoesnotexist}
 \end{figure}
 
-Because they are so realistic, DeepFakes have garnered wide usage for various nefarious activities. Scams, misinformation, and fraud are all possible illegal uses of DeepFakes and all pose a real threat to society\cite{sensity2024state}.
+Because they are so realistic, DeepFakes have garnered wide usage for various nefarious activities. Scams, misinformation, and fraud are all possible illegal uses of DeepFakes and all pose a real threat to society\cite{sensity2024state}. Deloitte estimates that in 2027, DeepFakes will enable more \$40 billion of fraud in the United States\cite{lalchand2024generative}.
 
 It is therefore obvious that a mechanism to reliably detect DeepFakes would be incredibly useful.
 
-Convolutional Neural Networks (CNNs) are powerful neural network models that learn kernels (sometimes also called filters) in a feed-forward manner\cite{lecun2015deep}. They consist of sequences of layers that gradually take more and more general view of an input to produce the final classification. They have a wide variety of applications in various fields of deep learning, such as computer vision and recommendation algorithms. Crucially, they can also be used to create accurate DeepFake detectors. When trained on a specific dataset, they can become extremely accurate achieving consistent accuracies of over 90\% when trained correctly\cite{papersiwthcodedeepfakedetection}.
+Convolutional Neural Networks (CNNs) are powerful neural network models that learn kernels (sometimes also called filters) in a feed-forward manner\cite{lecun2015deep}. They consist of sequences of layers that gradually take a more and more general view of an input to produce the final classification. They have a wide variety of applications in various fields of deep learning, such as computer vision and recommendation algorithms. Crucially, they can also be used to create accurate DeepFake detectors. When trained on a specific dataset, they can become extremely accurate, achieving consistent accuracies of over 90\% when trained correctly\cite{papersiwthcodedeepfakedetection}.
 
-However, recent studies has shown that CNNs are vulnerable to adversarial noise attacks. Noise, imperceptible to humans, is added to images which causes misclassification\cite{gandhi2020adversarial}. This becomes dangerous when noise is added to fake images causing them to be misclassified as real. A 90\% accurate classifier is going to be implicitly trusted to be correct and a simple and invisible method to fool classifiers is worrying.
+However, recent studies have shown that CNNs are vulnerable to adversarial noise attacks. Noise, imperceptible to humans, is added to images which can cause a misclassification\cite{gandhi2020adversarial}. This becomes dangerous when noise is added to fake images, causing them to be classified as real. A 90\% accurate classifier is going to be implicitly trusted to be correct and a simple and invisible method to fool classifiers is worrying.
 
-A promising new method of DeepFake detection focusses on blinking. DeepFakes, and other AI generated content, suffer from various temporal inconsistencies. Videos are a sequence of images moving through time. When this video is of real life there are certain aspects that can be predicted between frames, however AI struggles to replicate these aspects. Blink-based DeepFake detection exploits blinking inconsistencies. Human blinking is a subconscious action and hence periodic: the average period between blinks is 2.8 seconds and a blink takes around 0.1-0.4 seconds\cite{schiffman1990sensation}. Other eye-based temporal inconsistencies exist such as the shape of an eye and how far open the eye can be. It is possible to leverage this for DeepFake detection, by analysing how far open the eye is over time.
+A promising new method of DeepFake detection focuses on blinking. DeepFakes and other AI-generated content suffer from various temporal inconsistencies. Videos are a sequence of images that move through time. When this video is real, certain aspects can be predicted between frames, however, AI struggles to replicate these aspects. Blink-based DeepFake detection exploits blinking inconsistencies. Human blinking is a subconscious action and hence periodic: the average period between blinks is 2.8 seconds and a blink takes around 0.1-0.4 seconds\cite{schiffman1990sensation}. Other eye-based temporal inconsistencies exist, such as the shape of an eye and how far open the eye can be. It is possible to leverage this for DeepFake detection, by analysing how far open the eye is over time.
+
+This project aims to determine whether blink-based DeepFake detection is resistant to adversarial noise. It is believed to be resilient as blink-based detection classifies a video over time. Current methods of adversarial noise can only perturb a single frame at once and so, in theory, would not be able to coordinate to cause a misclassification overtime. However, adversarial attacks may cause landmarks to be mislocated. This may cause indirect misclassifications. 
+
+This project also aims to evaluate whether blink-based detection can be used as a general DeepFake classifier or not. The majority of CNN-based detectors attain high accuracies by focussing on model-specific artifacts (Figure \ref{fig:fakeretouch}). On the other hand, the majority of DeepFakes will miss common factors in blinking such as frequency and period, and these patterns should be consistent across DeepFakes methodologies as similar kinds of mistakes will be made. Hence, it is believed that blink-based DeeepFake detectors will be generalised.
 
 \section{Aim}
 \label{sec:aim}
@@ -88,7 +92,7 @@ To achieve the aim, as laid out in Section \ref{sec:aim}, the project can be dec
     \item Evaluate how responsive blink-based detection is to adversarial noise
 \end{enumerate}
 
-The above objectives must be completed for the project to be a success. If they have all been successfully achieved then the following objectives could be implemented given sufficient time:
+The above objectives must be completed for the project to be deemed a success. If they have all been successfully achieved, then the following objectives could be implemented given sufficient time:
 
 \begin{enumerate}
     \item Evaluate the transferability of blink-based detection to datasets it has not been trained on
