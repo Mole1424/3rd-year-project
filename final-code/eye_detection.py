@@ -342,7 +342,64 @@ def calculate_ear(points: np.ndarray) -> float:
 
     return float((p2_p6 + p3_p5) / (2.0 * p1_p4))
 
+
+def compare_landmarks() -> None:
+    """compare landmarks from hrnet and pfld"""
+    path_to_large = "/dcs/large/u2204489/"
+    path_to_hrnet = path_to_large + "hrnet.weights.h5"
+    path_to_pfld = path_to_large + "pfld.keras"
+
+    hrnet = EyeLandmarker(hrnet_config, path_to_hrnet)
+    pfld = EyeLandmarker(None, path_to_pfld)
+
+    mtcnn = MTCNN("face_detection_only")
+
+    path_to_image = path_to_large + "eyes/lfpw/testset/image_0063.png"
+
+    image = cv.imread(path_to_image)
+    mtcnn_boxes = mtcnn.detect_faces(image)
+    if mtcnn_boxes is None:
+        print("No faces detected")
+        return
+
+    # get bounding box
+    mtcnn_boxes = mtcnn_boxes[0]
+    x, y, w, h = mtcnn_boxes["box"]
+    face_crop = image[y:y+h, x:x+w].copy()
+    orig_h, orig_w = face_crop.shape[:2]
+    resized_face = cv.resize(face_crop, IMAGE_SIZE)
+    resized_face = np.expand_dims(resized_face, axis=0)
+
+    # get landmarks
+    hrnet_points = hrnet.get_landmarks(resized_face)[0]
+    pfld_points = pfld.get_landmarks(resized_face)[0]
+
+    def resize_point(point: np.ndarray) -> np.ndarray:
+        """resize point to original image size"""
+        x, y = point
+        x = int(x * orig_w / IMAGE_SIZE[0])
+        y = int(y * orig_h / IMAGE_SIZE[1])
+        return np.array([x, y], dtype=np.float32)
+
+    hrnet_points = np.array([resize_point(point) for point in hrnet_points])
+    pfld_points = np.array([resize_point(point) for point in pfld_points])
+
+    # add hrnet points in red, pfld points in blue
+    for hrnet_point, pfld_point in zip(hrnet_points, pfld_points):
+        cv.circle(
+            face_crop, tuple(hrnet_point.astype(int)), 2, (0, 0, 255), -1
+        )
+
+        cv.circle(
+            face_crop, tuple(pfld_point.astype(int)), 2, (255, 0, 0), -1
+        )
+
+    cv.imwrite("test-images/compare_landmarks.png", face_crop)
+    print("done :)")
+
+
 def noise_test() -> None:
+    """add noise to image and compare landmarks"""
     path_to_large = "/dcs/large/u2204489/"
     path_to_hrnet = path_to_large + "hrnet.weights.h5"
     path_to_pfld = path_to_large + "pfld.keras"
@@ -406,7 +463,9 @@ def noise_test() -> None:
         zip(hrnet_points, pfld_points, noisy_hrnet_points, noisy_pfld_points)
     ):
         # Draw HRNet points on face_crop_hrnet (red)
-        cv.circle(face_crop_hrnet, tuple(clean_hrnet_point.astype(int)), 2, (0, 0, 255), -1)
+        cv.circle(
+            face_crop_hrnet, tuple(clean_hrnet_point.astype(int)), 2, (0, 0, 255), -1
+        )
         cv.putText(
             face_crop_hrnet,
             f"H{idx}",
@@ -426,7 +485,9 @@ def noise_test() -> None:
         )
 
         # Draw PFLD points on face_crop_pfld (blue)
-        cv.circle(face_crop_pfld, tuple(clean_pfld_point.astype(int)), 2, (255, 0, 0), -1)
+        cv.circle(
+            face_crop_pfld, tuple(clean_pfld_point.astype(int)), 2, (255, 0, 0), -1
+        )
         cv.putText(
             face_crop_pfld,
             f"P{idx}",
@@ -483,6 +544,8 @@ if __name__ == "__main__":
 
     if arg == "test":
         test_model(False)
+    elif arg == "compare":
+        compare_landmarks()
     elif arg == "noise":
         noise_test()
     else:
