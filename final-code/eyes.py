@@ -1,9 +1,7 @@
 from typing import List
 
-import cv2 as cv
 import numpy as np
 import tensorflow as tf
-from mtcnn import MTCNN
 from tensorflow.keras import Model, Sequential  # type: ignore
 from tensorflow.keras.layers import (  # type: ignore
     AveragePooling2D,
