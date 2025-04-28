@@ -84,18 +84,20 @@ The main DeepFake detection algorithm is similar to the one discussed in the pro
 
 To improve resiliency against adversarial noise attacks, the entire algorithm is fail negative. If any section of the algorithm were to fail then the video would be deemed a fake. For example, if no facial landmarks are detected in a frame, then the video is declared fake.
 
+Whilst all of the separate components, such as facial landmarking models, are pre-existing neural networks, certain novel contributions have been made. The first is the use of univariate time series analysis of the EAR graph. This allows for more sophisticated and complex analysis to be done, which will hopefully allow for consistent and accurate classification. Furthermore, some of the facial landmarking models used had only been implemented in PyTorch, this project marks their first implementation using TensorFlow.
+
 \subsection{Face cropping}
 \label{sec:face-cropping}
 
-One common feature across all DeepFake detection and facial landmarking models is that they perform best when the face being analyses fills the entire frame, because background information is irrelevant and can disrupt the model. As such, it is incredibly useful to have a preprocessing step which crops a frame to just the faces in the frame using a face detector model. 
+One common feature across all DeepFake detection and facial landmarking models is that they perform best when the face being analysed fills the entire frame, because background information is often irrelevant and can disrupt the model. As such, it is useful to have a preprocessing step which crops a frame to just the faces in the frame, using a face detector model. 
 
-One of the most efficient models available is YuNet\cite{wu2023yunet}. YuNet is designed to run in real-time (approximately 1 millisecond per frame) on a CPU, whilst retaining a high degree of accuracy. It only contains 75,856 parameters, with many models requiring fifty times more parameters to reach similar levels of accuracy. More parameters mean longer computation times, which was deemed unacceptable for a model designed to run on edge devices. With neural networks, quicker computation times often come at the expense of reduced accuracy; whilst this is still the case with YuNet, it still achieves ``similar accuracy to other small models" on standardised benchmarks. OpenCV contains an implementation of YuNet for use in Python\cite{yunetpyton}.
+One of the most efficient models available is YuNet\cite{wu2023yunet}. YuNet is designed to run in real-time (approximately 1 millisecond per frame) on a CPU, whilst retaining a high degree of accuracy. It only contains 75,856 parameters, with many models requiring fifty times more parameters to reach similar levels of accuracy. More parameters mean longer computation times, which was deemed unacceptable for a model designed to run on edge devices. With neural networks, quicker computation times often come at the expense of reduced accuracy; whilst this is still the case with YuNet, it still achieves ``similar accuracy to other small models" on standardised benchmarks. \verb|OpenCV| contains an implementation of YuNet for use in Python\cite{yunetpyton}.
 
-A more accurate CNN for detecting faces is Multitask Cascaded Convolutional Networks (MTCNN)\cite{zhang2016joint}. MTCNN is more accurate, achieving 0.851 mean average precision on benchmarks, compared to YuNet's 0.836. The accuracy comes with a significant speed decrease. Where YuNet takes one millisecond per frame, MTCNN takes ten milliseconds. The MTCNN library\cite{centeno2024mtcnn} is a popular Python implementation of MTCNN.
+A more accurate CNN for detecting faces is Multitask Cascaded Convolutional Networks (MTCNN)\cite{zhang2016joint}. MTCNN is more accurate, achieving 0.851 mean average precision on benchmarks, compared to YuNet's 0.836. The accuracy comes with a significant speed decrease. Where YuNet takes one millisecond per frame, MTCNN takes ten milliseconds. The \verb|mtcnn| library\cite{centeno2024mtcnn} is a popular Python implementation of MTCNN written in TensorFlow.
 
-To attain the optimal combination of speed and accuracy both YuNet and MTCNN are used to identify faces in a video. An initial pass on all frames is done via YuNet, if no faces are found in a frame then MTCNN is used to identify the faces. To improve the performance of MTCNN, faces are processed in batches of 8. It was noted during testing that when exposed to adversarial noise, YuNet was prone to miss faces, as such the confidence YuNet required to mark a face was reduced from 0.9 to 0.7. Only the primary face in each frame is used, for the first frame this is taken as the face with the highest confidence from the model, for subsequent frames it is the face with the smallest Euclidean distance between the vertices of the bounding box. 
+To attain the optimal combination of speed and accuracy both YuNet and MTCNN are used to identify faces in a video. An initial pass on all frames is done via YuNet, if no faces are found in a frame then MTCNN is used to identify the faces. To improve the performance of MTCNN, faces are processed in batches of 8. It was noted during testing that when exposed to adversarial noise, YuNet was prone to miss faces, as such the confidence YuNet required to mark a face was reduced from 0.9 to 0.7. Only the primary face in each frame is used, for the first frame this is taken as the face with the highest confidence from the model, for subsequent frames it is the face with the smallest Euclidean distance between the vertices of the bounding box. The process for cropping the face from a video is shown in Algorithm \ref{alg:face-detection}.
 
-\begin{algorithm}[h]
+\begin{algorithm}[H]
     \caption{The method for cropping faces from a video}
     \label{alg:face-detection}
     \begin{algorithmic}
@@ -135,7 +137,7 @@ To attain the optimal combination of speed and accuracy both YuNet and MTCNN are
 %     \item Most popular ones aren't viable as built to be small to fit in a package (dlib, opencv...) or to run on a phone (mediapipe)
 % \end{itemize}
 
-To determine the EAR in a specific frame, the six landmarks around each eye need to be located. There are a large number of Python packages which come with facial landmarking features, unfortunately most of these are unsuitable for use in a state-of-the-art detector as they are insufficiently accurate. The models included in packages are either compressed for ease of distribution or optimised to run on devices with reduced computational capabilities. 
+To determine the EAR in a specific frame, the six landmarks around each eye need to be located. There are a large number of Python packages which come with facial landmarking features, unfortunately most of these are unsuitable for use in a state-of-the-art detector as they are insufficiently accurate. The models included in packages are either compressed for ease of distribution or optimised to run on devices with reduced computational capabilities. Hence, a custom implementation of a pre-existing method is required.
 
 \subsubsection{Weakly Supervised Eye Landmarks Detection}
 \label{sec:sweld}
@@ -167,7 +169,7 @@ An overall network diagram is shown in Figure \ref{fig:wseld}.
     \label{fig:wseld}
 \end{figure}
 
-Whilst the original paper gave clear implementations, their code was difficult to replicate. No code was supplied with the paper so all code had to be generated from scratch. The most confusing aspect of the model was generating landmarks from an RPN. As the name suggests, RPNs are only able to generate regions, as such it would seem to be impossible to generate landmarks. A similar paper was able to produce results on multiple facial regions\cite{tang2018facial} but, again, no code was provided. In this implementation, it was assumed a dense layer with the number of outputs equal to the number of landmarks was incorporated into the output of the RPN. Furthermore, this was the author's first time coding a substantial learning framework in TensorFlow. There is no pre-built RPN module so one needs to be created from scratch, a number of open source implementations exist\cite{hxuaj2021tensorflow2}\cite{kewar2021region} but these do not generate landmarks. It was attempted to create a custom R-CNN but there was a seeming constant stream of bugs. The bugs, along with there being no way to confirm whether the method of adding landmarks to RPN was successful resulted in the development of WSELD being halted in favour of a new facial landmarking network.
+Whilst the original paper gave clear implementations, their findings were difficult to replicate. No code was supplied with the paper so all code had to be created from scratch. The most confusing aspect of the model was generating landmarks from a RPN. As the name suggests, RPNs are only able to generate regions, as such it would seem to be impossible to generate landmarks. A similar paper was able to produce results on multiple facial regions\cite{tang2018facial} but, again, no code was provided. In this implementation, it was assumed a dense layer with the number of outputs equal to the number of landmarks was incorporated into the output of the RPN. Furthermore, this was the author's first time coding a substantial learning framework in TensorFlow. There is no pre-built RPN module so one needs to be created from scratch, a number of open source implementations exist\cite{hxuaj2021tensorflow2}\cite{kewar2021region} but these do not generate landmarks. It was attempted to create a custom R-CNN but there was a seeming constant stream of bugs. The bugs, along with there being no way to confirm whether the method of adding landmarks to RPN was successful, resulted in the development of WSELD being halted in favour of a new facial landmarking network.
 
 \subsubsection{Pre-implemented Models}
 
@@ -180,7 +182,7 @@ Whilst the original paper gave clear implementations, their code was difficult t
 
 To avoid a repetition of the WSELD implementation, it was decided to switch to a reuse-oriented methodology for facial landmarking. For a model to be considered, it must have an open-source implementation available. PapersWithCode\footnote{\url{https://paperswithcode.com}} is an aggregation site which ranks models on popular machine-learning problems and links to known codebases where possible. 
 
-Facial landmark detection is a common problem in machine learning. The vast majority of available training datasets (Section \ref{sec:face-datasets}) contain the six points required for EAR calculation and as such any model that can be trained on these datasets can be used for eye landmarking. In theory, it is possible to optimise the networks for solely eye landmark detection, however, this will not be optimised due to the potential that has to disrupt a network that is known to be working.
+Facial landmark detection is a common problem in machine learning. The vast majority of available training datasets (Section \ref{sec:face-datasets}) contain the six points required for EAR calculation and as such any model that can be trained on these datasets can be used for eye landmarking. In theory, it is possible to optimise the networks for solely eye landmark detection, however, this will not be done due to the potential that has to disrupt a network that is known to be working.
 
 \subsubsection{High-Resolution Network}
 
@@ -193,7 +195,7 @@ Facial landmark detection is a common problem in machine learning. The vast majo
 
 The most implemented facial landmark detector on PapersWithCode is High-Resolution Network (HRNet)\cite{sun2019high}. HRNet is a proposal for a novel architecture of CNNs that has applications in many fields and one of those fields is facial landmarking.
 
-HRNet's novel contribution is CNNs working in parallel. Typical CNNs have one layer following another, whilst HRNet contains multiple CNNs in parallel, each working at a different resolution over the image. Similar to a CNN, the network gradually introduces lower and lower resolution layers to focus on more generic features, but at all times keeps the higher resolution layers in context which can refine their feature predictions based on the input from lower-level feature predictions. Lower-resolution layers are connected to higher-resolution layers through fusion layers which either upsample or downsample the feature predictions using either a CNN for downsampling or a bilinear for upsampling. An overview of the architecture for an HRNet is shown in Figure \ref{fig:hrnet-diagram}.
+HRNet's novel contribution is CNNs working in parallel. Typical CNNs have one layer following another, whilst HRNet contains multiple CNNs working at a different resolution over the image. Similar to a CNN, the network gradually introduces lower and lower resolution layers to focus on more generic features, but, at all times, keeps the higher resolution layers in context which can refine their feature predictions based on the input from lower-level feature predictions. Lower-resolution layers are connected to higher-resolution layers through fusion layers which either upsample or downsample the feature predictions using either a CNN for downsampling or a bilinear for upsampling. An overview of the architecture for an HRNet is shown in Figure \ref{fig:hrnet-diagram}.
 
 \begin{figure}[h]
     \centering
@@ -204,9 +206,9 @@ HRNet's novel contribution is CNNs working in parallel. Typical CNNs have one la
 
 Whilst HRNet is a generic architecture, it has been applied with great effect to facial landmarking. Such an implementation has been made open source in HRNet's official GitHub repository\cite{zhao2019facial} which details the specific architecture of HRNet uses for facial landmarking. Similar to Figure \ref{fig:hrnet-diagram}, the network consists of four distinct modules, with each module containing four convolutional layers. Each module introduces one additional parallel network. Each layer consists of 18, 36, 72, and 144 filters respectively.
 
-Instead of a set of coordinates for landmarks, the output of HRNet is a heatmap of the likely locations of a landmark with the peak of the heatmap being the most probable location (Figure \ref{fig:hrnet-output}. As such the location of the maximal value of the heatmap can be taken as the final location of a landmark. Whilst a simple version would be to simply take the index of the maximal value in the array, this neglects the possibility of the landmark being in the subpixel domain. The output heatmap is relatively low resolution ($64\times64$), so it is highly likely that the peak is within a subpixel. The problem has been research by Fisher et al.\cite{fisher1996comparison}. The most accurate algorithm proposed is Centre of Mass 7 (CoM7) which assumes the heatmap follows a Gaussian distribution and can therefore be estimated using a weighted average as shown through Equation \ref{eq:com7}. Firstly, the coordinates of the maximal value are computed and stored as $x,y$. Six values on either side of the maximal value are retrieved ($f(x)$). The original equation assumes one dimension, but it can be expanded to two by performing the calculation twice, one for $x$ and one for $y$.
+Instead of a set of coordinates for landmarks, the output of HRNet is a heatmap of the likely locations of a landmark with the peak of the heatmap being the most probable location (Figure \ref{fig:hrnet-output}). As such, the location of the maximal value of the heatmap can be taken as the final location of a landmark. Whilst a simple version would be to simply take the index of the maximal value in the array, this neglects the possibility of the landmark being in the subpixel domain. The output heatmap is relatively low resolution ($64\times64$), so it is highly likely that the peak is within a subpixel. The problem has been research by Fisher et al.\cite{fisher1996comparison}. The most accurate algorithm proposed is Centre of Mass 7 (CoM7) which assumes the heatmap follows a Gaussian distribution and can therefore be estimated using a weighted average as shown through Equation \ref{eq:com7}. Firstly, the coordinates of the maximal value are computed and stored as $x,y$. Six values on either side of the maximal value are retrieved ($f(x)$). The original equation assumes one dimension, but it can be expanded to two by performing the calculation twice, one for $x$ and one for $y$.
 
-\begin{figure}[h]
+\begin{figure}[H]
     \centering
     \begin{subfigure}{0.25\textwidth}
         \centering
@@ -247,27 +249,45 @@ A Practical Facial Landmark Detector (PFLD)\cite{guo2019pfld} is an accurate lan
 
 The architecture of PFLD is more similar to a traditional CNN: a backbone that leads into a number of dense layers which produce the final classification. PFLD uses the MobileNet backbone\cite{howard2017mobilenets} for feature extraction. As discussed in Section \ref{sec:traditional-cnns}, MobileNet reduced the number of parameters in a network whilst retaining similar accuracy. While EfficientNet then scales up its network in response, PFLD keeps the reduced model size to allow it to run with reduced compute times. MobileNet also comes with a width hyperparameter that can further narrow down a network, increasing speed at the expense of accuracy. For this project, accuracy is more important than speed so only the most accurate MobileNet model is used, as such the width parameter is set to $1\times$. 
 
-PFLD also includes an auxiliary network that is only used for training. To improve accuracy in a small network, PFLD uses a custom loss function which requires the pitch, yaw, and roll of a face. Whilst these could be calculated from the landmarks produced by the PFLD network, during the early stages, this is very inaccurate and can cause the model learning to stall. The auxiliary network picks up from an intermediary layer midway through the main backbone and outputs three values which are the pitch, yaw, roll.
+PFLD also includes an auxiliary network that is only used for training. To improve accuracy in a small network, PFLD uses a custom loss function which requires the pitch, yaw, and roll of a face. Whilst these could be calculated from the landmarks produced by the PFLD network, during the early stages, this is very inaccurate and can cause the model learning to stall. The auxiliary network picks up from an intermediary layer midway through the main backbone and outputs three values which are the predicted pitch, yaw, roll of the face.
 
 The overall main backbone is taken from the PyTorch implementation\cite{zhao2019pfld} but with a header from a TensorFlow fork\cite{qi2019pfld} to align with the number of facial landmarks required.
- 
-{\huge need to add own PFLD network diagram}
 
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}{\textwidth}
+        \includegraphics[width=\linewidth]{dissertation//figures/PFLD.png}
+        \caption{The network diagram for PFLD}
+    \end{subfigure}
+    \begin{subfigure}{\textwidth}
+        \includegraphics[width=\linewidth]{dissertation/figures/AuxiliaryNet.png}
+        \caption{The network diagram for PFLD's auxiliary network}
+    \end{subfigure}
+    \caption{Network Architecture of PFLD (Generated using visualkeras\cite{Gavrikov2020VisualKeras})}
+    \label{fig:pfld}
+\end{figure}
 One of the key contributions to PFLD's accuracy is a custom loss function. A typical facial landmarking model will use some form of distance metric for the loss function. These can only be done in two dimensions, neglecting geometric and structural information. For example, the more you turn your head relative to a camera, the closer your eyes will appear to the camera despite them remaining the same distance apart in three-dimensional space. Whilst large-scale models can get away with using conventional loss functions and brute force their way the inconsistencies, smaller models cannot. To take into account geometrical information, PFLD uses the pitch, yaw, and roll of a face from the auxiliary network to compute the following loss function:
 
 \begin{equation}
     L =\sum^N_{n=1}\left(\sum^C_{c=1}\omega^c_n\sum^K_{k=1}(1-\cos{\theta^k_n})\right) ||d_n||^2_2
 \end{equation}
 
-$n$ represents the $n^\text{th}$ of $N$ landmarks. $C$ and $\omega$ are weighting parameters to equalise datasets. The dataset is divided into $C$ classes. A number of classes are proposed, but these require augmenting the dataset with hand labelled, as this is an individual project and some facial landmark datasets contain over 10,000 images (Section \ref{sec:face-datasets}) these weights are omitted. The primary weighting parameters are $\theta^1, \theta^2,\theta^3$ which represent the difference the difference between the estimated and truth pitch, yaw, and roll respectively. As the delta goes up, so does the penalisation allowing the model to compensate for large deviations in head poses. Finally, L2 loss ($||d_n||^2_2$) is used as the primary loss component that is then weighted by the previous factors. 
+$n$ represents the $n^\text{th}$ of $N$ landmarks. $C$ and $\omega$ are weighting parameters to equalise datasets. The dataset is divided into $C$ classes. A number of classes are proposed, but these require augmenting the dataset with hand labelled, as this is an individual project and some facial landmark datasets contain over 10,000 images (Section \ref{sec:face-datasets}) these weights are omitted to save time. The primary weighting parameters are $\theta^1, \theta^2,\theta^3$ which represent the difference the difference between the estimated and truth pitch, yaw, and roll respectively. As the delta goes up, so does the penalisation allowing the model to compensate for large deviations in head poses. Finally, L2 loss ($||d_n||^2_2$) is used as the primary loss component that is then weighted by the previous factors. 
 
 To find the ground truth angles of the face, the Perspective-n-Point algorithm\cite{mallick2016head}\cite{hou2018face} maps sample points in three dimensions to two dimensions on the face, from which the facial angles can be calculated. The model was trained for 500 epochs following the PyTorch implementation\cite{zhang2016joint} using the Adam\cite{kingma2014adam} optimiser.
 
 \subsubsection{Choice of Model}
 
-Both models offer their own advantages and disadvantages. PFLD offers a much faster model, at the expense of accuracy, whereas HRNet offers accuracy at the expense of speed. The difference is only expressed in the literature comparing them on the AFLW\cite{koestinger2011annotated}, where PFLD has a normalised mean error (NME) of 1.88 versus HRNet with 1.57. These are exceptionally close as most state-of-the-art models achieve an NME of 1.5-2\footnote{\url{https://paperswithcode.com/sota/facial-landmark-detection-on-aflw-full}}. As such, both models will be tested over the course of this project. If preference is required, due to time constraints, HRNet will be used as accuracy over speed is the priority for this project.
+Both models offer their own advantages and disadvantages. PFLD offers a much faster model, at the expense of accuracy, whereas HRNet offers accuracy at the expense of speed. The difference in accuracy is only expressed in the literature comparing them on the AFLW\cite{koestinger2011annotated}, where PFLD has a normalised mean error (NME) of 1.88 versus HRNet with 1.57. These are exceptionally close as most state-of-the-art models achieve an NME of 1.5-2\footnote{\url{https://paperswithcode.com/sota/facial-landmark-detection-on-aflw-full}}. As such, both models will be tested over the course of this project. If preference is required, due to time constraints, HRNet will be used as accuracy over speed is the priority for this project. Figure \ref{fig:eye-comparison} shows HRNet and PFLD landmarking the frame. HRNet is more accurate, landmarking the coordinates precisely. PFLD is less accurate often landmarking sections of the lower eyelid rather than the eye itself. However, these landmarks are still accurate in comparison to each other, the entire eye is simply translated down. As such, the EAR will not be affected and so PFLD can still be used effectively.
 
 Furthermore, it is believed that slight inaccuracies in landmark detection will be consistent across the entire EAR graph, as such the various EAR analysis models should be able to learn the idiocracies of each model and compensate for them.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.5\linewidth]{dissertation//figures/compare_landmarks.png}
+    \caption{A comparison of HRNet's (red) and PFLD's (blue) predictions}
+    \label{fig:eye-comparison}
+\end{figure}
 
 \subsubsection{Facial Landmark Datasets}
 \label{sec:face-datasets}
@@ -326,16 +346,27 @@ As explained in Section \ref{sec:face-cropping}, landmarking models benefit from
 %     \item model diagrams for each one (maybe give a rough explanation as to the aims each one is doing?)
 % \end{itemize}
 
-With the eye landmarks located and the EAR calculated for each frame, the result is an EAR-time graph (Figure \ref{fig:real-ear-graph}). Existing blink-based DeepFake detectors will extract features from the graph such as frequency and period. A novel approach from this project is to use the entire EAR graph for analysis by abstracting the problem into univariate time series classification.
+With the eye landmarks located and the EAR calculated for each frame, the result is an EAR-time graph (Figure \ref{fig:sample-ears}). Existing blink-based DeepFake detectors will extract features from the graph such as frequency and period. A novel approach from this project is to use the entire EAR graph for analysis by abstracting the problem into univariate time series classification.
 
-\begin{figure}[h]
+\begin{figure}[H]
     \centering
-    \includegraphics[width=0.5\linewidth]{dissertation/figures/real-ear-graph.png}
-    \caption{A sample graph of EAR over frame for a real video}
-    \label{fig:real-ear-graph}
+    \begin{subfigure}{0.45\linewidth}
+        \includegraphics[width=\textwidth]{dissertation/figures/real-ear.png}
+        \caption{The plot of a real EAR graph}
+        \label{fig:real-ear}
+    \end{subfigure}
+    \begin{subfigure}{0.45\linewidth}
+        \includegraphics[width=\textwidth]{dissertation/figures/fake-ear.png}
+        \caption{The plot of a fake EAR graph}
+        \label{gif:fake-ear}
+    \end{subfigure}
+    \caption{Plots of sample EAR graphs}
+    \label{fig:sample-ears}
 \end{figure}
 
-A univariate time series is a single point of data that varies over time. A large amount of research has been done into time series due to their frequent appearance in statistical models. Traditionally machine learning models struggle with temporal structures seen in time series but over time reliable methods have been developed. A comprehensive overview of -of-the-art time series algorithms for time series classification has been provided by Johann Faouzi\cite{faouzi2024time}.
+A univariate time series is a single point of data that varies over time. A large amount of research has been done into time series due to their frequent appearance in statistical models. Traditionally machine learning models struggle with temporal structures seen in time series but over time reliable methods have been developed. A comprehensive overview of sate-of-the-art time series algorithms for time series classification has been provided by Johann Faouzi\cite{faouzi2024time}.
+
+Figure \ref{fig:sample-ears} shows how much a fake EAR graph differs compared to a fake graph. The real EAR plot has clear distinct blinks and a relatively consistent EAR when the eye is open. On the other hand, the fake EAR graph has a lot more noise an variation. The graph is almost constantly varying with no clear distinction between blinks and the eye being open and there is a lot more overall noise in the graph as a whole. As there are clear differences between a real EAR graph and a fake one, time series analysis should be able to successfully classify the two.
 
 \subsubsection{K-Nearest Neighbours with Dynamic Time Warping}
 
@@ -385,7 +416,7 @@ FastDTW looks to accelerate DTW by reducing the resolution of the matrix and gra
     \label{fig:fast-dtw}
 \end{figure}
 
-Whilst k-NN can be done for any number, it is common to use 1-NN when dealing with time series classification.
+Whilst k-NN can be done for any value $k$, it is common to use 1-NN when dealing with time series classification.
 
 DTW is useful for blink-based DeepFake detection as humans do not blink in unison and hence blinks will appear at seemingly random intervals in the time series. This would cause a traditional distance-based k-NN but would be correctly handled by DTW, resulting in more accurate DeepFake detection.
 
@@ -393,7 +424,7 @@ DTW is useful for blink-based DeepFake detection as humans do not blink in uniso
 
 Shapelets are defined as ``a subsequence of consecutive observations from a time series"\cite{faouzi2024time}. These can be used to get a sense of the building blocks of a time series and enable classification based on fundamental features. Learning shapelets\cite{grabocka2014learning} is a modification of conventional shapelet classification by optimising shapelets during training. 
 
-First $k$ shapelets of length $l$ are generated randomly. Let $S = (s_1,\dots,s_l)$ be the shapelet and $T=(t_1,\dots,t_l$ be a time series. The ``distance" between the time series and the shapelet is defined in Equation\ref{eq:shapelet-distance}, note the use of Log Sum Exponent function (Equation \ref{eq:soft-min}) to make Equation \ref{eq:shapelet-distance} differentiable.
+First $k$ shapelets of length $l$ are generated randomly. Let $S = (s_1,\dots,s_l)$ be the shapelet and $T=(t_1,\dots,t_l$ be a time series. The ``distance" between the time series and the shapelet is defined in Equation\ref{eq:shapelet-distance}, note the use of Log Sum Exponent function (Equation \ref{eq:soft-min}) instead of a minimum function to make Equation \ref{eq:shapelet-distance} differentiable.
 
 \begin{align}
     d(S,T) &= \min_{j \in \{0,\dots,n-l\}} \sum^l_{i=1} (s_i -x_{j+i})^2 \label{eq:shapelet-distance}\\
@@ -408,7 +439,7 @@ In this case, one shapelet might be the EAR over the course of a normal blink. D
 
 \subsubsection{Time Series Forest}
 
-Many based on decision trees have been proposed over time. Time series forest\cite{deng2013time} is one such algorithm. Random intervals of a minimum length are extracted from the same locations in each time series (Figure \ref{fig:time-series-forest}a). From these intervals, the mean, standard deviation, and gradient (slope) are extracted as feature vectors (Figure \ref{fig:time-series-forest}b).
+Many algorithms based on decision trees have been proposed for time series classification. Time series forest\cite{deng2013time} is one such algorithm. Random intervals of a minimum length are extracted from the same locations in each time series (Figure \ref{fig:time-series-forest}a). From these intervals, the mean, standard deviation, and gradient (slope) are extracted as feature vectors (Figure \ref{fig:time-series-forest}b).
 
 \begin{figure}[h]
     \centering
@@ -417,9 +448,9 @@ Many based on decision trees have been proposed over time. Time series forest\ci
     \label{fig:time-series-forest}
 \end{figure}
 
-These are then fed into a forest of decision trees\cite{breiman2001random}. Decision trees are binary trees where at each node a field is compared to a value, if it is greater than a value it goes to the left child, otherwise to the right child. This continues until a leaf node, which acts as the final classification. A forest of decision trees processes similar data through a number of different decision trees with the final classification being the majority vote. In this case, each tree corresponds to a different interval.
+These are then fed into a forest of decision trees\cite{breiman2001random}. Decision trees are binary trees where at each node a field is compared to a value, if it is greater than a value it goes to the left child, otherwise to the right child. This continues until a leaf node, whose value acts as the final classification. A forest of decision trees processes similar data through a number of different decision trees with the final classification being the majority vote. In this case, each tree corresponds to a different interval of the time series.
 
-Decision trees are trained from the root down. For each feature and every value in the test dataset, the dataset is split using the feature and threshold. Each split is then evaluated via a split metric function (for classification this is usually entropy). The best feature and corresponding threshold are then set and the data is split. The process repeats recursively for each node until some stopping factor is reached. Common stopping factors are the depth of the tree or the minimum samples a node can contain. If a leaf node contains multiple classes from the test dataset, the class of the node is decided by a majority vote.
+Decision trees are trained from the root down. For each feature and every value in the test dataset, the dataset is split using the feature and threshold. Each split is then evaluated via a split metric function (for classification this is usually entropy). The best feature and corresponding threshold are then set for the node and the data is split. The process repeats recursively for each node until some stopping factor is reached. Stopping factors act to limit the size of tree, preventing overfitting. Common stopping factors are the depth of the tree or the minimum samples a node can contain. If a leaf node contains multiple classes from the test dataset, the class of the node is decided by a majority vote.
 
 \subsubsection{Time Series Bag-of-Features}
 
@@ -461,18 +492,18 @@ To train the models, every video in the train set is analysed by one of the faci
 %     \item fakeretouch has no open-source implementation, timings were too slow, estimated would also take a while
 % \end{itemize}
 
-There are two popular libraries for adding adversarial noise: Foolbox\cite{rauber2017foolbox}\cite{rauber2017foolboxnative} and CleverHans\cite{papernot2018cleverhans}. Both offer similar feature sets with native support for TensorFlow, a wide variety of documentation and open-source code bases. Hence, any choice between is based on preference rather than an objective view. Foolbox was chosen as the library for adversarial noise as it was the most up-to-date library. Furthermore, a bug in Cleverhans' source code meant the auto-generated documentation appeared blank and so had to be inferred by looking at the source code. On the other hand, Foolbox had a much richer and working documentation site, allowing for easier bug fixing if necessary.
+There are two popular libraries for adding adversarial noise: \verb|foolbox|\cite{rauber2017foolbox}\cite{rauber2017foolboxnative} and \verb|cleverhans|\cite{papernot2018cleverhans}. Both offer similar feature sets with native support for TensorFlow, a wide variety of documentation and open-source code bases. Hence, any choice between is based on preference rather than an objective view. \verb|foolbox| was chosen as the library for adversarial noise as it was the most up-to-date library. Furthermore, a bug in \verb|cleverhans|' source code meant the auto-generated documentation appeared blank and so had to be inferred by looking at the source code. On the other hand, \verb|foolbox| had a much richer and working documentation site, allowing for easier bug fixing if necessary.
 
-Whilst Foolbox does have an implementation of FGSM, it is an untargeted attack in their implementation. As a result, the attack is less reliable than the targeted attack proposed by Gandhi et al.\cite{gandhi2020adversarial}. To target the FGSM attack using Foolbox, a Projected Gradient Descent attack with 1 step in its search can be used\cite{madry2017towards}. 
+Whilst \verb|foolbox| does have an implementation of FGSM, it is an untargeted attack in their implementation. As a result, the attack is less reliable than the targeted attack proposed by Gandhi et al.\cite{gandhi2020adversarial}. To target the FGSM attack using \verb|foolbox|, a Projected Gradient Descent attack with 1 step in its search can be used\cite{madry2017towards}. This is an equivalent attack and as such can be introduced without loss of generality.
 
-The CW-L2 attack proved to be too slow for videos. To attack a video, FGSM took 10 seconds, whereas the CS-L2 attack to 3 hours on the same hardware and video. The majority of video-based DeepFake detection datasets contain thousands of videos. As such, the CW-L2 attack was not tested in this project.
+The CW-L2 attack proved to be too slow for videos. To attack a video, FGSM took 10 seconds, whereas the CW-L2 attack to 3 hours on the same hardware and video. The majority of video-based DeepFake detection datasets contain thousands of videos. As such, the CW-L2 attack was not tested in this project due to time constraints.
 
 Finally, FakeRetouch comes with no open-source code implementation. Following the delay caused by the failed implementation of WSELD due to its lack of implementation, there was little time available for further development work. Therefore, no evaluation was done on FakeRetouch. The reasons for this choice are explained in greater detail in Chapter \ref{ch:projman}.
 
 \section{Traditional Detectors}
 \label{sec:traditional-detectors}
 
-The VGG19\cite{krishna2022deepfake}\cite{yadav2024deepfake} and ResNet\cite{tiwari2024deepfake} models from the proof of concept are used in the main algorithm loop. Additional state-of-the-art DeepFake detectors have been created to evaluate their performance against adversarial noise. State-of-the-detectors were taken as the best performing DeepFake detection models uploaded to the PapersWithCode leaderboard\footnote{\url{https://paperswithcode.com/sota/deepfake-detection-on-faceforensics}}\footnote{\url{https://paperswithcode.com/sota/deepfake-detection-on-faceforensics-1}} that had open source repositories. The models chosen were based on EfficinetNetB4\cite{bonettini2021video} and Xception\cite{roessler2019faceforensicspp}.
+The VGG19\cite{krishna2022deepfake}\cite{yadav2024deepfake} and ResNet\cite{tiwari2024deepfake} models from the proof of concept are used in the main algorithm loop. Additional state-of-the-art DeepFake detectors have been created to evaluate their performance against adversarial noise. State-of-the-detectors were taken as the best performing DeepFake detection models uploaded to the PapersWithCode leaderboard\footnote{\url{https://paperswithcode.com/sota/deepfake-detection-on-faceforensics}}\footnote{\url{https://paperswithcode.com/sota/deepfake-detection-on-faceforensics-1}} that had open-source repositories. The models chosen were based on EfficinetNetB4\cite{bonettini2021video} and Xception\cite{roessler2019faceforensicspp}.
 
 EfficientNetB4 was chosen from the EfficinetNet family of models by Bonettini et al. due to its balance between the number of parameters, run time, and classification performance. Two models based on EfficientNet are proposed in the paper, one using the standard EfficientNet and another with an attention module added. These were shown to have very similar results so, to keep the network architecture simple, just EfficientNetB4 is used as the backbone with no attention model added.
 
@@ -484,9 +515,9 @@ Model diagrams of the CNNs used for classifications can be found in Appendix \re
 
 The training dataset for these CNNs is created by splitting the overall training set into 80\% for model training, and 20\% for model validation. For every video in the model training set, 32 frames are extracted and cropped to the facial region, following the method to train EfficientNet\cite{bonettini2021video}. To prevent overfitting, it is important for frames in the same video to not be used in both the training set and validation set, a phenomenon referred to as data leakage. Similarly to the proof of concept, no videos that have adversarial noise added to them are used in the training data as this would not reflect the scenarios DeepFake detectors would see in real life.
 
-When training, models are trained using categorical cross-entropy. The Adam\cite{kingma2014adam} optimiser is used for optimising gradients with hyperparameters from the original paper's implementations. Models were trained for 20 epochs, however early stopping was implemented. If a model's validation loss stops improving for 5 consecutive epochs, training is halted. To further reduce overfitting, the learning rate of the Adam optimiser is reduced by 90\% if the validation loss does not improve for 3 consecutive epochs. To gain the benefits of transfer learning, all models were initialised with their weights from the imagenet\cite{deng2009imagenet} dataset.
+When training, models are trained using categorical cross-entropy. The Adam\cite{kingma2014adam} optimiser is used for optimising gradients with hyperparameters from the original paper's implementations. Models were trained for 20 epochs, however early stopping was implemented to reduce the time to learn and to reduce overfitting. If a model's validation loss stops improving for 5 consecutive epochs, training is halted. To further reduce overfitting, the learning rate of the Adam optimiser is reduced by 90\% if the validation loss does not improve for 3 consecutive epochs. To gain the benefits of transfer learning, all models were initialised with their weights from the ImageNet\cite{deng2009imagenet} dataset.
 
-When classifying a video, each frame is independently classified by the model. If more than 50\% of the frames in a video are reported fake, then the video is deemed a fake.
+When classifying a video, each frame is independently classified by the model. If more than 50\% of the frames in a video are reported fake, then the video is deemed a fake. This threshold was chosen over a static threshold to account for varying length videos. 50\% was chosen as the threshold as it means the majority of frames needed to be classified fake for a video to be fake. One potential concern is uncertain predictions which could cause the model to predict randomly, therefore causing false classifications. However, when testing on images, the model was often confident in its output, often outputting probabilities close to 1 for the chosen classification. 
 
 \section{Final Code}
 
@@ -501,9 +532,9 @@ When classifying a video, each frame is independently classified by the model. I
 
 To make final testing and evaluation easier, it was decided to centralise the code for this project in one main loop. One piece of code, upon given a dataset and facial landmarking model, would train all other models required, and evaluate them. Facial landmarking models are trained separately as these require a different dataset for training and are invariant across datasets and therefore training them in the main program would be inefficient.
 
-The program program structure is shown in Algorithm \ref{alg:final-code}.
+The program structure is shown in Algorithm \ref{alg:final-code}.
 
-\begin{algorithm}[h]
+\begin{algorithm}[H]
     \caption{Final Code}
     \label{alg:final-code}
     \begin{algorithmic}
@@ -537,7 +568,7 @@ The program program structure is shown in Algorithm \ref{alg:final-code}.
     \end{algorithmic}
 \end{algorithm}
 
-Often with DeepFake datasets, multiple DeepFake videos are generated from a single real video. As such, there are often more fake videos than real ones. This can cause issues when training as a model could achieve a high accuracy by simply predicting fake every time. As such, the dataset is split according to the number of real videos in the dataset. 80\% of the real videos are taken for training, the same number of fake videos are then used in the train set for an even split. The remaining videos are used for the testing set. Note that the train set is further split into a training set and validation set in the \textsc{GetBestAnalyser} and \textsc{GetModels} functions as outlined in Sections \ref{sec:ts-implementation} and \ref{sec:traditional-detectors}.
+Often with DeepFake datasets, multiple DeepFake videos are generated from a single real video. As such, there are often more fake videos than real ones. This can cause issues when training as a model could achieve a high accuracy by simply predicting fake every time. To ensure an even split, the dataset is split according to the number of real videos in the dataset. 80\% of the real videos are taken for training, the same number of fake videos are then used in the train set for an even split. The remaining videos are used for the testing set. Note that the train set is further split into a training set and validation set in the \textsc{GetBestAnalyser} and \textsc{GetModels} functions as outlined in Sections \ref{sec:ts-implementation} and \ref{sec:traditional-detectors}.
 
 Frames are only attacked if they are fake frames as this reflects reality where an adversary would only add noise to a video if the video was faked. This also has the advantage of significantly reducing compute times as not only is attacking the frame skipped, but classifying each attacked frame with every model is avoided as well. \verb|noisy_frames| is a tuple of 4 frames, each frame attacking a single one of the traditional models. 
 
