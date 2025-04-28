@@ -68,6 +68,7 @@ class KerasTimeSeriesClassifier:
 # custom layer to transpose input
 @register_keras_serializable(package="Custom", name="TransposeLayer")
 class TransposeLayer(Layer):
+    """Transposes an input"""
     def __init__(self, **kwargs: dict) -> None:
         super(TransposeLayer, self).__init__(**kwargs)
 
@@ -407,6 +408,7 @@ class EarAnalysis:
                     ).batch(
                         resnet_batch_size if isinstance(model, ResNet) else batch_size
                     ).prefetch(tf.data.AUTOTUNE)
+
                     val_dataset = tf.data.Dataset.from_tensor_slices(
                         (np.expand_dims(np.array(tf_X_val), axis=-1),
                         to_categorical(tf_y_val, num_classes=2)),

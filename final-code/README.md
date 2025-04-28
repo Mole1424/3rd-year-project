@@ -65,6 +65,10 @@ Code for defining and training eye landmark model. `eye_detection.*` is the main
 
 Code and sbatch file to extract random frames from a dataset for trainind traditional models
 
+### `transferability.py` & `transferability.sbatch`
+
+Evaluates the transferability of blink-based DeepFake detection and traditional detectors on unkown datasets
+
 #### `utils.py`
 
 Random python scripts (mostly for formatting datasets). Intended for development purposes, use at your own risk!

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import tensorflow as tf
 import visualkeras
-from tensorflow.keras import Model, Sequential  # type: ignore
+from tensorflow.keras import Model  # type: ignore
 from tensorflow.keras.applications import (  # type: ignore
     VGG19,
     EfficientNetB4,
@@ -196,31 +196,6 @@ def conv2d(x: tf.Tensor, filters: int, kernel_size: int, stride: int) -> tf.Tens
     x = Conv2D(filters, kernel_size, stride, padding="same", use_bias=False)(x)
     x = BatchNormalization()(x)
     return ReLU()(x)
-
-# def inverted_residual(
-#     input_channels: int,
-#     output_channels: int,
-#     stride: int,
-#     skip: bool,
-#     expand_ratio: int
-# ) -> Layer:
-#     """inverted residual block for PFLD"""
-#     hidden_dim = input_channels * expand_ratio
-
-#     def layer(x: tf.Tensor) -> tf.Tensor:
-#         out = Sequential([
-#             Conv2D(hidden_dim, 1, 1, padding="same", use_bias=False),
-#             BatchNormalization(),
-#             ReLU(),
-#             DepthwiseConv2D(3, stride, padding="same", use_bias=False),
-#             BatchNormalization(),
-#             ReLU(),
-#             Conv2D(output_channels, 1, 1, padding="same", use_bias=False),
-#             BatchNormalization()
-#         ])(x)
-#         return x + out if skip else out
-
-#     return layer
 
 @register_keras_serializable(package="Custom", name="InvertedResidual")
 class InvertedResidual(Layer):

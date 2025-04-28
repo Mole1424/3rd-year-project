@@ -289,6 +289,7 @@ def main(debug: bool, hrnet: bool) -> None:
 
 
 def test_model(hrnet: bool) -> None:
+    """prints landmarks on image to test model"""
     # delete all files in test-images from previous runs
     for file in Path("test-images/").glob("*"):
         file.unlink()
@@ -456,24 +457,12 @@ def noise_test() -> None:
     face_crop_hrnet = face_crop.copy()
     face_crop_pfld = face_crop.copy()
 
-    for idx, (
-        clean_hrnet_point, clean_pfld_point,
-        noisy_hrnet_point, noisy_pfld_point
-    ) in enumerate(
-        zip(hrnet_points, pfld_points, noisy_hrnet_points, noisy_pfld_points)
-    ):
-        # Draw HRNet points on face_crop_hrnet (red)
+    for (
+        clean_hrnet_point, clean_pfld_point, noisy_hrnet_point, noisy_pfld_point
+    ) in zip(hrnet_points, pfld_points, noisy_hrnet_points, noisy_pfld_points):
+        # draw HRNet points on face_crop_hrnet (red)
         cv.circle(
             face_crop_hrnet, tuple(clean_hrnet_point.astype(int)), 2, (0, 0, 255), -1
-        )
-        cv.putText(
-            face_crop_hrnet,
-            f"H{idx}",
-            tuple(clean_hrnet_point.astype(int) + np.array([5, -5])),
-            cv.FONT_HERSHEY_SIMPLEX,
-            0.3,
-            (0, 0, 255),
-            1,
         )
         cv.drawMarker(
             face_crop_hrnet,
@@ -484,18 +473,9 @@ def noise_test() -> None:
             thickness=1
         )
 
-        # Draw PFLD points on face_crop_pfld (blue)
+        # draw PFLD points on face_crop_pfld (blue)
         cv.circle(
             face_crop_pfld, tuple(clean_pfld_point.astype(int)), 2, (255, 0, 0), -1
-        )
-        cv.putText(
-            face_crop_pfld,
-            f"P{idx}",
-            tuple(clean_pfld_point.astype(int) + np.array([5, 5])),
-            cv.FONT_HERSHEY_SIMPLEX,
-            0.3,
-            (255, 0, 0),
-            1
         )
         cv.drawMarker(
             face_crop_pfld,
